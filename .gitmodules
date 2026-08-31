@@ -1,0 +1,3 @@
+[submodule "third_party/serialDV"]
+	path = third_party/serialDV
+	url = https://github.com/f4exb/serialDV.git

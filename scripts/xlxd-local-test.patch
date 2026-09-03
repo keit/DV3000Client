@@ -1,0 +1,21 @@
+diff --git a/src/main.h b/src/main.h
+index 26b5ba2..010aea2 100644
+--- a/src/main.h
++++ b/src/main.h
+@@ -54,14 +54,14 @@
+ 
+ // global ------------------------------------------------------
+ 
+-#define RUN_AS_DAEMON
++//#define RUN_AS_DAEMON
+ #define JSON_MONITOR
+ 
+ // debug -------------------------------------------------------
+ 
+ //#define DEBUG_NO_ERROR_ON_XML_OPEN_FAIL
+ //#define DEBUG_DUMPFILE
+-//#define DEBUG_NO_G3_ICMP_SOCKET
++#define DEBUG_NO_G3_ICMP_SOCKET
+ 
+ // reflector ---------------------------------------------------
+ 

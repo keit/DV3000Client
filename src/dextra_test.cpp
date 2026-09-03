@@ -1,18 +1,21 @@
-// Step 2 of the ThumbDV/XLX client build order: implement just enough of the
-// DExtra protocol to link to an XLX module and prove the receive/transmit
-// path works, before touching real audio or the vocoder.
+// Step 3 of the ThumbDV/XLX client build order: route AMBE frames received
+// over DExtra through a real ThumbDV (decode to PCM, then re-encode before
+// echoing), and source the test transmission's AMBE from a real PCM file
+// via the ThumbDV rather than a synthetic byte pattern -- proving the full
+// network+vocoder path end to end before wiring up an actual mic/speaker.
 //
 // Protocol layout below is transcribed directly from xlxd's own source
 // (cdextraprotocol.cpp / cdvheaderpacket.h / ccallsign.cpp) -- the actual
 // server this talks to -- rather than reconstructed from memory.
 //
-// Usage: dextra_test <host> <target module letter>
+// Usage: dextra_test <host> <target module letter> <tty device> [test <input.raw> | <rx_output.raw>]
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cstdint>
 #include <csignal>
+#include <cmath>
 #include <array>
 #include <vector>
 #include <string>
@@ -25,6 +28,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+
+#include "dvcontroller.h"
 
 namespace {
 
@@ -72,6 +77,9 @@ std::string trimmed(const uint8_t *data, int len) {
 
 class DextraClient {
 public:
+    DextraClient(SerialDV::DVController *dv, FILE *rxPcmOut)
+        : m_dv(dv), m_rxPcmOut(rxPcmOut) {}
+
     bool open(const std::string &host, char targetModule) {
         m_targetModule = targetModule;
 
@@ -150,21 +158,35 @@ public:
         m_linked = false;
     }
 
-    // Originates one synthetic transmission (dummy AMBE content -- for
-    // exercising/verifying the transmit path against a real reflector, since
-    // a reflector never relays a stream back to its own originator, so this
-    // needs a *second* client instance running to actually observe the echo).
-    void sendTestTransmission(size_t numFrames = 10) {
-        std::vector<std::array<uint8_t, AMBE_SIZE>> frames;
-        for (size_t i = 0; i < numFrames; i++) {
-            std::array<uint8_t, AMBE_SIZE> ambe{};
-            for (auto &b : ambe) b = static_cast<uint8_t>(i); // recognizable, non-zero pattern
-            frames.push_back(ambe);
+    // Originates one transmission encoding real PCM audio (via the ThumbDV,
+    // same rate/format as roundtrip_test) rather than a synthetic AMBE byte
+    // pattern -- for exercising/verifying the transmit path against a real
+    // reflector, since a reflector never relays a stream back to its own
+    // originator, so this needs a *second* client instance running to
+    // actually observe the echo).
+    void sendTestTransmission(const std::string &pcmPath) {
+        FILE *in = std::fopen(pcmPath.c_str(), "rb");
+        if (!in) {
+            std::fprintf(stderr, "dextra_test: cannot open %s\n", pcmPath.c_str());
+            return;
         }
 
+        std::vector<std::array<uint8_t, AMBE_SIZE>> frames;
+        short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
+        while (std::fread(pcm, sizeof(short), SerialDV::MBE_AUDIO_BLOCK_SIZE, in)
+               == SerialDV::MBE_AUDIO_BLOCK_SIZE) {
+            std::array<uint8_t, AMBE_SIZE> ambe{};
+            if (!m_dv->encode(pcm, ambe.data(), SerialDV::DVRate3600x2400)) {
+                std::fprintf(stderr, "dextra_test: AMBE encode failed at frame %zu\n", frames.size());
+                break;
+            }
+            frames.push_back(ambe);
+        }
+        std::fclose(in);
+
         uint16_t streamId = nextStreamId();
-        std::fprintf(stderr, "dextra_test: sending synthetic test transmission, streamId=%u, %zu frames\n",
-                     streamId, frames.size());
+        std::fprintf(stderr, "dextra_test: sending test transmission from %s, streamId=%u, %zu frames\n",
+                     pcmPath.c_str(), streamId, frames.size());
         sendOriginatedHeader(streamId);
         for (size_t i = 0; i < frames.size(); i++) {
             sendOriginatedFrame(streamId, static_cast<uint8_t>(i % 21), frames[i].data(), false);
@@ -260,17 +282,43 @@ private:
         }
     }
 
+    // Decodes each received AMBE frame to PCM through the ThumbDV, optionally
+    // saves that PCM for inspection, then re-encodes it back to AMBE and
+    // sends *that* -- rather than replaying the raw received AMBE bytes
+    // verbatim -- so this actually exercises the vocoder round-trip, not
+    // just the network relay.
     void echoTransmission() {
         uint16_t streamId = nextStreamId();
         sendOriginatedHeader(streamId);
 
+        double sumSq = 0.0;
         for (size_t i = 0; i < m_rxAmbeFrames.size(); i++) {
-            sendOriginatedFrame(streamId, static_cast<uint8_t>(i % 21), m_rxAmbeFrames[i].data(), false);
+            short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
+            std::array<uint8_t, AMBE_SIZE> ambeOut{};
+            const uint8_t *toSend = m_rxAmbeFrames[i].data();
+
+            if (!m_dv->decode(pcm, m_rxAmbeFrames[i].data(), SerialDV::DVRate3600x2400)) {
+                std::fprintf(stderr, "dextra_test: AMBE decode failed at frame %zu, echoing raw\n", i);
+            } else {
+                if (m_rxPcmOut) std::fwrite(pcm, sizeof(short), SerialDV::MBE_AUDIO_BLOCK_SIZE, m_rxPcmOut);
+                for (short s : pcm) sumSq += double(s) * s;
+
+                if (!m_dv->encode(pcm, ambeOut.data(), SerialDV::DVRate3600x2400)) {
+                    std::fprintf(stderr, "dextra_test: AMBE encode failed at frame %zu, echoing raw\n", i);
+                } else {
+                    toSend = ambeOut.data();
+                }
+            }
+
+            sendOriginatedFrame(streamId, static_cast<uint8_t>(i % 21), toSend, false);
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
         sendOriginatedFrame(streamId, static_cast<uint8_t>(m_rxAmbeFrames.size() % 21), nullptr, true);
+        if (m_rxPcmOut) std::fflush(m_rxPcmOut);
 
-        std::fprintf(stderr, "dextra_test: echoed streamId=%u (%zu frames)\n", streamId, m_rxAmbeFrames.size());
+        unsigned int totalSamples = static_cast<unsigned int>(m_rxAmbeFrames.size()) * SerialDV::MBE_AUDIO_BLOCK_SIZE;
+        std::fprintf(stderr, "dextra_test: echoed streamId=%u (%zu frames, decoded rms=%.1f)\n",
+                     streamId, m_rxAmbeFrames.size(), totalSamples ? std::sqrt(sumSq / totalSamples) : 0.0);
     }
 
     uint16_t nextStreamId() {
@@ -339,25 +387,59 @@ private:
     std::vector<std::array<uint8_t, AMBE_SIZE>> m_rxAmbeFrames;
 
     uint16_t m_txStreamCounter = 0;
+
+    SerialDV::DVController *m_dv;
+    FILE *m_rxPcmOut;
 };
 
 } // namespace
 
+void usage(const char *prog) {
+    std::fprintf(stderr, "usage: %s <host> <target module letter> <tty device> [test <input.raw> | <rx_output.raw>]\n", prog);
+    std::fprintf(stderr, "  no extra arg: link and echo received transmissions back through the ThumbDV\n");
+    std::fprintf(stderr, "  <rx_output.raw>: also save decoded RX PCM (8kHz/16-bit-LE) there for inspection\n");
+    std::fprintf(stderr, "  'test' <input.raw>: encode that PCM file via the ThumbDV and send it as one "
+                          "transmission, then exit (needs a second instance running to observe the echo "
+                          "-- a reflector never relays a stream back to its own originator)\n");
+}
+
 int main(int argc, char **argv) {
-    if (argc < 3 || argc > 4) {
-        std::fprintf(stderr, "usage: %s <host> <target module letter> [test]\n", argv[0]);
-        std::fprintf(stderr, "  'test': send one synthetic transmission after linking, "
-                              "to verify the transmit path (needs a second instance "
-                              "running to observe the echo -- a reflector never relays "
-                              "a stream back to its own originator)\n");
+    if (argc < 4 || argc > 6) {
+        usage(argv[0]);
         return 1;
     }
-    bool sendTest = (argc == 4) && (std::strcmp(argv[3], "test") == 0);
+
+    bool sendTest = false;
+    std::string testPcmPath, rxOutPath;
+    if (argc == 6 && std::strcmp(argv[4], "test") == 0) {
+        sendTest = true;
+        testPcmPath = argv[5];
+    } else if (argc == 5) {
+        rxOutPath = argv[4];
+    } else if (argc != 4) {
+        usage(argv[0]);
+        return 1;
+    }
+
+    SerialDV::DVController dv;
+    if (!dv.open(argv[3])) {
+        std::fprintf(stderr, "dextra_test: failed to open %s\n", argv[3]);
+        return 1;
+    }
+
+    FILE *rxPcmOut = nullptr;
+    if (!rxOutPath.empty()) {
+        rxPcmOut = std::fopen(rxOutPath.c_str(), "wb");
+        if (!rxPcmOut) {
+            std::fprintf(stderr, "dextra_test: cannot open %s for writing\n", rxOutPath.c_str());
+            return 1;
+        }
+    }
 
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
-    DextraClient client;
+    DextraClient client(&dv, rxPcmOut);
     if (!client.open(argv[1], argv[2][0])) return 1;
     if (!client.link()) return 1;
 
@@ -368,12 +450,14 @@ int main(int argc, char **argv) {
         // (two unconditional "parrot" clients on the same module will always
         // ping-pong; that's real behavior, not a bug, but a one-shot sender
         // should not become one side of that pair by accident).
-        client.sendTestTransmission();
+        client.sendTestTransmission(testPcmPath);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     } else {
         client.run();
     }
 
     client.disconnect();
+    if (rxPcmOut) std::fclose(rxPcmOut);
+    dv.close();
     return 0;
 }

@@ -20,3 +20,5 @@ target_include_directories(roundtrip_test PRIVATE third_party/serialDV)
 add_executable(dextra_test
   src/dextra_test.cpp
 )
+target_link_libraries(dextra_test serialdv)
+target_include_directories(dextra_test PRIVATE third_party/serialDV)

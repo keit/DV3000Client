@@ -1,14 +1,15 @@
-// Step 3 of the ThumbDV/XLX client build order: route AMBE frames received
-// over DExtra through a real ThumbDV (decode to PCM, then re-encode before
-// echoing), and source the test transmission's AMBE from a real PCM file
-// via the ThumbDV rather than a synthetic byte pattern -- proving the full
-// network+vocoder path end to end before wiring up an actual mic/speaker.
+// Step 4 of the ThumbDV/XLX client build order: wire up a real microphone
+// and speaker. Adds a "live" mode that plays back received audio to a
+// speaker in real time (decode-on-arrival, no buffering) and transmits
+// mic audio, encoded through the ThumbDV, while Space is held -- on top
+// of (not replacing) the existing file-based echo/test modes, which stay
+// as the regression-test path for automated/offline verification.
 //
 // Protocol layout below is transcribed directly from xlxd's own source
 // (cdextraprotocol.cpp / cdvheaderpacket.h / ccallsign.cpp) -- the actual
 // server this talks to -- rather than reconstructed from memory.
 //
-// Usage: dextra_test <host> <target module letter> <tty device> [test <input.raw> | <rx_output.raw>]
+// Usage: dextra_test <host> <target module letter> <tty device> [test <input.raw> | <rx_output.raw> | live [capture-dev [playback-dev]]]
 
 #include <cstdio>
 #include <cstdlib>
@@ -18,9 +19,14 @@
 #include <cmath>
 #include <array>
 #include <vector>
+#include <deque>
 #include <string>
 #include <chrono>
 #include <thread>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
+#include <functional>
 
 #include <unistd.h>
 #include <sys/socket.h>
@@ -28,10 +34,20 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <termios.h>
+
+#include <alsa/asoundlib.h>
 
 #include "dvcontroller.h"
 
 namespace {
+
+// The ThumbDV is one serial device running a synchronous request/response
+// protocol (DVController::encode/decode) -- it can only serve one call at
+// a time. Live mode has two threads that need it (capture thread encoding
+// TX audio, network thread decoding RX audio for live playback), so every
+// call to it anywhere in this file goes through this lock.
+std::mutex g_dvMutex;
 
 constexpr int DEXTRA_PORT = 30001;
 constexpr int KEEPALIVE_PERIOD_SEC = 3;
@@ -75,10 +91,168 @@ std::string trimmed(const uint8_t *data, int len) {
     return s;
 }
 
+// Thin wrapper around one ALSA capture or playback stream, opened at
+// D-Star's 8kHz/16-bit-mono rate with a period matching one DV frame (160
+// samples = 20ms -- SerialDV::MBE_AUDIO_BLOCK_SIZE). read()/write() block
+// for that period, which is what paces the capture/playback threads in
+// live mode (replacing the manual sleep_for(20ms) the file-based paths use).
+class AlsaPcm {
+public:
+    bool open(const std::string &device, snd_pcm_stream_t stream) {
+        m_stream = stream;
+        int err = snd_pcm_open(&m_handle, device.c_str(), stream, 0);
+        if (err < 0) {
+            std::fprintf(stderr, "dextra_test: snd_pcm_open(%s) failed: %s\n",
+                         device.c_str(), snd_strerror(err));
+            return false;
+        }
+
+        unsigned int rate = 8000;
+        err = snd_pcm_set_params(m_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED,
+                                  1, rate, 1, 4 * (1000000 / (rate / SerialDV::MBE_AUDIO_BLOCK_SIZE)));
+        if (err < 0) {
+            std::fprintf(stderr, "dextra_test: snd_pcm_set_params(%s) failed: %s\n",
+                         device.c_str(), snd_strerror(err));
+            snd_pcm_close(m_handle);
+            m_handle = nullptr;
+            return false;
+        }
+        return true;
+    }
+
+    void close() {
+        if (m_handle) {
+            snd_pcm_close(m_handle);
+            m_handle = nullptr;
+        }
+    }
+
+    // Reads exactly SerialDV::MBE_AUDIO_BLOCK_SIZE samples, recovering from
+    // over/underruns rather than treating them as fatal.
+    bool read(short *pcm) {
+        snd_pcm_sframes_t n = snd_pcm_readi(m_handle, pcm, SerialDV::MBE_AUDIO_BLOCK_SIZE);
+        if (n == static_cast<snd_pcm_sframes_t>(SerialDV::MBE_AUDIO_BLOCK_SIZE)) return true;
+        if (n < 0) return recover(static_cast<int>(n));
+        return false;
+    }
+
+    bool write(const short *pcm) {
+        snd_pcm_sframes_t n = snd_pcm_writei(m_handle, pcm, SerialDV::MBE_AUDIO_BLOCK_SIZE);
+        if (n == static_cast<snd_pcm_sframes_t>(SerialDV::MBE_AUDIO_BLOCK_SIZE)) return true;
+        if (n < 0) return recover(static_cast<int>(n));
+        return false;
+    }
+
+private:
+    bool recover(int err) {
+        std::fprintf(stderr, "dextra_test: ALSA %s xrun/error: %s\n",
+                     m_stream == SND_PCM_STREAM_CAPTURE ? "capture" : "playback", snd_strerror(err));
+        return snd_pcm_recover(m_handle, err, 1) == 0;
+    }
+
+    snd_pcm_t *m_handle = nullptr;
+    snd_pcm_stream_t m_stream = SND_PCM_STREAM_CAPTURE;
+};
+
+// Bounded queue of decoded PCM chunks handed from the network thread
+// (live-mode RX decode) to the playback thread.
+class PcmQueue {
+public:
+    void push(const short *pcm) {
+        std::array<short, SerialDV::MBE_AUDIO_BLOCK_SIZE> chunk;
+        std::memcpy(chunk.data(), pcm, sizeof(chunk));
+        std::lock_guard<std::mutex> lock(m_mutex);
+        // Drop the oldest chunk rather than growing unbounded if playback
+        // ever falls behind -- a little audio loss beats unbounded latency.
+        if (m_queue.size() > 50) m_queue.pop_front();
+        m_queue.push_back(chunk);
+        m_cv.notify_one();
+    }
+
+    // Waits up to timeoutMs for a chunk; returns false on timeout.
+    bool pop(short *pcm, int timeoutMs) {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        if (!m_cv.wait_for(lock, std::chrono::milliseconds(timeoutMs), [this] { return !m_queue.empty(); })) {
+            return false;
+        }
+        std::memcpy(pcm, m_queue.front().data(), sizeof(short) * SerialDV::MBE_AUDIO_BLOCK_SIZE);
+        m_queue.pop_front();
+        return true;
+    }
+
+private:
+    std::mutex m_mutex;
+    std::condition_variable m_cv;
+    std::deque<std::array<short, SerialDV::MBE_AUDIO_BLOCK_SIZE>> m_queue;
+};
+
+// Push-to-talk via a held key. A plain TTY has no physical key-up event --
+// holding a key just produces repeated bytes from the OS's keyboard
+// auto-repeat -- so "held" is approximated the standard way: PTT is
+// considered active from the first Space byte until PTT_HANGTIME_MS passes
+// with no further Space byte, functionally the same as a VOX hangtime but
+// gated on the key rather than mic level.
+constexpr int PTT_HANGTIME_MS = 200;
+
+class PttInput {
+public:
+    bool start() {
+        if (tcgetattr(STDIN_FILENO, &m_savedTermios) != 0) return false;
+        struct termios raw = m_savedTermios;
+        raw.c_lflag &= ~(ICANON | ECHO);
+        raw.c_cc[VMIN] = 0;
+        raw.c_cc[VTIME] = 1; // 100ms read timeout, in tenths of a second
+        if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0) return false;
+        m_termiosSaved = true;
+
+        std::fprintf(stderr, "dextra_test: hold SPACE to transmit, Ctrl+C to quit\n");
+        m_thread = std::thread(&PttInput::run, this);
+        return true;
+    }
+
+    void stop() {
+        if (m_thread.joinable()) m_thread.join();
+        if (m_termiosSaved) tcsetattr(STDIN_FILENO, TCSANOW, &m_savedTermios);
+    }
+
+    bool active() const { return m_active.load(); }
+
+private:
+    void run() {
+        auto lastSpace = std::chrono::steady_clock::now() - std::chrono::hours(1);
+        while (g_running) {
+            char c;
+            ssize_t n = ::read(STDIN_FILENO, &c, 1);
+            auto now = std::chrono::steady_clock::now();
+            if (n == 1 && c == ' ') {
+                lastSpace = now;
+                m_active.store(true);
+            }
+            if (m_active.load() &&
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - lastSpace).count() > PTT_HANGTIME_MS) {
+                m_active.store(false);
+            }
+        }
+        m_active.store(false);
+    }
+
+    std::atomic<bool> m_active{false};
+    std::thread m_thread;
+    struct termios m_savedTermios{};
+    bool m_termiosSaved = false;
+};
+
 class DextraClient {
 public:
     DextraClient(SerialDV::DVController *dv, FILE *rxPcmOut)
         : m_dv(dv), m_rxPcmOut(rxPcmOut) {}
+
+    // Live mode: instead of buffering a whole transmission and echoing it
+    // back (the file-based modes' stand-in for a second endpoint), decode
+    // each frame as it arrives and hand the PCM to liveRxSink for immediate
+    // playback -- see onFramePacket().
+    DextraClient(SerialDV::DVController *dv, std::function<void(const short *)> liveRxSink)
+        : m_dv(dv), m_rxPcmOut(nullptr), m_liveMode(true), m_liveRxSink(std::move(liveRxSink)) {}
 
     bool open(const std::string &host, char targetModule) {
         m_targetModule = targetModule;
@@ -158,6 +332,29 @@ public:
         m_linked = false;
     }
 
+    // Live-mode TX, driven by the capture thread's PTT state machine. Only
+    // that one thread calls these (RX in live mode never originates a
+    // transmission -- see onFramePacket), so no locking is needed beyond
+    // what UDP send() already gives for free; they just reuse the same
+    // framing helpers the file-based paths use.
+    uint16_t beginLiveTx() {
+        uint16_t streamId = nextStreamId();
+        sendOriginatedHeader(streamId);
+        std::fprintf(stderr, "dextra_test: PTT down, streamId=%u\n", streamId);
+        return streamId;
+    }
+
+    void sendLiveTxFrame(uint16_t streamId, const uint8_t *ambe) {
+        sendOriginatedFrame(streamId, m_liveTxPacketId, ambe, false);
+        m_liveTxPacketId = static_cast<uint8_t>((m_liveTxPacketId + 1) % 21);
+    }
+
+    void endLiveTx(uint16_t streamId) {
+        sendOriginatedFrame(streamId, m_liveTxPacketId, nullptr, true);
+        m_liveTxPacketId = 0;
+        std::fprintf(stderr, "dextra_test: PTT up, streamId=%u\n", streamId);
+    }
+
     // Originates one transmission encoding real PCM audio (via the ThumbDV,
     // same rate/format as roundtrip_test) rather than a synthetic AMBE byte
     // pattern -- for exercising/verifying the transmit path against a real
@@ -176,7 +373,12 @@ public:
         while (std::fread(pcm, sizeof(short), SerialDV::MBE_AUDIO_BLOCK_SIZE, in)
                == SerialDV::MBE_AUDIO_BLOCK_SIZE) {
             std::array<uint8_t, AMBE_SIZE> ambe{};
-            if (!m_dv->encode(pcm, ambe.data(), SerialDV::DVRate3600x2400)) {
+            bool ok;
+            {
+                std::lock_guard<std::mutex> lock(g_dvMutex);
+                ok = m_dv->encode(pcm, ambe.data(), SerialDV::DVRate3600x2400);
+            }
+            if (!ok) {
                 std::fprintf(stderr, "dextra_test: AMBE encode failed at frame %zu\n", frames.size());
                 break;
             }
@@ -270,6 +472,28 @@ private:
         uint8_t packetId = buf[14];
         bool isLast = (packetId & 0x40) != 0;
 
+        if (m_liveMode) {
+            // Decode-on-arrival, straight to the playback sink -- no
+            // buffering, and no echo (a real speaker replaces that stand-in).
+            if (!isLast) {
+                short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
+                bool ok;
+                {
+                    std::lock_guard<std::mutex> lock(g_dvMutex);
+                    ok = m_dv->decode(pcm, buf + 15, SerialDV::DVRate3600x2400);
+                }
+                if (ok) {
+                    if (m_liveRxSink) m_liveRxSink(pcm);
+                } else {
+                    std::fprintf(stderr, "dextra_test: AMBE decode failed, dropping frame\n");
+                }
+            } else {
+                std::fprintf(stderr, "dextra_test: RX stream %u complete\n", m_rxStreamId);
+                m_rxActive = false;
+            }
+            return;
+        }
+
         if (!isLast) {
             std::array<uint8_t, AMBE_SIZE> ambe{};
             std::memcpy(ambe.data(), buf + 15, AMBE_SIZE);
@@ -297,13 +521,20 @@ private:
             std::array<uint8_t, AMBE_SIZE> ambeOut{};
             const uint8_t *toSend = m_rxAmbeFrames[i].data();
 
-            if (!m_dv->decode(pcm, m_rxAmbeFrames[i].data(), SerialDV::DVRate3600x2400)) {
+            bool decodeOk, encodeOk = false;
+            {
+                std::lock_guard<std::mutex> lock(g_dvMutex);
+                decodeOk = m_dv->decode(pcm, m_rxAmbeFrames[i].data(), SerialDV::DVRate3600x2400);
+                if (decodeOk) encodeOk = m_dv->encode(pcm, ambeOut.data(), SerialDV::DVRate3600x2400);
+            }
+
+            if (!decodeOk) {
                 std::fprintf(stderr, "dextra_test: AMBE decode failed at frame %zu, echoing raw\n", i);
             } else {
                 if (m_rxPcmOut) std::fwrite(pcm, sizeof(short), SerialDV::MBE_AUDIO_BLOCK_SIZE, m_rxPcmOut);
                 for (short s : pcm) sumSq += double(s) * s;
 
-                if (!m_dv->encode(pcm, ambeOut.data(), SerialDV::DVRate3600x2400)) {
+                if (!encodeOk) {
                     std::fprintf(stderr, "dextra_test: AMBE encode failed at frame %zu, echoing raw\n", i);
                 } else {
                     toSend = ambeOut.data();
@@ -387,36 +618,102 @@ private:
     std::vector<std::array<uint8_t, AMBE_SIZE>> m_rxAmbeFrames;
 
     uint16_t m_txStreamCounter = 0;
+    uint8_t m_liveTxPacketId = 0;
 
     SerialDV::DVController *m_dv;
     FILE *m_rxPcmOut;
+    bool m_liveMode = false;
+    std::function<void(const short *)> m_liveRxSink;
 };
+
+// Live-mode TX: PTT-driven mic -> ThumbDV -> network. Runs on its own
+// thread; AlsaPcm::read() blocking for one ALSA period (20ms) is what
+// paces it, the same role sleep_for(20ms) plays in the file-based paths.
+void captureThread(SerialDV::DVController *dv, AlsaPcm *capture, DextraClient *client, const PttInput *ptt) {
+    bool transmitting = false;
+    uint16_t streamId = 0;
+    short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
+
+    while (g_running) {
+        if (!capture->read(pcm)) continue;
+
+        bool pttActive = ptt->active();
+        if (pttActive && !transmitting) {
+            streamId = client->beginLiveTx();
+            transmitting = true;
+        } else if (!pttActive && transmitting) {
+            client->endLiveTx(streamId);
+            transmitting = false;
+        }
+        if (!transmitting) continue;
+
+        std::array<uint8_t, AMBE_SIZE> ambe{};
+        bool ok;
+        {
+            std::lock_guard<std::mutex> lock(g_dvMutex);
+            ok = dv->encode(pcm, ambe.data(), SerialDV::DVRate3600x2400);
+        }
+        if (ok) {
+            client->sendLiveTxFrame(streamId, ambe.data());
+        } else {
+            std::fprintf(stderr, "dextra_test: AMBE encode failed, dropping frame\n");
+        }
+    }
+
+    if (transmitting) client->endLiveTx(streamId);
+}
+
+// Live-mode RX playback: drains decoded PCM chunks pushed by the network
+// thread's onFramePacket(). If nothing arrives for a while (no active RX
+// stream), it just idles -- ALSA's own buffering absorbs the gap, no need
+// to fill it with explicit silence.
+void playbackThread(AlsaPcm *playback, PcmQueue *queue) {
+    short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
+    while (g_running) {
+        if (queue->pop(pcm, 100)) {
+            playback->write(pcm);
+        }
+    }
+}
 
 } // namespace
 
 void usage(const char *prog) {
-    std::fprintf(stderr, "usage: %s <host> <target module letter> <tty device> [test <input.raw> | <rx_output.raw>]\n", prog);
+    std::fprintf(stderr, "usage: %s <host> <target module letter> <tty device> [test <input.raw> | <rx_output.raw> | live [capture-dev [playback-dev]]]\n", prog);
     std::fprintf(stderr, "  no extra arg: link and echo received transmissions back through the ThumbDV\n");
     std::fprintf(stderr, "  <rx_output.raw>: also save decoded RX PCM (8kHz/16-bit-LE) there for inspection\n");
     std::fprintf(stderr, "  'test' <input.raw>: encode that PCM file via the ThumbDV and send it as one "
                           "transmission, then exit (needs a second instance running to observe the echo "
                           "-- a reflector never relays a stream back to its own originator)\n");
+    std::fprintf(stderr, "  'live': hold SPACE to transmit captured mic audio, and play back received audio "
+                          "in real time. capture-dev/playback-dev default to ALSA's \"default\" PCM; "
+                          "run `arecord -l` / `aplay -l` to see actual device names on this machine\n");
 }
 
 int main(int argc, char **argv) {
-    if (argc < 4 || argc > 6) {
+    if (argc < 4 || argc > 7) {
         usage(argv[0]);
         return 1;
     }
 
     bool sendTest = false;
+    bool liveMode = false;
     std::string testPcmPath, rxOutPath;
-    if (argc == 6 && std::strcmp(argv[4], "test") == 0) {
+    std::string captureDev = "default", playbackDev = "default";
+
+    if (argc == 4) {
+        // file-based echo mode, no extra arg
+    } else if (std::strcmp(argv[4], "test") == 0) {
+        if (argc != 6) { usage(argv[0]); return 1; }
         sendTest = true;
         testPcmPath = argv[5];
+    } else if (std::strcmp(argv[4], "live") == 0) {
+        liveMode = true;
+        if (argc >= 6) captureDev = argv[5];
+        if (argc >= 7) playbackDev = argv[6];
     } else if (argc == 5) {
         rxOutPath = argv[4];
-    } else if (argc != 4) {
+    } else {
         usage(argv[0]);
         return 1;
     }
@@ -427,6 +724,41 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    std::signal(SIGINT, onSignal);
+    std::signal(SIGTERM, onSignal);
+
+    if (liveMode) {
+        AlsaPcm capture, playback;
+        if (!capture.open(captureDev, SND_PCM_STREAM_CAPTURE)) return 1;
+        if (!playback.open(playbackDev, SND_PCM_STREAM_PLAYBACK)) return 1;
+
+        PcmQueue rxQueue;
+        DextraClient client(&dv, [&rxQueue](const short *pcm) { rxQueue.push(pcm); });
+        if (!client.open(argv[1], argv[2][0])) return 1;
+        if (!client.link()) return 1;
+
+        PttInput ptt;
+        if (!ptt.start()) {
+            std::fprintf(stderr, "dextra_test: failed to set up PTT input (not a terminal?)\n");
+            return 1;
+        }
+
+        std::thread capThread(captureThread, &dv, &capture, &client, &ptt);
+        std::thread playThread(playbackThread, &playback, &rxQueue);
+
+        client.run(); // blocks until g_running is cleared (SIGINT/SIGTERM)
+
+        capThread.join();
+        playThread.join();
+        ptt.stop();
+        capture.close();
+        playback.close();
+
+        client.disconnect();
+        dv.close();
+        return 0;
+    }
+
     FILE *rxPcmOut = nullptr;
     if (!rxOutPath.empty()) {
         rxPcmOut = std::fopen(rxOutPath.c_str(), "wb");
@@ -435,9 +767,6 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
-
-    std::signal(SIGINT, onSignal);
-    std::signal(SIGTERM, onSignal);
 
     DextraClient client(&dv, rxPcmOut);
     if (!client.open(argv[1], argv[2][0])) return 1;

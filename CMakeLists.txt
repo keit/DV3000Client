@@ -11,6 +11,9 @@ endif()
 set(BUILD_TOOL OFF CACHE BOOL "" FORCE) # don't build serialDV's own dvtest binary
 add_subdirectory(third_party/serialDV)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ALSA REQUIRED alsa)
+
 add_executable(roundtrip_test
   src/roundtrip_test.cpp
 )
@@ -20,5 +23,5 @@ target_include_directories(roundtrip_test PRIVATE third_party/serialDV)
 add_executable(dextra_test
   src/dextra_test.cpp
 )
-target_link_libraries(dextra_test serialdv)
-target_include_directories(dextra_test PRIVATE third_party/serialDV)
+target_link_libraries(dextra_test serialdv ${ALSA_LIBRARIES})
+target_include_directories(dextra_test PRIVATE third_party/serialDV ${ALSA_INCLUDE_DIRS})

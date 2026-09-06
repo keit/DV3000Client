@@ -1,6 +1,6 @@
 [submodule "third_party/serialDV"]
 	path = third_party/serialDV
-	url = https://github.com/f4exb/serialDV.git
+	url = https://github.com/keit/serialDV.git
 [submodule "third_party/xlxd"]
 	path = third_party/xlxd
 	url = https://github.com/LX3JL/xlxd.git

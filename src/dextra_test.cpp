@@ -250,9 +250,11 @@ public:
     // Live mode: instead of buffering a whole transmission and echoing it
     // back (the file-based modes' stand-in for a second endpoint), decode
     // each frame as it arrives and hand the PCM to liveRxSink for immediate
-    // playback -- see onFramePacket().
-    DextraClient(SerialDV::DVController *dv, std::function<void(const short *)> liveRxSink)
-        : m_dv(dv), m_rxPcmOut(nullptr), m_liveMode(true), m_liveRxSink(std::move(liveRxSink)) {}
+    // playback -- see onFramePacket(). rxPcmOut is optional here too, so a
+    // live session can be recorded for offline quality inspection alongside
+    // (not instead of) real-time playback.
+    DextraClient(SerialDV::DVController *dv, std::function<void(const short *)> liveRxSink, FILE *rxPcmOut = nullptr)
+        : m_dv(dv), m_rxPcmOut(rxPcmOut), m_liveMode(true), m_liveRxSink(std::move(liveRxSink)) {}
 
     bool open(const std::string &host, char targetModule) {
         m_targetModule = targetModule;
@@ -484,12 +486,14 @@ private:
                 }
                 if (ok) {
                     if (m_liveRxSink) m_liveRxSink(pcm);
+                    if (m_rxPcmOut) std::fwrite(pcm, sizeof(short), SerialDV::MBE_AUDIO_BLOCK_SIZE, m_rxPcmOut);
                 } else {
                     std::fprintf(stderr, "dextra_test: AMBE decode failed, dropping frame\n");
                 }
             } else {
                 std::fprintf(stderr, "dextra_test: RX stream %u complete\n", m_rxStreamId);
                 m_rxActive = false;
+                if (m_rxPcmOut) std::fflush(m_rxPcmOut);
             }
             return;
         }
@@ -679,7 +683,7 @@ void playbackThread(AlsaPcm *playback, PcmQueue *queue) {
 } // namespace
 
 void usage(const char *prog) {
-    std::fprintf(stderr, "usage: %s <host> <target module letter> <tty device> [test <input.raw> | <rx_output.raw> | live [capture-dev [playback-dev]]]\n", prog);
+    std::fprintf(stderr, "usage: %s <host> <target module letter> <tty device> [test <input.raw> | <rx_output.raw> | live [capture-dev [playback-dev [rx_output.raw]]]]\n", prog);
     std::fprintf(stderr, "  no extra arg: link and echo received transmissions back through the ThumbDV\n");
     std::fprintf(stderr, "  <rx_output.raw>: also save decoded RX PCM (8kHz/16-bit-LE) there for inspection\n");
     std::fprintf(stderr, "  'test' <input.raw>: encode that PCM file via the ThumbDV and send it as one "
@@ -687,18 +691,19 @@ void usage(const char *prog) {
                           "-- a reflector never relays a stream back to its own originator)\n");
     std::fprintf(stderr, "  'live': hold SPACE to transmit captured mic audio, and play back received audio "
                           "in real time. capture-dev/playback-dev default to ALSA's \"default\" PCM; "
-                          "run `arecord -l` / `aplay -l` to see actual device names on this machine\n");
+                          "run `arecord -l` / `aplay -l` to see actual device names on this machine. "
+                          "rx_output.raw there too saves decoded RX PCM (8kHz/16-bit-LE) alongside live playback\n");
 }
 
 int main(int argc, char **argv) {
-    if (argc < 4 || argc > 7) {
+    if (argc < 4 || argc > 8) {
         usage(argv[0]);
         return 1;
     }
 
     bool sendTest = false;
     bool liveMode = false;
-    std::string testPcmPath, rxOutPath;
+    std::string testPcmPath, rxOutPath, liveRxOutPath;
     std::string captureDev = "default", playbackDev = "default";
 
     if (argc == 4) {
@@ -711,6 +716,7 @@ int main(int argc, char **argv) {
         liveMode = true;
         if (argc >= 6) captureDev = argv[5];
         if (argc >= 7) playbackDev = argv[6];
+        if (argc >= 8) liveRxOutPath = argv[7];
     } else if (argc == 5) {
         rxOutPath = argv[4];
     } else {
@@ -732,8 +738,17 @@ int main(int argc, char **argv) {
         if (!capture.open(captureDev, SND_PCM_STREAM_CAPTURE)) return 1;
         if (!playback.open(playbackDev, SND_PCM_STREAM_PLAYBACK)) return 1;
 
+        FILE *liveRxPcmOut = nullptr;
+        if (!liveRxOutPath.empty()) {
+            liveRxPcmOut = std::fopen(liveRxOutPath.c_str(), "wb");
+            if (!liveRxPcmOut) {
+                std::fprintf(stderr, "dextra_test: cannot open %s for writing\n", liveRxOutPath.c_str());
+                return 1;
+            }
+        }
+
         PcmQueue rxQueue;
-        DextraClient client(&dv, [&rxQueue](const short *pcm) { rxQueue.push(pcm); });
+        DextraClient client(&dv, [&rxQueue](const short *pcm) { rxQueue.push(pcm); }, liveRxPcmOut);
         if (!client.open(argv[1], argv[2][0])) return 1;
         if (!client.link()) return 1;
 
@@ -755,6 +770,7 @@ int main(int argc, char **argv) {
         playback.close();
 
         client.disconnect();
+        if (liveRxPcmOut) std::fclose(liveRxPcmOut);
         dv.close();
         return 0;
     }

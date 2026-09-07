@@ -85,17 +85,40 @@ void captureThread(SerialDV::DVController *dv, AlsaPcm *capture, DextraClient *c
 
     // One DV frame period. AlsaPcm::read() is assumed to block for roughly
     // this long on a real device, which is what paces this loop -- but a
-    // stand-in device (e.g. ALSA's "null", used when no mic is attached yet)
-    // returns instantly instead of blocking, which would otherwise spin this
-    // thread at 100% CPU. Timing the iteration and sleeping out the
-    // remainder keeps the loop paced regardless of what the device actually
-    // does, without changing behavior for a real, correctly-blocking one.
+    // stand-in device (e.g. ALSA's "null", used when no mic is attached yet;
+    // confirmed via `arecord -D null -d 3` returning in ~4ms instead of 3s)
+    // returns instantly instead of blocking, spinning this thread at 100%
+    // CPU with no pacing of its own.
+    //
+    // Padding every iteration up to a fixed period would fix that but break
+    // real hardware: a device catching up after a brief timing hiccup (e.g.
+    // a wireless dongle) legitimately returns faster than one period for a
+    // call or two while draining backlog, and forcing a sleep there would
+    // just prevent that catch-up, growing the backlog until the capture
+    // ring buffer overruns instead. So only throttle once several
+    // *consecutive* reads return near-instantly -- real hardware never
+    // sustains that under normal jitter, only a genuinely non-blocking
+    // device does.
     constexpr auto period = std::chrono::milliseconds(20);
+    constexpr auto fastThreshold = std::chrono::milliseconds(2);
+    constexpr int fastStreakLimit = 5;
+    int fastReadStreak = 0;
 
     while (g_running) {
-        auto iterStart = std::chrono::steady_clock::now();
+        auto readStart = std::chrono::steady_clock::now();
+        bool gotAudio = capture->read(pcm);
+        auto readElapsed = std::chrono::steady_clock::now() - readStart;
 
-        if (capture->read(pcm)) {
+        if (readElapsed < fastThreshold) {
+            if (fastReadStreak < fastStreakLimit) fastReadStreak++;
+        } else {
+            fastReadStreak = 0;
+        }
+        if (fastReadStreak >= fastStreakLimit) {
+            std::this_thread::sleep_for(period);
+        }
+
+        if (gotAudio) {
             bool active = pttActive();
             if (active && !transmitting) {
                 streamId = client->beginLiveTx();
@@ -119,9 +142,6 @@ void captureThread(SerialDV::DVController *dv, AlsaPcm *capture, DextraClient *c
                 }
             }
         }
-
-        auto elapsed = std::chrono::steady_clock::now() - iterStart;
-        if (elapsed < period) std::this_thread::sleep_for(period - elapsed);
     }
 
     if (transmitting) client->endLiveTx(streamId);

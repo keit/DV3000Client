@@ -26,6 +26,18 @@ aplay -f S16_LE -r 8000 -c 1 /tmp/rx_capture.raw
 
 sox -t raw -r 8000 -e signed -b 16 -c 1 /tmp/rx_capture.raw /tmp/rx_capture.wav
 
-## Latency timer
+## Latency timer check
 
 cat /sys/bus/usb-serial/devices/ttyUSB0/latency_timer
+
+## Set latency timer to 1 ms
+
+/etc/udev/rules.d/99-ftdi-latency.rules
+
+## Wifi Power Save off check
+
+iw wlan0 get power_save
+
+## Set WIFI power management off
+
+/etc/udev/rules.d/70-wifi-powersave-off.rules

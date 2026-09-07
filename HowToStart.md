@@ -8,7 +8,7 @@ ls -la /dev/serial/by-id
 
 ## Run XLXd on Ubuntu
 
-./scripts/run-test-xlxd.sh 0.0.0.0
+./scripts/run-test-xlxd.sh XLX999 0.0.0.0
 
 ## Run dextra_test on Ubuntu
 

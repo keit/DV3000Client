@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdint>
+#include <cctype>
 #include <csignal>
 #include <cmath>
 #include <array>
@@ -39,6 +40,7 @@
 #include <alsa/asoundlib.h>
 
 #include "dvcontroller.h"
+#include "xlx_directory.h"
 
 namespace {
 
@@ -695,6 +697,40 @@ void usage(const char *prog) {
                           "rx_output.raw there too saves decoded RX PCM (8kHz/16-bit-LE) alongside live playback\n");
 }
 
+// If `arg` looks like a reflector query -- purely alphanumeric, e.g. "123",
+// "XLX123", or "XRF123" -- resolve it against the live XLX directory
+// (falling back to the bundled static XRF list at data/DExtra_Hosts.txt for
+// reflectors that never migrated to xlxd). A dotted-quad IP or a hostname
+// with dots never matches this shape, so existing invocations like
+// "127.0.0.1" are returned unchanged. If the query doesn't resolve to
+// anything (network failure, unknown number, or it wasn't really a query --
+// e.g. a bare hostname with no digits), `arg` is returned unchanged and
+// gets tried directly as a host, exactly like before this lookup existed.
+std::string resolveReflectorHost(const std::string &arg) {
+    bool looksLikeQuery = !arg.empty();
+    for (char c : arg) {
+        if (!std::isalnum(static_cast<unsigned char>(c))) { looksLikeQuery = false; break; }
+    }
+    if (!looksLikeQuery) return arg;
+
+    std::vector<xlx::ReflectorInfo> live;
+    std::string error;
+    if (!xlx::fetchReflectorList(live, error)) {
+        std::fprintf(stderr, "dextra_test: could not fetch XLX reflector list (%s); "
+                              "trying '%s' as a literal host\n", error.c_str(), arg.c_str());
+        return arg;
+    }
+    std::vector<xlx::ReflectorInfo> fallback;
+    xlx::loadStaticFallback("data/DExtra_Hosts.txt", fallback);
+
+    const xlx::ReflectorInfo *found = xlx::findReflector(live, fallback, arg);
+    if (!found) return arg;
+
+    std::fprintf(stderr, "dextra_test: resolved '%s' -> %s (%s)\n",
+                 arg.c_str(), found->name.c_str(), found->host.c_str());
+    return found->host;
+}
+
 int main(int argc, char **argv) {
     if (argc < 4 || argc > 8) {
         usage(argv[0]);
@@ -749,7 +785,7 @@ int main(int argc, char **argv) {
 
         PcmQueue rxQueue;
         DextraClient client(&dv, [&rxQueue](const short *pcm) { rxQueue.push(pcm); }, liveRxPcmOut);
-        if (!client.open(argv[1], argv[2][0])) return 1;
+        if (!client.open(resolveReflectorHost(argv[1]), argv[2][0])) return 1;
         if (!client.link()) return 1;
 
         PttInput ptt;
@@ -785,7 +821,7 @@ int main(int argc, char **argv) {
     }
 
     DextraClient client(&dv, rxPcmOut);
-    if (!client.open(argv[1], argv[2][0])) return 1;
+    if (!client.open(resolveReflectorHost(argv[1]), argv[2][0])) return 1;
     if (!client.link()) return 1;
 
     if (sendTest) {

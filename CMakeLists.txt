@@ -20,8 +20,17 @@ add_executable(roundtrip_test
 target_link_libraries(roundtrip_test serialdv)
 target_include_directories(roundtrip_test PRIVATE third_party/serialDV)
 
+add_library(xlx_directory
+  src/xlx_directory.cpp
+)
+
+add_executable(xlx_directory_test
+  src/xlx_directory_test.cpp
+)
+target_link_libraries(xlx_directory_test xlx_directory)
+
 add_executable(dextra_test
   src/dextra_test.cpp
 )
-target_link_libraries(dextra_test serialdv ${ALSA_LIBRARIES})
+target_link_libraries(dextra_test serialdv ${ALSA_LIBRARIES} xlx_directory)
 target_include_directories(dextra_test PRIVATE third_party/serialDV ${ALSA_INCLUDE_DIRS})

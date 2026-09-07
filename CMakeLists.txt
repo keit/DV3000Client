@@ -29,8 +29,19 @@ add_executable(xlx_directory_test
 )
 target_link_libraries(xlx_directory_test xlx_directory)
 
+add_library(dextra_client
+  src/dextra_client.cpp
+)
+target_link_libraries(dextra_client serialdv)
+target_include_directories(dextra_client PUBLIC third_party/serialDV)
+
+add_library(dextra_audio
+  src/dextra_audio.cpp
+)
+target_link_libraries(dextra_audio dextra_client ${ALSA_LIBRARIES})
+target_include_directories(dextra_audio PUBLIC ${ALSA_INCLUDE_DIRS})
+
 add_executable(dextra_test
   src/dextra_test.cpp
 )
-target_link_libraries(dextra_test serialdv ${ALSA_LIBRARIES} xlx_directory)
-target_include_directories(dextra_test PRIVATE third_party/serialDV ${ALSA_INCLUDE_DIRS})
+target_link_libraries(dextra_test dextra_audio xlx_directory)

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <thread>
 
 namespace dextra {
 
@@ -82,30 +83,45 @@ void captureThread(SerialDV::DVController *dv, AlsaPcm *capture, DextraClient *c
     uint16_t streamId = 0;
     short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
 
+    // One DV frame period. AlsaPcm::read() is assumed to block for roughly
+    // this long on a real device, which is what paces this loop -- but a
+    // stand-in device (e.g. ALSA's "null", used when no mic is attached yet)
+    // returns instantly instead of blocking, which would otherwise spin this
+    // thread at 100% CPU. Timing the iteration and sleeping out the
+    // remainder keeps the loop paced regardless of what the device actually
+    // does, without changing behavior for a real, correctly-blocking one.
+    constexpr auto period = std::chrono::milliseconds(20);
+
     while (g_running) {
-        if (!capture->read(pcm)) continue;
+        auto iterStart = std::chrono::steady_clock::now();
 
-        bool active = pttActive();
-        if (active && !transmitting) {
-            streamId = client->beginLiveTx();
-            transmitting = true;
-        } else if (!active && transmitting) {
-            client->endLiveTx(streamId);
-            transmitting = false;
-        }
-        if (!transmitting) continue;
+        if (capture->read(pcm)) {
+            bool active = pttActive();
+            if (active && !transmitting) {
+                streamId = client->beginLiveTx();
+                transmitting = true;
+            } else if (!active && transmitting) {
+                client->endLiveTx(streamId);
+                transmitting = false;
+            }
 
-        std::array<uint8_t, AMBE_SIZE> ambe{};
-        bool ok;
-        {
-            std::lock_guard<std::mutex> lock(g_dvMutex);
-            ok = dv->encode(pcm, ambe.data(), SerialDV::DVRate3600x2400);
+            if (transmitting) {
+                std::array<uint8_t, AMBE_SIZE> ambe{};
+                bool ok;
+                {
+                    std::lock_guard<std::mutex> lock(g_dvMutex);
+                    ok = dv->encode(pcm, ambe.data(), SerialDV::DVRate3600x2400);
+                }
+                if (ok) {
+                    client->sendLiveTxFrame(streamId, ambe.data());
+                } else {
+                    std::fprintf(stderr, "dextra_audio: AMBE encode failed, dropping frame\n");
+                }
+            }
         }
-        if (ok) {
-            client->sendLiveTxFrame(streamId, ambe.data());
-        } else {
-            std::fprintf(stderr, "dextra_audio: AMBE encode failed, dropping frame\n");
-        }
+
+        auto elapsed = std::chrono::steady_clock::now() - iterStart;
+        if (elapsed < period) std::this_thread::sleep_for(period - elapsed);
     }
 
     if (transmitting) client->endLiveTx(streamId);

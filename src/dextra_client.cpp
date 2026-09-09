@@ -39,9 +39,6 @@ const uint8_t FRAME_TAG[12]  = {0x44, 0x53, 0x56, 0x54, 0x20, 0x00, 0x00, 0x00,
 const uint8_t LASTFRAME_IDLE[AMBE_SIZE + DVDATA_SIZE] = {
     0x55, 0xC8, 0x7A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x25, 0x1A, 0xC6};
 
-const char *OUR_CALLSIGN = "ZL2MIM";
-const char OUR_MODULE = 'B';
-
 // 8-byte space-padded callsign with a trailing module letter in the 8th
 // byte, matching CCallsign::SetCallsign's expectation (first 7 bytes are
 // the name, byte 7 is the module).
@@ -68,6 +65,11 @@ DextraClient::DextraClient(SerialDV::DVController *dv, FILE *rxPcmOut)
 
 DextraClient::DextraClient(SerialDV::DVController *dv, std::function<void(const short *)> liveRxSink, FILE *rxPcmOut)
     : m_dv(dv), m_rxPcmOut(rxPcmOut), m_liveMode(true), m_liveRxSink(std::move(liveRxSink)) {}
+
+void DextraClient::setIdentity(const std::string &callsign, char module) {
+    m_ourCallsign = callsign.substr(0, 7);
+    m_ourModule = module;
+}
 
 bool DextraClient::open(const std::string &host, char targetModule) {
     m_targetModule = targetModule;
@@ -106,8 +108,8 @@ bool DextraClient::link() {
     // IsValidConnectPacket calls SetModule(data[8]) explicitly, separate
     // from and overriding whatever SetCallsign's own parsing of the name
     // field would infer), then target module, then revision.
-    std::vector<uint8_t> connectPkt = paddedCallsign(OUR_CALLSIGN, OUR_MODULE);
-    connectPkt.push_back(static_cast<uint8_t>(OUR_MODULE));
+    std::vector<uint8_t> connectPkt = paddedCallsign(m_ourCallsign.c_str(), m_ourModule);
+    connectPkt.push_back(static_cast<uint8_t>(m_ourModule));
     connectPkt.push_back(static_cast<uint8_t>(m_targetModule));
     connectPkt.push_back(0x00); // protocol revision 0 (plain client, not XRF/rev1)
 
@@ -137,8 +139,8 @@ bool DextraClient::link() {
 
 void DextraClient::disconnect() {
     if (!m_linked) return;
-    std::vector<uint8_t> pkt = paddedCallsign(OUR_CALLSIGN, OUR_MODULE);
-    pkt.push_back(static_cast<uint8_t>(OUR_MODULE));
+    std::vector<uint8_t> pkt = paddedCallsign(m_ourCallsign.c_str(), m_ourModule);
+    pkt.push_back(static_cast<uint8_t>(m_ourModule));
     pkt.push_back(' '); // space here (not a module letter) marks this as disconnect
     pkt.push_back(0x00);
     ::send(m_fd, pkt.data(), pkt.size(), 0);
@@ -242,8 +244,8 @@ void DextraClient::sendKeepalive() {
     // SetCallsign's own extraction -- IsValidKeepAlivePacket doesn't do a
     // separate SetModule call the way connect does) plus one more byte to
     // make size 9, matching xlxd's own EncodeKeepAlivePacket.
-    std::vector<uint8_t> pkt = paddedCallsign(OUR_CALLSIGN, OUR_MODULE);
-    pkt.push_back(static_cast<uint8_t>(OUR_MODULE));
+    std::vector<uint8_t> pkt = paddedCallsign(m_ourCallsign.c_str(), m_ourModule);
+    pkt.push_back(static_cast<uint8_t>(m_ourModule));
     ::send(m_fd, pkt.data(), pkt.size(), 0);
 }
 
@@ -381,7 +383,7 @@ void DextraClient::sendOriginatedHeader(uint16_t streamId) {
     auto ur = paddedCallsign("CQCQCQ", ' ');
     pkt.insert(pkt.end(), ur.begin(), ur.end());
 
-    auto my = paddedCallsign(OUR_CALLSIGN, OUR_MODULE);
+    auto my = paddedCallsign(m_ourCallsign.c_str(), m_ourModule);
     pkt.insert(pkt.end(), my.begin(), my.end());
 
     pkt.insert(pkt.end(), {' ', ' ', ' ', ' '}); // suffix, unused

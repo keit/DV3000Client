@@ -46,6 +46,12 @@ public:
     // inspection alongside (not instead of) real-time playback.
     DextraClient(SerialDV::DVController *dv, std::function<void(const short *)> liveRxSink, FILE *rxPcmOut = nullptr);
 
+    // Our own callsign and module letter, sent in CONNECT/keepalive/echo
+    // packets. Defaults match the previous hardcoded values; call before
+    // link() to change them. Callsign is truncated to 7 characters (the
+    // 8th byte of the field is always the module).
+    void setIdentity(const std::string &callsign, char module);
+
     bool open(const std::string &host, char targetModule);
 
     // Sends CONNECT and waits (with retries) for a 14-byte ACK/NAK.
@@ -79,6 +85,8 @@ private:
     void sendOriginatedFrame(uint16_t streamId, uint8_t packetId, const uint8_t *ambe, bool last);
 
     int m_fd = -1;
+    std::string m_ourCallsign = "ZL2MIM";
+    char m_ourModule = 'B';
     char m_targetModule = 'A';
     bool m_linked = false;
     std::chrono::steady_clock::time_point m_lastKeepaliveSent;

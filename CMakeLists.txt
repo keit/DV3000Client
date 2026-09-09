@@ -45,3 +45,20 @@ add_executable(dextra_test
   src/dextra_test.cpp
 )
 target_link_libraries(dextra_test dextra_audio xlx_directory)
+
+find_package(Qt6 QUIET COMPONENTS Widgets)
+if(Qt6_FOUND)
+  set(CMAKE_AUTOMOC ON)
+
+  add_executable(dv3000client_gui
+    src/gui/main.cpp
+    src/gui/mainwindow.cpp
+    src/gui/reflectorlistmodel.cpp
+    src/gui/settings.cpp
+    src/gui/settingsdialog.cpp
+  )
+  target_link_libraries(dv3000client_gui dextra_audio xlx_directory Qt6::Widgets ${ALSA_LIBRARIES})
+  target_include_directories(dv3000client_gui PRIVATE src ${ALSA_INCLUDE_DIRS})
+else()
+  message(STATUS "Qt6 Widgets not found -- skipping dv3000client_gui")
+endif()

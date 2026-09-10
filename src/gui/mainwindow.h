@@ -1,7 +1,8 @@
 #pragma once
 
 // Main window: incremental-search reflector picker, target module select,
-// connect/disconnect toggle, and space-bar PTT. Owns the live session
+// connect/disconnect toggle, and a sending/receiving toggle driven by
+// either the PTT button or the space bar. Owns the live session
 // (ThumbDV + ALSA + DextraClient, and the capture/playback/network
 // threads dextra_audio/dextra_client already define) for exactly one
 // connection at a time -- the same shape as dextra_test's live mode, just
@@ -18,6 +19,7 @@
 #include "dvcontroller.h"
 #include "settings.h"
 
+class QAction;
 class QComboBox;
 class QLabel;
 class QLineEdit;
@@ -59,6 +61,7 @@ private:
 
     void setBusy(bool busy, const QString &status);
     void setConnected(bool connected, const QString &status);
+    void updateConnectButtonEnabled();
 
     GuiSettings m_settings;
 
@@ -68,9 +71,9 @@ private:
     QSortFilterProxyModel *m_proxy;
     QComboBox *m_targetModule;
     QPushButton *m_connectButton;
-    QPushButton *m_settingsButton;
+    QPushButton *m_pttButton;
+    QAction *m_settingsAction;
     QLabel *m_statusLabel;
-    QLabel *m_reflectorInfoLabel;
     QLabel *m_rpt1Label;
     QLabel *m_rpt2Label;
     QLabel *m_urCallLabel;

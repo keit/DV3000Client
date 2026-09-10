@@ -1,15 +1,19 @@
 #include "mainwindow.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QItemSelectionModel>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
+#include <QMenuBar>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
@@ -19,10 +23,36 @@
 #include "reflectorlistmodel.h"
 #include "settingsdialog.h"
 
+namespace {
+// Button/label colors are set explicitly (rather than left to the system
+// theme) specifically to be visible cues independent of it -- white text
+// reads fine on both regardless of light/dark mode.
+const char *kConnectedButtonStyle = "background-color: #4CAF50; color: white;";
+const char *kErrorButtonStyle = "background-color: #f44336; color: white;";
+const char *kErrorLabelStyle = "color: #f44336;";
+// Distinct from the error red above -- an "on-air" orange, deliberately
+// hard to miss so a forgotten toggled-on transmit is obvious at a glance.
+const char *kSendingButtonStyle = "background-color: #ff9800; color: white;";
+// Lighter than plain white (easier on the eyes) but distinct from the
+// metallic window background so content areas still read as content.
+const char *kLightGrayBackground = "#e8e8e8";
+} // namespace
+
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_settings = GuiSettings::load();
 
     setWindowTitle("DV3000 Client");
+
+    // Brushed-metal-style background, independently chosen (not sampled
+    // from any other app) -- scoped to the QMainWindow selector only, so
+    // it paints just the window's own background and doesn't cascade into
+    // child widgets' native styling (the connect button's status colors
+    // above included).
+    setStyleSheet(
+        "QMainWindow {"
+        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
+        "    stop:0 #eef0f2, stop:0.5 #cdd0d3, stop:1 #aeb2b6);"
+        "}");
 
     m_searchBox = new QLineEdit;
     m_searchBox->setPlaceholderText("Search reflectors (e.g. 123, XLX123, XRF587)...");
@@ -39,21 +69,46 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_reflectorList = new QListView;
     m_reflectorList->setModel(m_proxy);
     m_reflectorList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_reflectorList->setStyleSheet(QString("QListView { background-color: %1; }").arg(kLightGrayBackground));
 
     connect(m_searchBox, &QLineEdit::textChanged, m_proxy, &QSortFilterProxyModel::setFilterFixedString);
+    connect(m_reflectorList->selectionModel(), &QItemSelectionModel::currentChanged, this,
+            &MainWindow::updateConnectButtonEnabled);
 
+    // Index 0 is a placeholder, not a real module -- without it the combo
+    // box would silently start on "A" already selected, letting Connect
+    // send you to a module you never actually chose.
     m_targetModule = new QComboBox;
+    m_targetModule->addItem("Select module...");
     for (char c = 'A'; c <= 'Z'; c++) m_targetModule->addItem(QString(QChar(c)));
+    connect(m_targetModule, &QComboBox::currentIndexChanged, this, &MainWindow::updateConnectButtonEnabled);
 
-    m_settingsButton = new QPushButton("Settings...");
-    connect(m_settingsButton, &QPushButton::clicked, this, &MainWindow::openSettings);
+    menuBar()->setStyleSheet(QString("QMenuBar { background-color: %1; }").arg(kLightGrayBackground));
+    auto *fileMenu = menuBar()->addMenu("&File");
+    m_settingsAction = fileMenu->addAction("&Settings...", this, &MainWindow::openSettings);
+    m_settingsAction->setShortcut(QKeySequence::Preferences);
+    fileMenu->addSeparator();
+    fileMenu->addAction("&Quit", QKeySequence::Quit, this, &QWidget::close);
 
     m_connectButton = new QPushButton("Connect");
     connect(m_connectButton, &QPushButton::clicked, this, &MainWindow::onConnectClicked);
 
-    m_statusLabel = new QLabel("Disconnected. Hold SPACE to transmit once connected.");
+    // Toggle, not press-and-hold: one click/press switches into sending
+    // mode and it stays there until clicked/pressed again. setCheckable
+    // makes a single click flip the checked state and keep it that way;
+    // toggled() fires for that and for any programmatic setChecked() call
+    // (see setConnected()), so this one handler is the only place PTT
+    // state, button text, and button color need to be kept in sync.
+    m_pttButton = new QPushButton("PTT to send");
+    m_pttButton->setEnabled(false);
+    m_pttButton->setCheckable(true);
+    connect(m_pttButton, &QPushButton::toggled, this, [this](bool sending) {
+        m_pttActive.store(sending);
+        m_pttButton->setText(sending ? "Sending (click to stop)" : "PTT to send");
+        m_pttButton->setStyleSheet(sending ? kSendingButtonStyle : "");
+    });
 
-    m_reflectorInfoLabel = new QLabel;
+    m_statusLabel = new QLabel("Disconnected.");
 
     m_rpt1Label = new QLabel("—");
     m_rpt2Label = new QLabel("—");
@@ -73,19 +128,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     moduleRow->addWidget(new QLabel("Target module:"));
     moduleRow->addWidget(m_targetModule);
     moduleRow->addStretch();
-    moduleRow->addWidget(m_settingsButton);
 
     auto *bottomRow = new QHBoxLayout;
     bottomRow->addWidget(m_connectButton);
     bottomRow->addWidget(m_statusLabel, 1);
+    bottomRow->addWidget(m_pttButton);
 
     auto *layout = new QVBoxLayout;
     layout->addWidget(m_searchBox);
     layout->addWidget(m_reflectorList, 1);
     layout->addLayout(moduleRow);
-    layout->addWidget(m_reflectorInfoLabel);
-    layout->addWidget(headerBox);
     layout->addLayout(bottomRow);
+    layout->addWidget(headerBox);
 
     auto *central = new QWidget;
     central->setLayout(layout);
@@ -95,6 +149,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     qApp->installEventFilter(this);
 
     m_model->refresh();
+    updateConnectButtonEnabled();
 }
 
 MainWindow::~MainWindow() {
@@ -118,11 +173,16 @@ QString MainWindow::selectedReflectorName() const {
 bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
     if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
         auto *ke = static_cast<QKeyEvent *>(event);
-        // Space is PTT everywhere except while actually typing in the
-        // search box, where it needs to type a literal space.
+        // Space toggles PTT everywhere except while actually typing in the
+        // search box, where it needs to type a literal space. Only the
+        // press toggles -- the release is still swallowed (returning true
+        // for both) so it can't leak through as e.g. activating whatever
+        // widget happens to have focus. toggle() flips the button's
+        // checked state and emits toggled(), which is what actually drives
+        // m_pttActive and the button's text/color -- see its connection above.
         if (ke->key() == Qt::Key_Space && !ke->isAutoRepeat() &&
             qApp->focusWidget() != m_searchBox) {
-            m_pttActive.store(event->type() == QEvent::KeyPress);
+            if (event->type() == QEvent::KeyPress && m_pttButton->isEnabled()) m_pttButton->toggle();
             return true;
         }
     }
@@ -162,6 +222,10 @@ void MainWindow::startConnect() {
         QMessageBox::information(this, "No reflector selected", "Pick a reflector from the list first.");
         return;
     }
+    if (m_targetModule->currentIndex() <= 0) {
+        QMessageBox::information(this, "No module selected", "Pick a target module first.");
+        return;
+    }
     if (m_settings.thumbdvDevice.isEmpty()) {
         QMessageBox::warning(this, "No ThumbDV device", "Set your ThumbDV device in Settings first.");
         return;
@@ -169,6 +233,8 @@ void MainWindow::startConnect() {
 
     QString reflectorName = selectedReflectorName();
     char targetModule = m_targetModule->currentText().at(0).toLatin1();
+    m_connectButton->setStyleSheet("");
+    m_statusLabel->setStyleSheet("");
     setBusy(true, "Connecting to " + host + "...");
 
     if (m_worker.joinable()) m_worker.join();
@@ -239,13 +305,13 @@ void MainWindow::connectWorker(QString host, QString reflectorName, char targetM
 
 void MainWindow::onConnectFinished(bool ok, QString error, QString reflectorName, char targetModule) {
     if (!ok) {
-        setBusy(false, "Disconnected.");
+        setBusy(false, "Connect failed: " + error);
+        m_connectButton->setStyleSheet(kErrorButtonStyle);
+        m_statusLabel->setStyleSheet(kErrorLabelStyle);
         QMessageBox::warning(this, "Connect failed", error);
         return;
     }
 
-    m_reflectorInfoLabel->setText(
-        QString("Connected to %1, module %2").arg(reflectorName.isEmpty() ? "?" : reflectorName).arg(QChar(targetModule)));
     m_rpt1Label->setText("—");
     m_rpt2Label->setText("—");
     m_urCallLabel->setText("—");
@@ -258,7 +324,9 @@ void MainWindow::onConnectFinished(bool ok, QString error, QString reflectorName
     m_playbackThread = std::thread(dextra::playbackThread, &m_playback, &m_rxQueue);
     m_networkThread = std::thread([this] { m_client->run(); });
 
-    setConnected(true, "Connected. Hold SPACE to transmit.");
+    setConnected(true, QString("Connected to %1, module %2")
+                            .arg(reflectorName.isEmpty() ? "?" : reflectorName)
+                            .arg(QChar(targetModule)));
 }
 
 void MainWindow::startDisconnect() {
@@ -275,7 +343,6 @@ void MainWindow::disconnectWorker() {
 void MainWindow::onDisconnectFinished() {
     m_client.reset();
     m_dv.reset();
-    m_reflectorInfoLabel->clear();
     m_rpt1Label->setText("—");
     m_rpt2Label->setText("—");
     m_urCallLabel->setText("—");
@@ -307,16 +374,28 @@ void MainWindow::stopSessionBlocking() {
 
 void MainWindow::setBusy(bool busy, const QString &status) {
     m_busy = busy;
-    m_connectButton->setEnabled(!busy);
     m_searchBox->setEnabled(!busy && !m_connected);
     m_reflectorList->setEnabled(!busy && !m_connected);
     m_targetModule->setEnabled(!busy && !m_connected);
-    m_settingsButton->setEnabled(!busy && !m_connected);
+    m_settingsAction->setEnabled(!busy && !m_connected);
     m_statusLabel->setText(status);
+    updateConnectButtonEnabled();
 }
 
 void MainWindow::setConnected(bool connected, const QString &status) {
     m_connected = connected;
     m_connectButton->setText(connected ? "Disconnect" : "Connect");
+    m_connectButton->setStyleSheet(connected ? kConnectedButtonStyle : "");
+    m_statusLabel->setStyleSheet("");
+    m_pttButton->setEnabled(connected);
+    if (!connected) m_pttButton->setChecked(false); // in case we disconnected mid-send
     setBusy(false, status);
+}
+
+void MainWindow::updateConnectButtonEnabled() {
+    // Once connected, the button becomes Disconnect and should always stay
+    // usable regardless of what's selected in the (by then disabled)
+    // reflector list and module combo.
+    bool readyToConnect = !selectedHost().isEmpty() && m_targetModule->currentIndex() > 0;
+    m_connectButton->setEnabled(!m_busy && (m_connected || readyToConnect));
 }

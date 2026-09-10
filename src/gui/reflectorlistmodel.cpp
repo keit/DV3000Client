@@ -52,6 +52,7 @@ QVariant ReflectorListModel::data(const QModelIndex &index, int role) const {
     const xlx::ReflectorInfo *r = m_rows[static_cast<size_t>(index.row())];
     if (role == Qt::DisplayRole) return displayText(*r);
     if (role == HostRole) return QString::fromStdString(r->host);
+    if (role == NameRole) return QString::fromStdString(r->name);
     return {};
 }
 

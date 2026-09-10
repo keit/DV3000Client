@@ -18,6 +18,7 @@ class ReflectorListModel : public QAbstractListModel {
 public:
     enum Roles {
         HostRole = Qt::UserRole + 1,
+        NameRole,
     };
 
     explicit ReflectorListModel(QObject *parent = nullptr);

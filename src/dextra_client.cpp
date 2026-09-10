@@ -71,6 +71,10 @@ void DextraClient::setIdentity(const std::string &callsign, char module) {
     m_ourModule = module;
 }
 
+void DextraClient::setHeaderSink(std::function<void(const DStarHeader &)> sink) {
+    m_liveHeaderSink = std::move(sink);
+}
+
 bool DextraClient::open(const std::string &host, char targetModule) {
     m_targetModule = targetModule;
 
@@ -259,13 +263,22 @@ void DextraClient::onHeaderPacket(const uint8_t *buf) {
     if (streamId == m_lastRxStreamId) return;
     m_lastRxStreamId = streamId;
 
-    std::string myCall = trimmed(buf + 15 + 3 + 8 + 8 + 8, 8); // MY field
+    DStarHeader header;
+    header.rpt2 = trimmed(buf + 15 + 3, 8);
+    header.rpt1 = trimmed(buf + 15 + 3 + 8, 8);
+    header.urCall = trimmed(buf + 15 + 3 + 8 + 8, 8);
+    header.myCall = trimmed(buf + 15 + 3 + 8 + 8 + 8, 8);
+    header.myCall2 = trimmed(buf + 15 + 3 + 8 + 8 + 8 + 8, 4);
 
-    std::fprintf(stderr, "dextra_client: RX header, streamId=%u, from %s\n", streamId, myCall.c_str());
+    std::fprintf(stderr, "dextra_client: RX header, streamId=%u, from %s/%s via %s,%s\n",
+                 streamId, header.myCall.c_str(), header.myCall2.c_str(),
+                 header.rpt1.c_str(), header.rpt2.c_str());
 
     m_rxStreamId = streamId;
     m_rxActive = true;
     m_rxAmbeFrames.clear();
+
+    if (m_liveHeaderSink) m_liveHeaderSink(header);
 }
 
 void DextraClient::onFramePacket(const uint8_t *buf) {

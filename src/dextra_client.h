@@ -23,6 +23,17 @@ namespace dextra {
 
 constexpr int AMBE_SIZE = 9;
 
+// The 5 human-readable callsign fields carried in every D-Star header
+// (dstar_header, see onHeaderPacket()'s layout comment) -- who's
+// transmitting and the repeater path the transmission took to get here.
+struct DStarHeader {
+    std::string rpt2;    // repeater 2 (the reflector + module actually routing this stream)
+    std::string rpt1;    // repeater 1 (the gateway the originator is keying through)
+    std::string urCall;  // called station, or "CQCQCQ" for a general call
+    std::string myCall;  // originating station's callsign
+    std::string myCall2; // originator's 4-char suffix (extension/module)
+};
+
 // Cleared by SIGINT/SIGTERM (installed by the frontend) to unwind every
 // blocking loop in this library -- DextraClient::run()/link(), and
 // dextra_audio's captureThread/playbackThread -- cooperatively.
@@ -51,6 +62,12 @@ public:
     // link() to change them. Callsign is truncated to 7 characters (the
     // 8th byte of the field is always the module).
     void setIdentity(const std::string &callsign, char module);
+
+    // Live mode only: called with each newly-seen transmission's header
+    // fields as soon as it arrives (see onHeaderPacket()), before any of
+    // its audio frames. Optional -- a frontend that doesn't care who's
+    // talking can leave this unset.
+    void setHeaderSink(std::function<void(const DStarHeader &)> sink);
 
     bool open(const std::string &host, char targetModule);
 
@@ -103,6 +120,7 @@ private:
     FILE *m_rxPcmOut;
     bool m_liveMode = false;
     std::function<void(const short *)> m_liveRxSink;
+    std::function<void(const DStarHeader &)> m_liveHeaderSink;
 };
 
 } // namespace dextra

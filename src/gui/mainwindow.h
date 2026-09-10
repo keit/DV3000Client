@@ -38,12 +38,14 @@ protected:
 
 private:
     QString selectedHost() const;
+    QString selectedReflectorName() const;
     void onConnectClicked();
     void openSettings();
 
     void startConnect();
-    void connectWorker(QString host, char targetModule, GuiSettings settings);
-    void onConnectFinished(bool ok, QString error);
+    void connectWorker(QString host, QString reflectorName, char targetModule, GuiSettings settings);
+    void onConnectFinished(bool ok, QString error, QString reflectorName, char targetModule);
+    void onHeaderReceived(dextra::DStarHeader header);
 
     void startDisconnect();
     void disconnectWorker();
@@ -68,6 +70,12 @@ private:
     QPushButton *m_connectButton;
     QPushButton *m_settingsButton;
     QLabel *m_statusLabel;
+    QLabel *m_reflectorInfoLabel;
+    QLabel *m_rpt1Label;
+    QLabel *m_rpt2Label;
+    QLabel *m_urCallLabel;
+    QLabel *m_myCallLabel;
+    QLabel *m_myCall2Label;
 
     // Live session state -- only meaningful while m_connected.
     std::unique_ptr<SerialDV::DVController> m_dv;

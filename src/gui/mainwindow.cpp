@@ -3,6 +3,8 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QFormLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
@@ -51,6 +53,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     m_statusLabel = new QLabel("Disconnected. Hold SPACE to transmit once connected.");
 
+    m_reflectorInfoLabel = new QLabel;
+
+    m_rpt1Label = new QLabel("—");
+    m_rpt2Label = new QLabel("—");
+    m_urCallLabel = new QLabel("—");
+    m_myCallLabel = new QLabel("—");
+    m_myCall2Label = new QLabel("—");
+
+    auto *headerBox = new QGroupBox("Last received header");
+    auto *headerForm = new QFormLayout(headerBox);
+    headerForm->addRow("MYCALL:", m_myCallLabel);
+    headerForm->addRow("MYCALL2:", m_myCall2Label);
+    headerForm->addRow("URCALL:", m_urCallLabel);
+    headerForm->addRow("RPT1:", m_rpt1Label);
+    headerForm->addRow("RPT2:", m_rpt2Label);
+
     auto *moduleRow = new QHBoxLayout;
     moduleRow->addWidget(new QLabel("Target module:"));
     moduleRow->addWidget(m_targetModule);
@@ -65,12 +83,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     layout->addWidget(m_searchBox);
     layout->addWidget(m_reflectorList, 1);
     layout->addLayout(moduleRow);
+    layout->addWidget(m_reflectorInfoLabel);
+    layout->addWidget(headerBox);
     layout->addLayout(bottomRow);
 
     auto *central = new QWidget;
     central->setLayout(layout);
     setCentralWidget(central);
-    resize(480, 560);
+    resize(480, 640);
 
     qApp->installEventFilter(this);
 
@@ -86,6 +106,13 @@ QString MainWindow::selectedHost() const {
     if (!idx.isValid()) return {};
     QModelIndex srcIdx = m_proxy->mapToSource(idx);
     return m_model->data(srcIdx, ReflectorListModel::HostRole).toString();
+}
+
+QString MainWindow::selectedReflectorName() const {
+    QModelIndex idx = m_reflectorList->currentIndex();
+    if (!idx.isValid()) return {};
+    QModelIndex srcIdx = m_proxy->mapToSource(idx);
+    return m_model->data(srcIdx, ReflectorListModel::NameRole).toString();
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
@@ -140,14 +167,15 @@ void MainWindow::startConnect() {
         return;
     }
 
+    QString reflectorName = selectedReflectorName();
     char targetModule = m_targetModule->currentText().at(0).toLatin1();
     setBusy(true, "Connecting to " + host + "...");
 
     if (m_worker.joinable()) m_worker.join();
-    m_worker = std::thread(&MainWindow::connectWorker, this, host, targetModule, m_settings);
+    m_worker = std::thread(&MainWindow::connectWorker, this, host, reflectorName, targetModule, m_settings);
 }
 
-void MainWindow::connectWorker(QString host, char targetModule, GuiSettings settings) {
+void MainWindow::connectWorker(QString host, QString reflectorName, char targetModule, GuiSettings settings) {
     QString error;
     bool ok = true;
 
@@ -172,6 +200,12 @@ void MainWindow::connectWorker(QString host, char targetModule, GuiSettings sett
         m_client = std::make_unique<dextra::DextraClient>(
             m_dv.get(), [this](const short *pcm) { m_rxQueue.push(pcm); }, nullptr);
         m_client->setIdentity(settings.callsign.toStdString(), myModule);
+        // Runs on the network thread once client->run() starts -- marshal
+        // to the GUI thread rather than touching widgets directly here.
+        m_client->setHeaderSink([this](const dextra::DStarHeader &header) {
+            QMetaObject::invokeMethod(
+                this, [this, header]() { onHeaderReceived(header); }, Qt::QueuedConnection);
+        });
 
         if (!m_client->open(host.toStdString(), targetModule)) {
             error = "Failed to open network socket to " + host;
@@ -196,15 +230,27 @@ void MainWindow::connectWorker(QString host, char targetModule, GuiSettings sett
     }
 
     QMetaObject::invokeMethod(
-        this, [this, ok, error]() { onConnectFinished(ok, error); }, Qt::QueuedConnection);
+        this,
+        [this, ok, error, reflectorName, targetModule]() {
+            onConnectFinished(ok, error, reflectorName, targetModule);
+        },
+        Qt::QueuedConnection);
 }
 
-void MainWindow::onConnectFinished(bool ok, QString error) {
+void MainWindow::onConnectFinished(bool ok, QString error, QString reflectorName, char targetModule) {
     if (!ok) {
         setBusy(false, "Disconnected.");
         QMessageBox::warning(this, "Connect failed", error);
         return;
     }
+
+    m_reflectorInfoLabel->setText(
+        QString("Connected to %1, module %2").arg(reflectorName.isEmpty() ? "?" : reflectorName).arg(QChar(targetModule)));
+    m_rpt1Label->setText("—");
+    m_rpt2Label->setText("—");
+    m_urCallLabel->setText("—");
+    m_myCallLabel->setText("—");
+    m_myCall2Label->setText("—");
 
     m_pttActive.store(false);
     m_captureThread = std::thread(dextra::captureThread, m_dv.get(), &m_capture, m_client.get(),
@@ -229,7 +275,21 @@ void MainWindow::disconnectWorker() {
 void MainWindow::onDisconnectFinished() {
     m_client.reset();
     m_dv.reset();
+    m_reflectorInfoLabel->clear();
+    m_rpt1Label->setText("—");
+    m_rpt2Label->setText("—");
+    m_urCallLabel->setText("—");
+    m_myCallLabel->setText("—");
+    m_myCall2Label->setText("—");
     setConnected(false, "Disconnected.");
+}
+
+void MainWindow::onHeaderReceived(dextra::DStarHeader header) {
+    m_rpt1Label->setText(QString::fromStdString(header.rpt1));
+    m_rpt2Label->setText(QString::fromStdString(header.rpt2));
+    m_urCallLabel->setText(QString::fromStdString(header.urCall));
+    m_myCallLabel->setText(QString::fromStdString(header.myCall));
+    m_myCall2Label->setText(QString::fromStdString(header.myCall2));
 }
 
 void MainWindow::stopSessionBlocking() {

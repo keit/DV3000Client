@@ -25,6 +25,7 @@ class QAction;
 class QComboBox;
 class QLabel;
 class QPushButton;
+class QTableWidget;
 class ReflectorListModel;
 
 class MainWindow : public QMainWindow {
@@ -48,6 +49,7 @@ private:
     void connectWorker(QString host, QString reflectorName, char targetModule, GuiSettings settings);
     void onConnectFinished(bool ok, QString error, QString reflectorName, char targetModule);
     void onHeaderReceived(dextra::DStarHeader header);
+    void addLastHeardEntry(const dextra::DStarHeader &header);
 
     void startDisconnect();
     void disconnectWorker();
@@ -77,6 +79,14 @@ private:
     QLabel *m_urCallLabel;
     QLabel *m_myCallLabel;
     QLabel *m_myCall2Label;
+    QTableWidget *m_lastHeardTable;
+
+    // Which reflector/module m_lastHeardTable's entries are attributed to
+    // -- set once per successful connect, since a session is only ever
+    // linked to one reflector+module at a time, so every station heard
+    // during it was necessarily heard via that same one.
+    QString m_connectedReflectorName;
+    char m_connectedModule = 0;
 
     // Live session state -- only meaningful while m_connected.
     std::unique_ptr<SerialDV::DVController> m_dv;

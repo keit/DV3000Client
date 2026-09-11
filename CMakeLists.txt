@@ -51,6 +51,7 @@ if(Qt6_FOUND)
   set(CMAKE_AUTOMOC ON)
 
   add_executable(dv3000client_gui
+    src/gui/filelogging.cpp
     src/gui/main.cpp
     src/gui/mainwindow.cpp
     src/gui/reflectorlistmodel.cpp

@@ -12,13 +12,18 @@
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
+#include <QHeaderView>
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
+#include <QSplitter>
+#include <QTableWidget>
+#include <QTime>
 #include <QVBoxLayout>
 
+#include "filelogging.h"
 #include "reflectorlistmodel.h"
 #include "settingsdialog.h"
 
@@ -133,6 +138,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     fileMenu->addSeparator();
     fileMenu->addAction("&Quit", QKeySequence::Quit, this, &QWidget::close);
 
+    auto *helpMenu = menuBar()->addMenu("&Help");
+    helpMenu->addAction("&Log File Location...", [this] {
+        QMessageBox::information(this, "Log File Location", logFilePath());
+    });
+
     m_connectButton = new QPushButton("Connect");
     connect(m_connectButton, &QPushButton::clicked, this, &MainWindow::onConnectClicked);
 
@@ -167,6 +177,23 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     headerForm->addRow("RPT1:", m_rpt1Label);
     headerForm->addRow("RPT2:", m_rpt2Label);
 
+    // Newest first, capped in addLastHeardEntry() -- reflector/module come
+    // from the connection itself (m_connectedReflectorName/Module), not
+    // parsed out of the header, since a session only ever links to one
+    // reflector+module and everything heard during it necessarily came
+    // via that same one.
+    m_lastHeardTable = new QTableWidget(0, 4);
+    m_lastHeardTable->setHorizontalHeaderLabels({"Time", "Callsign", "Reflector", "Module"});
+    m_lastHeardTable->verticalHeader()->setVisible(false);
+    m_lastHeardTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_lastHeardTable->setSelectionMode(QAbstractItemView::NoSelection);
+    m_lastHeardTable->setFocusPolicy(Qt::NoFocus); // a passive log, not a tab stop
+    m_lastHeardTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_lastHeardTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_lastHeardTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    m_lastHeardTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    m_lastHeardTable->setStyleSheet(QString("QTableWidget { background-color: %1; }").arg(kLightGrayBackground));
+
     auto *moduleRow = new QHBoxLayout;
     moduleRow->addWidget(new QLabel("Target module:"));
     moduleRow->addWidget(m_targetModule);
@@ -184,10 +211,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     layout->addWidget(headerBox);
     layout->addStretch();
 
-    auto *central = new QWidget;
-    central->setLayout(layout);
-    setCentralWidget(central);
-    resize(480, 420);
+    auto *leftPanel = new QWidget;
+    leftPanel->setLayout(layout);
+
+    auto *splitter = new QSplitter;
+    splitter->addWidget(leftPanel);
+    splitter->addWidget(m_lastHeardTable);
+    splitter->setStretchFactor(0, 0);
+    splitter->setStretchFactor(1, 1);
+
+    setCentralWidget(splitter);
+    resize(760, 420);
 
     qApp->installEventFilter(this);
 
@@ -373,6 +407,9 @@ void MainWindow::onConnectFinished(bool ok, QString error, QString reflectorName
     m_myCallLabel->setText("—");
     m_myCall2Label->setText("—");
 
+    m_connectedReflectorName = reflectorName.isEmpty() ? "?" : reflectorName;
+    m_connectedModule = targetModule;
+
     m_pttActive.store(false);
     m_captureThread = std::thread(dextra::captureThread, m_dv.get(), &m_capture, m_client.get(),
                                    [this] { return m_pttActive.load(); });
@@ -412,6 +449,25 @@ void MainWindow::onHeaderReceived(dextra::DStarHeader header) {
     m_urCallLabel->setText(QString::fromStdString(header.urCall));
     m_myCallLabel->setText(QString::fromStdString(header.myCall));
     m_myCall2Label->setText(QString::fromStdString(header.myCall2));
+    addLastHeardEntry(header);
+}
+
+void MainWindow::addLastHeardEntry(const dextra::DStarHeader &header) {
+    QString callsign = QString::fromStdString(header.myCall);
+    if (!header.myCall2.empty()) callsign += "/" + QString::fromStdString(header.myCall2);
+
+    m_lastHeardTable->insertRow(0);
+    m_lastHeardTable->setItem(0, 0, new QTableWidgetItem(QTime::currentTime().toString("HH:mm:ss")));
+    m_lastHeardTable->setItem(0, 1, new QTableWidgetItem(callsign));
+    m_lastHeardTable->setItem(0, 2, new QTableWidgetItem(m_connectedReflectorName));
+    m_lastHeardTable->setItem(0, 3, new QTableWidgetItem(QString(QChar(m_connectedModule))));
+
+    // Newest-first log, capped rather than left to grow unbounded over a
+    // long session -- the oldest entries are at the bottom.
+    constexpr int kMaxLastHeardRows = 100;
+    while (m_lastHeardTable->rowCount() > kMaxLastHeardRows) {
+        m_lastHeardTable->removeRow(m_lastHeardTable->rowCount() - 1);
+    }
 }
 
 void MainWindow::stopSessionBlocking() {

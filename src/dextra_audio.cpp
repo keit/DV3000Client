@@ -17,8 +17,17 @@ bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
     }
 
     unsigned int rate = 8000;
+    // Buffer time in microseconds -- 20 periods of one DV frame (20ms)
+    // each, ~400ms total. Previously 4 periods (~80ms), which left almost
+    // no slack: any brief scheduling delay against the GUI event loop,
+    // network thread, and capture thread all sharing the same box -- or a
+    // slow-but-still-live decode retry (see getResponse()'s progress-based
+    // retry in the serialDV fork, which deliberately keeps going rather
+    // than truncating a slow transfer) -- could drain it and underrun
+    // (EPIPE/"Broken Pipe"). A few hundred ms of extra latency is
+    // inaudible for a half-duplex PTT voice app; audible dropouts aren't.
     err = snd_pcm_set_params(m_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED,
-                              1, rate, 1, 4 * (1000000 / (rate / SerialDV::MBE_AUDIO_BLOCK_SIZE)));
+                              1, rate, 1, 20 * (1000000 / (rate / SerialDV::MBE_AUDIO_BLOCK_SIZE)));
     if (err < 0) {
         std::fprintf(stderr, "dextra_audio: snd_pcm_set_params(%s) failed: %s\n",
                      device.c_str(), snd_strerror(err));

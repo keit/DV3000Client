@@ -50,7 +50,14 @@ QVariant ReflectorListModel::data(const QModelIndex &index, int role) const {
         return {};
 
     const xlx::ReflectorInfo *r = m_rows[static_cast<size_t>(index.row())];
-    if (role == Qt::DisplayRole) return displayText(*r);
+    // EditRole matters here even though nothing in this model is actually
+    // edited: QComboBox::itemText() (used to fill an editable combo's line
+    // edit when a row is picked from its own dropdown, as opposed to from
+    // a QCompleter popup, which instead uses completionRole -- DisplayRole
+    // here) reads EditRole, not DisplayRole. Leaving it unhandled meant
+    // picking a reflector via the dropdown arrow left the line edit
+    // blank instead of showing what got picked.
+    if (role == Qt::DisplayRole || role == Qt::EditRole) return displayText(*r);
     if (role == HostRole) return QString::fromStdString(r->host);
     if (role == NameRole) return QString::fromStdString(r->name);
     return {};

@@ -1,8 +1,10 @@
 #pragma once
 
-// Main window: incremental-search reflector picker, target module select,
-// connect/disconnect toggle, and a sending/receiving toggle driven by
-// either the PTT button or the space bar. Owns the live session
+// Main window: searchable reflector picker (an editable combo box with a
+// QCompleter, rather than a separate search box + list -- typing filters a
+// popup of matches, picking one collapses it back down), target module
+// select, connect/disconnect toggle, and a sending/receiving toggle driven
+// by either the PTT button or the space bar. Owns the live session
 // (ThumbDV + ALSA + DextraClient, and the capture/playback/network
 // threads dextra_audio/dextra_client already define) for exactly one
 // connection at a time -- the same shape as dextra_test's live mode, just
@@ -22,10 +24,7 @@
 class QAction;
 class QComboBox;
 class QLabel;
-class QLineEdit;
-class QListView;
 class QPushButton;
-class QSortFilterProxyModel;
 class ReflectorListModel;
 
 class MainWindow : public QMainWindow {
@@ -39,6 +38,7 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private:
+    bool hasValidReflectorSelection() const;
     QString selectedHost() const;
     QString selectedReflectorName() const;
     void onConnectClicked();
@@ -65,10 +65,8 @@ private:
 
     GuiSettings m_settings;
 
-    QLineEdit *m_searchBox;
-    QListView *m_reflectorList;
+    QComboBox *m_reflectorCombo;
     ReflectorListModel *m_model;
-    QSortFilterProxyModel *m_proxy;
     QComboBox *m_targetModule;
     QPushButton *m_connectButton;
     QPushButton *m_pttButton;

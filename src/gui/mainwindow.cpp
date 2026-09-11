@@ -1,23 +1,22 @@
 #include "mainwindow.h"
 
+#include <QAbstractItemView>
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QCompleter>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
-#include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListView>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
-#include <QSortFilterProxyModel>
 #include <QVBoxLayout>
 
 #include "reflectorlistmodel.h"
@@ -47,33 +46,77 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     // from any other app) -- scoped to the QMainWindow selector only, so
     // it paints just the window's own background and doesn't cascade into
     // child widgets' native styling (the connect button's status colors
-    // above included).
+    // above included). The focus rules below are separate, explicit type
+    // selectors (QPushButton:focus etc.), so they're similarly scoped --
+    // only widgets of those exact types get the thicker border, nothing
+    // else picks up stray styling from this. A plain native focus
+    // rectangle is easy to miss at a glance (especially tabbing through
+    // with the window not front-of-mind); a solid colored border is much
+    // harder not to notice.
     setStyleSheet(
         "QMainWindow {"
         "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
         "    stop:0 #eef0f2, stop:0.5 #cdd0d3, stop:1 #aeb2b6);"
+        "}"
+        "QPushButton:focus, QComboBox:focus, QLineEdit:focus {"
+        "  border: 3px solid #2195f3;"
         "}");
-
-    m_searchBox = new QLineEdit;
-    m_searchBox->setPlaceholderText("Search reflectors (e.g. 123, XLX123, XRF587)...");
 
     m_model = new ReflectorListModel(this);
     connect(m_model, &ReflectorListModel::refreshFailed, this, [this](const QString &error) {
         m_statusLabel->setText("Reflector list: " + error + " (showing static list only)");
     });
 
-    m_proxy = new QSortFilterProxyModel(this);
-    m_proxy->setSourceModel(m_model);
-    m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
+    // Editable combo box backed directly by the model (no filtering proxy
+    // needed -- the completer below does its own filtering for the popup,
+    // independent of what the combo box's model actually holds) with a
+    // QCompleter standing in for the old search box + always-visible list:
+    // typing narrows a popup of matches, picking one (mouse or Enter)
+    // collapses it back down to a single field. NoInsert keeps a typed
+    // string that doesn't match anything from trying to add itself as a
+    // new item -- the model doesn't support that anyway, but the combo
+    // box shouldn't attempt it.
+    m_reflectorCombo = new QComboBox;
+    m_reflectorCombo->setEditable(true);
+    m_reflectorCombo->setInsertPolicy(QComboBox::NoInsert);
+    m_reflectorCombo->setModel(m_model);
+    m_reflectorCombo->setCurrentIndex(-1);
+    m_reflectorCombo->lineEdit()->setPlaceholderText("Search reflectors (e.g. 123, XLX123, XRF587)...");
+    m_reflectorCombo->setStyleSheet(
+        QString("QComboBox QAbstractItemView { background-color: %1; }").arg(kLightGrayBackground));
 
-    m_reflectorList = new QListView;
-    m_reflectorList->setModel(m_proxy);
-    m_reflectorList->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_reflectorList->setStyleSheet(QString("QListView { background-color: %1; }").arg(kLightGrayBackground));
+    // QComboBox resets currentIndex to row 0 on its own whenever its model
+    // resets -- the setCurrentIndex(-1) above only covers the very first
+    // setModel() call, not the *second* reset that happens moments later
+    // when the async live reflector list finishes loading and
+    // ReflectorListModel::applyLive() rebuilds the row list. Without this,
+    // the box would silently end up with reflector #1 "selected" (and its
+    // name filled into the line edit) as soon as that background fetch
+    // completes, whether or not the user has touched anything yet.
+    connect(m_model, &QAbstractItemModel::modelReset, this, [this] { m_reflectorCombo->setCurrentIndex(-1); });
 
-    connect(m_searchBox, &QLineEdit::textChanged, m_proxy, &QSortFilterProxyModel::setFilterFixedString);
-    connect(m_reflectorList->selectionModel(), &QItemSelectionModel::currentChanged, this,
-            &MainWindow::updateConnectButtonEnabled);
+    auto *completer = new QCompleter(m_model, this);
+    completer->setCompletionRole(Qt::DisplayRole);
+    completer->setCaseSensitivity(Qt::CaseInsensitive);
+    completer->setFilterMode(Qt::MatchContains); // matches anywhere in the name/country/comment, not just a prefix
+    completer->setCompletionMode(QCompleter::PopupCompletion);
+    completer->popup()->setStyleSheet(QString("background-color: %1;").arg(kLightGrayBackground));
+    m_reflectorCombo->setCompleter(completer);
+
+    // Re-check on every text change, not just when currentIndex() itself
+    // changes -- see hasValidReflectorSelection(). textChanged (not
+    // textEdited) deliberately: re-picking the *same* row after having
+    // edited away from it restores the same index it was already sitting
+    // on, so currentIndexChanged doesn't fire (the value didn't change),
+    // and it's a programmatic pick rather than a keystroke, so textEdited
+    // doesn't fire either -- textChanged is the one signal that reliably
+    // covers both typing and any kind of pick. Safe to hang on the broader
+    // signal since this only recomputes state; it never touches
+    // currentIndex or the line edit's text itself, so it can't trigger
+    // itself into a loop the way an earlier version of this did.
+    connect(m_reflectorCombo->lineEdit(), &QLineEdit::textChanged, this, &MainWindow::updateConnectButtonEnabled);
+
+    connect(m_reflectorCombo, &QComboBox::currentIndexChanged, this, &MainWindow::updateConnectButtonEnabled);
 
     // Index 0 is a placeholder, not a real module -- without it the combo
     // box would silently start on "A" already selected, letting Connect
@@ -135,16 +178,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     bottomRow->addWidget(m_pttButton);
 
     auto *layout = new QVBoxLayout;
-    layout->addWidget(m_searchBox);
-    layout->addWidget(m_reflectorList, 1);
+    layout->addWidget(m_reflectorCombo);
     layout->addLayout(moduleRow);
     layout->addLayout(bottomRow);
     layout->addWidget(headerBox);
+    layout->addStretch();
 
     auto *central = new QWidget;
     central->setLayout(layout);
     setCentralWidget(central);
-    resize(480, 640);
+    resize(480, 420);
 
     qApp->installEventFilter(this);
 
@@ -156,32 +199,44 @@ MainWindow::~MainWindow() {
     qApp->removeEventFilter(this);
 }
 
+// currentIndex() alone isn't enough: QComboBox doesn't automatically
+// invalidate it just because the user edited the line edit's text away
+// from whatever that row says (there's no "unselect on edit" built in).
+// So a pick only counts if the row it points to is still what's actually
+// displayed right now.
+bool MainWindow::hasValidReflectorSelection() const {
+    int row = m_reflectorCombo->currentIndex();
+    if (row < 0) return false;
+    return m_reflectorCombo->currentText() == m_model->data(m_model->index(row, 0), Qt::DisplayRole).toString();
+}
+
 QString MainWindow::selectedHost() const {
-    QModelIndex idx = m_reflectorList->currentIndex();
-    if (!idx.isValid()) return {};
-    QModelIndex srcIdx = m_proxy->mapToSource(idx);
-    return m_model->data(srcIdx, ReflectorListModel::HostRole).toString();
+    if (!hasValidReflectorSelection()) return {};
+    return m_model->data(m_model->index(m_reflectorCombo->currentIndex(), 0), ReflectorListModel::HostRole).toString();
 }
 
 QString MainWindow::selectedReflectorName() const {
-    QModelIndex idx = m_reflectorList->currentIndex();
-    if (!idx.isValid()) return {};
-    QModelIndex srcIdx = m_proxy->mapToSource(idx);
-    return m_model->data(srcIdx, ReflectorListModel::NameRole).toString();
+    if (!hasValidReflectorSelection()) return {};
+    return m_model->data(m_model->index(m_reflectorCombo->currentIndex(), 0), ReflectorListModel::NameRole).toString();
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
     if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
         auto *ke = static_cast<QKeyEvent *>(event);
-        // Space toggles PTT everywhere except while actually typing in the
-        // search box, where it needs to type a literal space. Only the
-        // press toggles -- the release is still swallowed (returning true
-        // for both) so it can't leak through as e.g. activating whatever
-        // widget happens to have focus. toggle() flips the button's
-        // checked state and emits toggled(), which is what actually drives
-        // m_pttActive and the button's text/color -- see its connection above.
+        // Space toggles PTT everywhere except: while actually typing in the
+        // search box, where it needs to type a literal space; and while
+        // the Connect/Disconnect button has focus, where it should do what
+        // a focused QPushButton normally does on Space -- activate it --
+        // rather than have that get swallowed for PTT before it ever gets
+        // there. Only the press toggles -- the release is still swallowed
+        // (returning true for both) so it can't leak through as e.g.
+        // activating whatever widget happens to have focus. toggle() flips
+        // the button's checked state and emits toggled(), which is what
+        // actually drives m_pttActive and the button's text/color -- see
+        // its connection above.
         if (ke->key() == Qt::Key_Space && !ke->isAutoRepeat() &&
-            qApp->focusWidget() != m_searchBox) {
+            qApp->focusWidget() != m_reflectorCombo->lineEdit() &&
+            qApp->focusWidget() != m_connectButton) {
             if (event->type() == QEvent::KeyPress && m_pttButton->isEnabled()) m_pttButton->toggle();
             return true;
         }
@@ -374,8 +429,7 @@ void MainWindow::stopSessionBlocking() {
 
 void MainWindow::setBusy(bool busy, const QString &status) {
     m_busy = busy;
-    m_searchBox->setEnabled(!busy && !m_connected);
-    m_reflectorList->setEnabled(!busy && !m_connected);
+    m_reflectorCombo->setEnabled(!busy && !m_connected);
     m_targetModule->setEnabled(!busy && !m_connected);
     m_settingsAction->setEnabled(!busy && !m_connected);
     m_statusLabel->setText(status);

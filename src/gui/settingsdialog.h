@@ -1,9 +1,10 @@
 #pragma once
 
-// Modal settings dialog: callsign, our own module suffix, audio in/out
-// device, and the ThumbDV serial device. The device dropdowns are
-// pre-populated by probing ALSA and /dev/serial/by-id (see .cpp) but stay
-// editable, since not every valid device name shows up in either probe.
+// Modal settings dialog: callsign, MYCALL2 suffix, our own module letter,
+// audio in/out device, and the ThumbDV serial device. The device dropdowns
+// are pre-populated by probing ALSA and /dev/serial/by-id (see .cpp) but
+// stay editable, since not every valid device name shows up in either
+// probe.
 
 #include <QDialog>
 
@@ -21,6 +22,7 @@ public:
 
 private:
     QLineEdit *m_callsign;
+    QLineEdit *m_suffix;
     QComboBox *m_moduleSuffix;
     QComboBox *m_audioInput;
     QComboBox *m_audioOutput;

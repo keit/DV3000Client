@@ -60,8 +60,12 @@ public:
     // Our own callsign and module letter, sent in CONNECT/keepalive/echo
     // packets. Defaults match the previous hardcoded values; call before
     // link() to change them. Callsign is truncated to 7 characters (the
-    // 8th byte of the field is always the module).
-    void setIdentity(const std::string &callsign, char module);
+    // 8th byte of the field is always the module). myCall2 is the
+    // separate 4-byte MYCALL2 suffix field sent in an originated
+    // transmission's header (sendOriginatedHeader) -- distinct from the
+    // module byte above, which is part of the callsign field itself;
+    // truncated to 4 characters, blank (space-padded) by default.
+    void setIdentity(const std::string &callsign, char module, const std::string &myCall2 = "");
 
     // Live mode only: called with each newly-seen transmission's header
     // fields as soon as it arrives (see onHeaderPacket()), before any of
@@ -104,6 +108,7 @@ private:
     int m_fd = -1;
     std::string m_ourCallsign = "ZL2MIM";
     char m_ourModule = 'B';
+    std::string m_ourMyCall2;
     char m_targetModule = 'A';
     bool m_linked = false;
     std::chrono::steady_clock::time_point m_lastKeepaliveSent;

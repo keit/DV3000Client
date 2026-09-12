@@ -9,6 +9,7 @@
 
 struct GuiSettings {
     QString callsign = "ZL2MIM";
+    QString suffix; // MYCALL2 header field, e.g. a device/purpose suffix -- blank by default
     QString moduleSuffix = "B";
     QString audioInputDevice = "default";
     QString audioOutputDevice = "default";

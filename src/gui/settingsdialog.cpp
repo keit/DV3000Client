@@ -118,6 +118,9 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     m_callsign = new QLineEdit(current.callsign);
     m_callsign->setMaxLength(7); // 8-byte protocol field minus the trailing module byte
 
+    m_suffix = new QLineEdit(current.suffix);
+    m_suffix->setMaxLength(4); // MYCALL2: a separate 4-byte header field, distinct from the module byte below
+
     m_moduleSuffix = new QComboBox;
     for (char c = 'A'; c <= 'Z'; c++) m_moduleSuffix->addItem(QString(QChar(c)));
     m_moduleSuffix->setCurrentText(current.moduleSuffix);
@@ -129,6 +132,7 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
 
     auto *form = new QFormLayout;
     form->addRow("Callsign:", m_callsign);
+    form->addRow("Suffix:", m_suffix);
     form->addRow("Module suffix:", m_moduleSuffix);
     form->addRow("Audio input device:", m_audioInput);
     form->addRow("Audio output device:", m_audioOutput);
@@ -146,6 +150,7 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
 GuiSettings SettingsDialog::settings() const {
     GuiSettings s;
     s.callsign = m_callsign->text().trimmed().toUpper();
+    s.suffix = m_suffix->text().trimmed().toUpper();
     s.moduleSuffix = m_moduleSuffix->currentText();
     s.audioInputDevice = m_audioInput->currentText().trimmed();
     s.audioOutputDevice = m_audioOutput->currentText().trimmed();

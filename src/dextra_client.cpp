@@ -58,6 +58,17 @@ std::string trimmed(const uint8_t *data, int len) {
     return s;
 }
 
+// Space-padded/truncated to exactly `len` bytes -- for MYCALL2, a plain
+// 4-byte field with no embedded module byte the way paddedCallsign's
+// 8-byte callsign fields have.
+std::vector<uint8_t> paddedField(const std::string &s, size_t len) {
+    std::vector<uint8_t> out(len, ' ');
+    for (size_t i = 0; i < s.size() && i < len; i++) {
+        out[i] = static_cast<uint8_t>(s[i]);
+    }
+    return out;
+}
+
 } // namespace
 
 DextraClient::DextraClient(SerialDV::DVController *dv, FILE *rxPcmOut)
@@ -66,9 +77,10 @@ DextraClient::DextraClient(SerialDV::DVController *dv, FILE *rxPcmOut)
 DextraClient::DextraClient(SerialDV::DVController *dv, std::function<void(const short *)> liveRxSink, FILE *rxPcmOut)
     : m_dv(dv), m_rxPcmOut(rxPcmOut), m_liveMode(true), m_liveRxSink(std::move(liveRxSink)) {}
 
-void DextraClient::setIdentity(const std::string &callsign, char module) {
+void DextraClient::setIdentity(const std::string &callsign, char module, const std::string &myCall2) {
     m_ourCallsign = callsign.substr(0, 7);
     m_ourModule = module;
+    m_ourMyCall2 = myCall2.substr(0, 4);
 }
 
 void DextraClient::setHeaderSink(std::function<void(const DStarHeader &)> sink) {
@@ -399,7 +411,8 @@ void DextraClient::sendOriginatedHeader(uint16_t streamId) {
     auto my = paddedCallsign(m_ourCallsign.c_str(), m_ourModule);
     pkt.insert(pkt.end(), my.begin(), my.end());
 
-    pkt.insert(pkt.end(), {' ', ' ', ' ', ' '}); // suffix, unused
+    auto myCall2 = paddedField(m_ourMyCall2, 4);
+    pkt.insert(pkt.end(), myCall2.begin(), myCall2.end());
     pkt.push_back(0x00); // Crc lo -- unchecked by xlxd
     pkt.push_back(0x00); // Crc hi
 

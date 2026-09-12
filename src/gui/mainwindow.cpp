@@ -354,7 +354,7 @@ void MainWindow::connectWorker(QString host, QString reflectorName, char targetM
         char myModule = settings.moduleSuffix.isEmpty() ? 'B' : settings.moduleSuffix.at(0).toLatin1();
         m_client = std::make_unique<dextra::DextraClient>(
             m_dv.get(), [this](const short *pcm) { m_rxQueue.push(pcm); }, nullptr);
-        m_client->setIdentity(settings.callsign.toStdString(), myModule);
+        m_client->setIdentity(settings.callsign.toStdString(), myModule, settings.suffix.toStdString());
         // Runs on the network thread once client->run() starts -- marshal
         // to the GUI thread rather than touching widgets directly here.
         m_client->setHeaderSink([this](const dextra::DStarHeader &header) {

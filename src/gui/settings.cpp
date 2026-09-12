@@ -19,6 +19,7 @@ GuiSettings GuiSettings::load() {
 
     QJsonObject obj = QJsonDocument::fromJson(f.readAll()).object();
     if (obj.contains("callsign")) s.callsign = obj["callsign"].toString();
+    if (obj.contains("suffix")) s.suffix = obj["suffix"].toString();
     if (obj.contains("module_suffix")) s.moduleSuffix = obj["module_suffix"].toString();
     if (obj.contains("audio_input_device")) s.audioInputDevice = obj["audio_input_device"].toString();
     if (obj.contains("audio_output_device")) s.audioOutputDevice = obj["audio_output_device"].toString();
@@ -29,6 +30,7 @@ GuiSettings GuiSettings::load() {
 bool GuiSettings::save() const {
     QJsonObject obj;
     obj["callsign"] = callsign;
+    obj["suffix"] = suffix;
     obj["module_suffix"] = moduleSuffix;
     obj["audio_input_device"] = audioInputDevice;
     obj["audio_output_device"] = audioOutputDevice;

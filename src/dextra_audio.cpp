@@ -158,8 +158,34 @@ void captureThread(SerialDV::DVController *dv, AlsaPcm *capture, DextraClient *c
 
 void playbackThread(AlsaPcm *playback, PcmQueue *queue) {
     short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
+    // Start "idle": nothing's been heard yet, so there's nothing to backfill.
+    auto lastRealFrame = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+
     while (g_running) {
-        if (queue->pop(pcm, 100)) {
+        if (queue->pop(pcm, 20)) {
+            lastRealFrame = std::chrono::steady_clock::now();
+            playback->write(pcm);
+            continue;
+        }
+
+        // No real frame within this ~20ms slot. Only backfill with silence
+        // if we were receiving real audio recently (a brief within-
+        // transmission gap -- real-world network delivery isn't perfectly
+        // isochronous, and a source fractionally slower than local
+        // playback drains the queue on a roughly periodic cycle during
+        // long transmissions specifically; confirmed in the field as
+        // "Broken pipe" xruns spaced ~1.5-3s apart through a 20+ second
+        // transmission). Once we've genuinely gone quiet for a while,
+        // stop touching the device entirely rather than writing silence
+        // forever -- an earlier version of this did that unconditionally,
+        // and it turned out to matter: something (PipeWire/ALSA
+        // auto-suspending an idle sink, most likely) was already
+        // periodically suspending this device during real silence, and
+        // continuously probing it just kept rediscovering that as a
+        // "Broken pipe" every ~30s, all night, instead of the rare
+        // mid-transmission case this is actually meant to cover.
+        if (std::chrono::steady_clock::now() - lastRealFrame < std::chrono::milliseconds(500)) {
+            std::memset(pcm, 0, sizeof(pcm));
             playback->write(pcm);
         }
     }

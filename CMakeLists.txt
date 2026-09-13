@@ -46,6 +46,20 @@ add_executable(dextra_test
 )
 target_link_libraries(dextra_test dextra_audio xlx_directory)
 
+add_library(sha256
+  src/sha256.cpp
+)
+
+add_library(dmr_client
+  src/dmr_client.cpp
+)
+target_link_libraries(dmr_client sha256)
+
+add_executable(dmr_test
+  src/dmr_test.cpp
+)
+target_link_libraries(dmr_test dmr_client)
+
 find_package(Qt6 QUIET COMPONENTS Widgets)
 if(Qt6_FOUND)
   set(CMAKE_AUTOMOC ON)

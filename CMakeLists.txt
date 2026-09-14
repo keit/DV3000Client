@@ -50,10 +50,29 @@ add_library(sha256
   src/sha256.cpp
 )
 
+# DMR voice framing needs the same FEC coding (BPTC/Golay/QR/Hamming/RS)
+# real DMR bursts use for the voice LC header/terminator/embedded
+# signaling -- reused directly from the vendored xlxd submodule (unmodified,
+# self-contained, no dependency on the rest of xlxd) rather than hand-
+# transcribed, since these are lookup-table-heavy and a single mistyped
+# table entry would silently corrupt every transmission. Same GPLv3 as
+# serialDV, already a dependency of every binary in this project.
+add_library(dmr_fec
+  third_party/xlxd/src/cbptc19696.cpp
+  third_party/xlxd/src/cgolay2087.cpp
+  third_party/xlxd/src/cqr1676.cpp
+  third_party/xlxd/src/chamming.cpp
+  third_party/xlxd/src/crs129.cpp
+  third_party/xlxd/src/ccrc.cpp
+  third_party/xlxd/src/cutils.cpp
+)
+target_include_directories(dmr_fec PUBLIC third_party/xlxd/src)
+
 add_library(dmr_client
   src/dmr_client.cpp
+  src/dmr_voice.cpp
 )
-target_link_libraries(dmr_client sha256)
+target_link_libraries(dmr_client sha256 dmr_fec)
 
 add_executable(dmr_test
   src/dmr_test.cpp

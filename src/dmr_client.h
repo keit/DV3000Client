@@ -7,21 +7,23 @@
 // callsign-based addressing, and a real login/auth handshake -- so this is
 // a standalone client, not an extension of DextraClient.
 //
-// This first milestone covers the handshake and keepalive/receive loop
-// (RPTL -> RPTK -> RPTC, then RPTPING/MSTPONG) -- enough to confirm a real
-// master (or a local test xlxd instance, which speaks the same wire
-// protocol server-side) accepts the connection. DMRD voice framing (which
-// needs BPTC/Golay/QR/Hamming FEC encoding on top of the raw AMBE bytes,
-// unlike D-Star's much simpler raw-AMBE-in-a-packet framing) is a later
-// step once this is confirmed working end to end.
+// Covers the handshake and keepalive loop (RPTL -> RPTK -> RPTC, then
+// RPTPING/MSTPONG) plus DMRD voice TX/RX (see dmr_voice.h for the actual
+// burst framing -- BPTC/Golay/QR/Hamming FEC-encoded, unlike D-Star's much
+// simpler raw-AMBE-in-a-packet framing). Not yet wired into a frontend
+// (GUI integration, and driving voice TX from a real ThumbDV/PTT the way
+// dextra_audio's captureThread does, are the remaining steps).
 //
 // Wire format confirmed against two independent, cross-checked sources:
 // the vendored third_party/xlxd's server-side implementation
 // (cdmrmmdvmprotocol.cpp) and g4klx/DMRGateway's client-side implementation
 // (the software real BrandMeister hotspots run today).
 
+#include "dmr_voice.h"
+
 #include <cstdint>
 #include <csignal>
+#include <functional>
 #include <string>
 
 namespace dmr {
@@ -77,19 +79,50 @@ public:
     // Sends RPTCL and closes the socket.
     void disconnect();
 
-    // Keepalive/receive loop: sends RPTPING every KEEPALIVE_PERIOD_SEC and
-    // logs whatever comes back. Returns when g_running is cleared.
+    // Live-mode RX: called with each voice burst's 3 AMBE half-rate
+    // frames as they arrive, for immediate decode/playback -- same shape
+    // as DextraClient's liveRxSink. Optional; unset means received voice
+    // is silently ignored (still logged via run()'s own diagnostics).
+    void setVoiceRxSink(std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> sink);
+
+    // Live-mode TX, driven by a capture thread's PTT state machine --
+    // same shape as DextraClient::beginLiveTx/sendLiveTxFrame/endLiveTx.
+    // dstId is the talkgroup to transmit to, chosen per-transmission
+    // (dynamic TG selection, not a static RPTO assignment -- see the
+    // project's protocol-roadmap notes on why). Returns a fresh stream ID
+    // and sends the DMRD header frame.
+    uint32_t beginVoiceTx(uint32_t dstId);
+    // frameInBurst cycles 0-5 across successive calls within one
+    // transmission (see dmr_voice.h's buildVoiceFrame for what each
+    // position means); callers don't need to track dstId or embeddedLC
+    // themselves, beginVoiceTx() already captured both for the duration
+    // of this transmission.
+    void sendVoiceFrame(uint32_t streamId, int frameInBurst, const uint8_t ambe0[dmr::AMBE_FRAME_SIZE],
+                         const uint8_t ambe1[dmr::AMBE_FRAME_SIZE], const uint8_t ambe2[dmr::AMBE_FRAME_SIZE]);
+    void endVoiceTx(uint32_t streamId);
+
+    // Keepalive/receive loop: sends RPTPING every KEEPALIVE_PERIOD_SEC,
+    // delivers incoming DMRD voice frames to the RX sink (if set), and
+    // logs anything else that comes back. Returns when g_running is cleared.
     void run();
 
 private:
     ssize_t recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs);
     void sendPing();
+    void sendRaw(const std::vector<uint8_t> &packet);
 
     int m_fd = -1;
     uint32_t m_dmrId = 0;
     std::string m_password;
     RepeaterConfig m_config;
     uint8_t m_salt[4] = {};
+
+    uint32_t m_txStreamCounter = 0;
+    uint8_t m_txSeqId = 0;
+    uint32_t m_txDstId = 0;
+    dmr::EmbeddedLC m_txEmbeddedLC{};
+
+    std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> m_voiceRxSink;
 };
 
 } // namespace dmr

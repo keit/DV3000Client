@@ -224,7 +224,7 @@ void DmrClient::disconnect() {
     std::vector<uint8_t> pkt;
     appendTag(pkt, "RPTCL");
     appendDmrId(pkt, m_dmrId);
-    ::send(m_fd, pkt.data(), pkt.size(), 0);
+    sendRaw(pkt);
     std::fprintf(stderr, "dmr_client: sent RPTCL\n");
 }
 
@@ -232,7 +232,37 @@ void DmrClient::sendPing() {
     std::vector<uint8_t> pkt;
     appendTag(pkt, "RPTPING");
     appendDmrId(pkt, m_dmrId);
-    ::send(m_fd, pkt.data(), pkt.size(), 0);
+    sendRaw(pkt);
+}
+
+void DmrClient::sendRaw(const std::vector<uint8_t> &packet) { ::send(m_fd, packet.data(), packet.size(), 0); }
+
+void DmrClient::setVoiceRxSink(std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> sink) {
+    m_voiceRxSink = std::move(sink);
+}
+
+uint32_t DmrClient::beginVoiceTx(uint32_t dstId) {
+    m_txStreamCounter++;
+    if (m_txStreamCounter == 0) m_txStreamCounter = 1; // must stay non-zero, matching DextraClient::nextStreamId
+    m_txDstId = dstId;
+    m_txSeqId = 0;
+    m_txEmbeddedLC = dmr::encodeEmbeddedLC(m_dmrId);
+
+    sendRaw(dmr::buildHeaderFrame(m_dmrId, dstId, m_dmrId, m_txStreamCounter, m_txSeqId++));
+    std::fprintf(stderr, "dmr_client: PTT down, streamId=%u, TG=%u\n", m_txStreamCounter, dstId);
+    return m_txStreamCounter;
+}
+
+void DmrClient::sendVoiceFrame(uint32_t streamId, int frameInBurst, const uint8_t ambe0[dmr::AMBE_FRAME_SIZE],
+                                const uint8_t ambe1[dmr::AMBE_FRAME_SIZE], const uint8_t ambe2[dmr::AMBE_FRAME_SIZE]) {
+    sendRaw(dmr::buildVoiceFrame(m_dmrId, m_txDstId, m_dmrId, streamId, m_txSeqId++, frameInBurst, ambe0, ambe1, ambe2,
+                                  m_txEmbeddedLC));
+}
+
+void DmrClient::endVoiceTx(uint32_t streamId) {
+    sendRaw(dmr::buildTerminatorFrame(m_dmrId, m_txDstId, m_dmrId, streamId, m_txSeqId));
+    m_txSeqId = 0;
+    std::fprintf(stderr, "dmr_client: PTT up, streamId=%u\n", streamId);
 }
 
 void DmrClient::run() {
@@ -255,8 +285,21 @@ void DmrClient::run() {
         } else if (n >= 5 && std::memcmp(buf, "MSTCL", 5) == 0) {
             std::fprintf(stderr, "dmr_client: master closed the connection\n");
             g_running = 0;
-        } else if (n == 55 && std::memcmp(buf, "DMRD", 4) == 0) {
-            std::fprintf(stderr, "dmr_client: DMRD voice frame received (%zd bytes) -- not yet decoded\n", n);
+        } else if (n == static_cast<ssize_t>(dmr::DMRD_PACKET_SIZE) && std::memcmp(buf, "DMRD", 4) == 0) {
+            uint8_t ambe0[dmr::AMBE_FRAME_SIZE], ambe1[dmr::AMBE_FRAME_SIZE], ambe2[dmr::AMBE_FRAME_SIZE];
+            if (dmr::extractVoiceFrame(buf, static_cast<size_t>(n), ambe0, ambe1, ambe2)) {
+                if (m_voiceRxSink) m_voiceRxSink(ambe0, ambe1, ambe2);
+            } else {
+                uint8_t frameType = (buf[15] & 0x30) >> 4;
+                uint8_t slotType = buf[15] & 0x0F;
+                if (frameType == 2 && slotType == 1) {
+                    std::fprintf(stderr, "dmr_client: RX header\n");
+                } else if (frameType == 2 && slotType == 2) {
+                    std::fprintf(stderr, "dmr_client: RX stream complete\n");
+                } else {
+                    std::fprintf(stderr, "dmr_client: DMRD frame ignored (not our slot/call type)\n");
+                }
+            }
         } else {
             std::fprintf(stderr, "dmr_client: unrecognized packet (%zd bytes)\n", n);
         }

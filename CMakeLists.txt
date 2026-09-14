@@ -79,19 +79,30 @@ add_executable(dmr_test
 )
 target_link_libraries(dmr_test dmr_client)
 
+# DMR's own capture/playback threads (dmr_audio.h/cpp) reuse dextra_audio's
+# AlsaPcm/PcmQueue (protocol-agnostic ALSA glue) but need dmr_client for
+# DmrClient and the voice-burst framing constants.
+add_library(dmr_audio
+  src/dmr_audio.cpp
+)
+target_link_libraries(dmr_audio dmr_client dextra_audio)
+
 find_package(Qt6 QUIET COMPONENTS Widgets)
 if(Qt6_FOUND)
   set(CMAKE_AUTOMOC ON)
 
   add_executable(dv3000client_gui
+    src/gui/dmrtab.cpp
+    src/gui/dstartab.cpp
     src/gui/filelogging.cpp
     src/gui/main.cpp
     src/gui/mainwindow.cpp
+    src/gui/protocoltab.h
     src/gui/reflectorlistmodel.cpp
     src/gui/settings.cpp
     src/gui/settingsdialog.cpp
   )
-  target_link_libraries(dv3000client_gui dextra_audio xlx_directory Qt6::Widgets ${ALSA_LIBRARIES})
+  target_link_libraries(dv3000client_gui dextra_audio dmr_audio xlx_directory Qt6::Widgets ${ALSA_LIBRARIES})
   target_include_directories(dv3000client_gui PRIVATE src ${ALSA_INCLUDE_DIRS})
 else()
   message(STATUS "Qt6 Widgets not found -- skipping dv3000client_gui")

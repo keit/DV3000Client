@@ -15,6 +15,16 @@ struct GuiSettings {
     QString audioOutputDevice = "default";
     QString thumbdvDevice;
 
+    // DMR/BrandMeister identity -- separate from the D-Star callsign
+    // identity above since DMR addresses by ID, not callsign. dmrPassword
+    // is the repeater/hotspot password for dmrServer, not any kind of
+    // account password; stored in the same plain JSON file as everything
+    // else here (see settings.cpp's comment on why JSON over QSettings).
+    uint32_t dmrId = 0;
+    QString dmrPassword;
+    QString dmrServer; // host:port, e.g. "3101.brandmeister.network:62031"
+    unsigned dmrColorCode = 1;
+
     static QString filePath();
     static GuiSettings load();
     bool save() const;

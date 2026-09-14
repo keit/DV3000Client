@@ -85,6 +85,13 @@ public:
     // is silently ignored (still logged via run()'s own diagnostics).
     void setVoiceRxSink(std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> sink);
 
+    // Fires once per incoming transmission, when its Voice LC Header frame
+    // arrives (before any voice bursts) -- gives (srcId, dstId) straight
+    // from the DMRD packet fields, for a "last heard" log. Unlike D-Star's
+    // header, this carries no callsign -- DMR IDs aren't resolved to
+    // callsigns here (see the project's protocol-roadmap notes).
+    void setHeaderSink(std::function<void(uint32_t srcId, uint32_t dstId)> sink);
+
     // Live-mode TX, driven by a capture thread's PTT state machine --
     // same shape as DextraClient::beginLiveTx/sendLiveTxFrame/endLiveTx.
     // dstId is the talkgroup to transmit to, chosen per-transmission
@@ -123,6 +130,7 @@ private:
     dmr::EmbeddedLC m_txEmbeddedLC{};
 
     std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> m_voiceRxSink;
+    std::function<void(uint32_t, uint32_t)> m_headerSink;
 };
 
 } // namespace dmr

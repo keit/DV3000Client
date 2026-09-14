@@ -6,6 +6,7 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFormLayout>
+#include <QIntValidator>
 #include <QLineEdit>
 #include <QVBoxLayout>
 
@@ -130,6 +131,20 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
 
     m_thumbdv = makeEditableCombo(listSerialByIdDevices(), current.thumbdvDevice);
 
+    m_dmrId = new QLineEdit(current.dmrId ? QString::number(current.dmrId) : QString());
+    m_dmrId->setValidator(new QIntValidator(0, 99999999, m_dmrId)); // DMR IDs are up to 8 digits
+    m_dmrId->setPlaceholderText("e.g. your radioid.net-registered ID");
+
+    m_dmrPassword = new QLineEdit(current.dmrPassword);
+    m_dmrPassword->setEchoMode(QLineEdit::Password);
+
+    m_dmrServer = new QLineEdit(current.dmrServer);
+    m_dmrServer->setPlaceholderText("host:port, e.g. 3101.brandmeister.network:62031");
+
+    m_dmrColorCode = new QComboBox;
+    for (int cc = 0; cc <= 15; cc++) m_dmrColorCode->addItem(QString::number(cc), cc);
+    m_dmrColorCode->setCurrentIndex(static_cast<int>(current.dmrColorCode));
+
     auto *form = new QFormLayout;
     form->addRow("Callsign:", m_callsign);
     form->addRow("Suffix:", m_suffix);
@@ -137,6 +152,10 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     form->addRow("Audio input device:", m_audioInput);
     form->addRow("Audio output device:", m_audioOutput);
     form->addRow("ThumbDV device:", m_thumbdv);
+    form->addRow("DMR ID:", m_dmrId);
+    form->addRow("DMR password:", m_dmrPassword);
+    form->addRow("DMR server:", m_dmrServer);
+    form->addRow("DMR color code:", m_dmrColorCode);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -155,5 +174,9 @@ GuiSettings SettingsDialog::settings() const {
     s.audioInputDevice = m_audioInput->currentText().trimmed();
     s.audioOutputDevice = m_audioOutput->currentText().trimmed();
     s.thumbdvDevice = m_thumbdv->currentText().trimmed();
+    s.dmrId = static_cast<uint32_t>(m_dmrId->text().trimmed().toULong());
+    s.dmrPassword = m_dmrPassword->text();
+    s.dmrServer = m_dmrServer->text().trimmed();
+    s.dmrColorCode = static_cast<unsigned>(m_dmrColorCode->currentIndex());
     return s;
 }

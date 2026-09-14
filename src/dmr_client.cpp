@@ -241,6 +241,8 @@ void DmrClient::setVoiceRxSink(std::function<void(const uint8_t *, const uint8_t
     m_voiceRxSink = std::move(sink);
 }
 
+void DmrClient::setHeaderSink(std::function<void(uint32_t, uint32_t)> sink) { m_headerSink = std::move(sink); }
+
 uint32_t DmrClient::beginVoiceTx(uint32_t dstId) {
     m_txStreamCounter++;
     if (m_txStreamCounter == 0) m_txStreamCounter = 1; // must stay non-zero, matching DextraClient::nextStreamId
@@ -294,6 +296,13 @@ void DmrClient::run() {
                 uint8_t slotType = buf[15] & 0x0F;
                 if (frameType == 2 && slotType == 1) {
                     std::fprintf(stderr, "dmr_client: RX header\n");
+                    if (m_headerSink) {
+                        uint32_t srcId = (static_cast<uint32_t>(buf[5]) << 16) |
+                                          (static_cast<uint32_t>(buf[6]) << 8) | buf[7];
+                        uint32_t dstId = (static_cast<uint32_t>(buf[8]) << 16) |
+                                          (static_cast<uint32_t>(buf[9]) << 8) | buf[10];
+                        m_headerSink(srcId, dstId);
+                    }
                 } else if (frameType == 2 && slotType == 2) {
                     std::fprintf(stderr, "dmr_client: RX stream complete\n");
                 } else {

@@ -76,11 +76,13 @@ std::vector<uint8_t> buildPrologue(uint32_t srcId, uint32_t dstId, uint32_t rptr
 // identical but for the DT value and CRC mask -- builds the 33-byte
 // BPTC(196,96)-encoded Link Control payload used by both the header and
 // terminator frames.
-std::array<uint8_t, 33> buildLcPayload(uint32_t srcId, uint8_t dtValue, uint8_t crcMask) {
+std::array<uint8_t, 33> buildLcPayload(uint32_t srcId, uint32_t dstId, uint8_t dtValue, uint8_t crcMask) {
     std::array<uint8_t, 33> payload{};
 
     uint8_t lc[12] = {};
-    lc[5] = 9; // dstId = TG9 (matches xlxd's own hardcoded local-reflector default)
+    lc[3] = static_cast<uint8_t>(dstId >> 16);
+    lc[4] = static_cast<uint8_t>(dstId >> 8);
+    lc[5] = static_cast<uint8_t>(dstId);
     lc[6] = static_cast<uint8_t>(srcId >> 16);
     lc[7] = static_cast<uint8_t>(srcId >> 8);
     lc[8] = static_cast<uint8_t>(srcId);
@@ -155,14 +157,16 @@ void writeSyncOrEmb(std::array<uint8_t, 33> &payload, int frameInBurst, const Em
 
 } // namespace
 
-EmbeddedLC encodeEmbeddedLC(uint32_t srcId) {
-    // Ported from EncodeEmbeddedLC: builds the 9-byte LC (dstId=TG9,
-    // srcId), a 5-bit CRC over it, Hamming(16,11,4)-protects it across
-    // seven 16-bit groups, then interleaves those 128 bits by a fixed
-    // period-16 stride into the 16-byte result that gets sliced into
-    // quarters by writeSyncOrEmb() above.
+EmbeddedLC encodeEmbeddedLC(uint32_t srcId, uint32_t dstId) {
+    // Ported from EncodeEmbeddedLC: builds the 9-byte LC (dstId, srcId), a
+    // 5-bit CRC over it, Hamming(16,11,4)-protects it across seven 16-bit
+    // groups, then interleaves those 128 bits by a fixed period-16 stride
+    // into the 16-byte result that gets sliced into quarters by
+    // writeSyncOrEmb() above.
     uint8_t lc[9] = {};
-    lc[5] = 9;
+    lc[3] = static_cast<uint8_t>(dstId >> 16);
+    lc[4] = static_cast<uint8_t>(dstId >> 8);
+    lc[5] = static_cast<uint8_t>(dstId);
     lc[6] = static_cast<uint8_t>(srcId >> 16);
     lc[7] = static_cast<uint8_t>(srcId >> 8);
     lc[8] = static_cast<uint8_t>(srcId);
@@ -212,7 +216,7 @@ std::vector<uint8_t> buildHeaderFrame(uint32_t srcId, uint32_t dstId, uint32_t r
     uint8_t bitField = static_cast<uint8_t>((2 << 4) | DMR_SLOT2_BIT | 1); // DATASYNC<<4 | slot2 | SLOTTYPE_HEADER
     std::vector<uint8_t> pkt = buildPrologue(srcId, dstId, rptrId, seqId, bitField, streamId);
 
-    auto payload = buildLcPayload(srcId, DMR_DT_VOICE_LC_HEADER, DMR_VOICE_LC_HEADER_CRC_MASK);
+    auto payload = buildLcPayload(srcId, dstId, DMR_DT_VOICE_LC_HEADER, DMR_VOICE_LC_HEADER_CRC_MASK);
     pkt.insert(pkt.end(), payload.begin(), payload.end());
     pkt.push_back(0); // BER
     pkt.push_back(0); // RSSI
@@ -224,7 +228,7 @@ std::vector<uint8_t> buildTerminatorFrame(uint32_t srcId, uint32_t dstId, uint32
     uint8_t bitField = static_cast<uint8_t>((2 << 4) | DMR_SLOT2_BIT | 2); // DATASYNC<<4 | slot2 | SLOTTYPE_TERMINATOR
     std::vector<uint8_t> pkt = buildPrologue(srcId, dstId, rptrId, seqId, bitField, streamId);
 
-    auto payload = buildLcPayload(srcId, DMR_DT_TERMINATOR_WITH_LC, DMR_TERMINATOR_WITH_LC_CRC_MASK);
+    auto payload = buildLcPayload(srcId, dstId, DMR_DT_TERMINATOR_WITH_LC, DMR_TERMINATOR_WITH_LC_CRC_MASK);
     pkt.insert(pkt.end(), payload.begin(), payload.end());
     pkt.push_back(0);
     pkt.push_back(0);

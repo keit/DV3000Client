@@ -246,7 +246,7 @@ uint32_t DmrClient::beginVoiceTx(uint32_t dstId) {
     if (m_txStreamCounter == 0) m_txStreamCounter = 1; // must stay non-zero, matching DextraClient::nextStreamId
     m_txDstId = dstId;
     m_txSeqId = 0;
-    m_txEmbeddedLC = dmr::encodeEmbeddedLC(m_dmrId);
+    m_txEmbeddedLC = dmr::encodeEmbeddedLC(m_dmrId, dstId);
 
     sendRaw(dmr::buildHeaderFrame(m_dmrId, dstId, m_dmrId, m_txStreamCounter, m_txSeqId++));
     std::fprintf(stderr, "dmr_client: PTT down, streamId=%u, TG=%u\n", m_txStreamCounter, dstId);

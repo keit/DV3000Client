@@ -28,9 +28,9 @@ constexpr size_t AMBE_FRAME_SIZE = 9; // one AMBE+2 half-rate frame (72 bits)
 
 // The embedded LC fragments broadcast piecemeal across voice frames B-E of
 // every burst in a transmission -- constant for the transmission's
-// duration, computed once from the source ID.
+// duration, computed once from the source/destination IDs.
 using EmbeddedLC = std::array<uint8_t, 16>;
-EmbeddedLC encodeEmbeddedLC(uint32_t srcId);
+EmbeddedLC encodeEmbeddedLC(uint32_t srcId, uint32_t dstId);
 
 // A 55-byte DMRD header packet: BPTC-encoded Voice LC Header, sent once at
 // the start of a transmission before any voice frames.

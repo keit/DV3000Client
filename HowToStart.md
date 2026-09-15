@@ -32,7 +32,11 @@ cat /sys/bus/usb-serial/devices/ttyUSB0/latency_timer
 
 ## Set latency timer to 1 ms
 
-/etc/udev/rules.d/99-ftdi-latency.rules
+echo 'ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTR{latency_timer}="1"' | sudo tee /etc/udev/rules.d/99-ftdi-latency.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+You may need to restart the device.
 
 ## Wifi Power Save off check
 
@@ -40,4 +44,4 @@ iw wlan0 get power_save
 
 ## Set WIFI power management off
 
-/etc/udev/rules.d/70-wifi-powersave-off.rules
+echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan\*", RUN+="/sbin/iw dev $env{INTERFACE} set power_save off"' | sudo tee /etc/udev/rules.d/70-wifi-powersave-off.rules

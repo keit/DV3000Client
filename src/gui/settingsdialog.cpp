@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QDoubleValidator>
 #include <QFormLayout>
 #include <QIntValidator>
 #include <QLineEdit>
@@ -145,6 +146,31 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     for (int cc = 0; cc <= 15; cc++) m_dmrColorCode->addItem(QString::number(cc), cc);
     m_dmrColorCode->setCurrentIndex(static_cast<int>(current.dmrColorCode));
 
+    // RPTC config fields -- see settings.h's comment on why these matter
+    // for real masters (BrandMeister) even though xlxd barely checks them.
+    // Defaults are generic placeholders; fill in your actual repeater/
+    // hotspot details here (the same numbers Pi-Star or BlueDV already
+    // has, if you run those) if a real master rejects the configuration
+    // step with generic values.
+    m_dmrFrequencyMhz = new QLineEdit(QString::number(current.dmrFrequencyMhz, 'f', 6));
+    m_dmrFrequencyMhz->setValidator(new QDoubleValidator(0.0, 9999.0, 6, m_dmrFrequencyMhz));
+    m_dmrFrequencyMhz->setPlaceholderText("e.g. 438.325000 -- used as both RX and TX (simplex)");
+
+    m_dmrLatitude = new QLineEdit(QString::number(current.dmrLatitude, 'f', 4));
+    m_dmrLatitude->setValidator(new QDoubleValidator(-90.0, 90.0, 4, m_dmrLatitude));
+
+    m_dmrLongitude = new QLineEdit(QString::number(current.dmrLongitude, 'f', 4));
+    m_dmrLongitude->setValidator(new QDoubleValidator(-180.0, 180.0, 4, m_dmrLongitude));
+
+    m_dmrLocation = new QLineEdit(current.dmrLocation);
+    m_dmrLocation->setMaxLength(20); // RPTC's Location field is a fixed 20 bytes
+
+    m_dmrDescription = new QLineEdit(current.dmrDescription);
+    m_dmrDescription->setMaxLength(19); // RPTC's Description field is a fixed 19 bytes
+
+    m_dmrUrl = new QLineEdit(current.dmrUrl);
+    m_dmrUrl->setPlaceholderText("optional, e.g. a page about your station");
+
     auto *form = new QFormLayout;
     form->addRow("Callsign:", m_callsign);
     form->addRow("Suffix:", m_suffix);
@@ -156,6 +182,12 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     form->addRow("DMR password:", m_dmrPassword);
     form->addRow("DMR server:", m_dmrServer);
     form->addRow("DMR color code:", m_dmrColorCode);
+    form->addRow("DMR frequency (MHz):", m_dmrFrequencyMhz);
+    form->addRow("DMR latitude:", m_dmrLatitude);
+    form->addRow("DMR longitude:", m_dmrLongitude);
+    form->addRow("DMR location:", m_dmrLocation);
+    form->addRow("DMR description:", m_dmrDescription);
+    form->addRow("DMR URL:", m_dmrUrl);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -178,5 +210,11 @@ GuiSettings SettingsDialog::settings() const {
     s.dmrPassword = m_dmrPassword->text();
     s.dmrServer = m_dmrServer->text().trimmed();
     s.dmrColorCode = static_cast<unsigned>(m_dmrColorCode->currentIndex());
+    s.dmrFrequencyMhz = m_dmrFrequencyMhz->text().toDouble();
+    s.dmrLatitude = m_dmrLatitude->text().toDouble();
+    s.dmrLongitude = m_dmrLongitude->text().toDouble();
+    s.dmrLocation = m_dmrLocation->text().trimmed();
+    s.dmrDescription = m_dmrDescription->text().trimmed();
+    s.dmrUrl = m_dmrUrl->text().trimmed();
     return s;
 }

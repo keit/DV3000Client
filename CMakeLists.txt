@@ -20,9 +20,14 @@ add_executable(roundtrip_test
 target_link_libraries(roundtrip_test serialdv)
 target_include_directories(roundtrip_test PRIVATE third_party/serialDV)
 
+add_library(http_get
+  src/http_get.cpp
+)
+
 add_library(xlx_directory
   src/xlx_directory.cpp
 )
+target_link_libraries(xlx_directory http_get)
 
 add_executable(xlx_directory_test
   src/xlx_directory_test.cpp
@@ -101,8 +106,10 @@ if(Qt6_FOUND)
     src/gui/reflectorlistmodel.cpp
     src/gui/settings.cpp
     src/gui/settingsdialog.cpp
+    src/gui/talkgroupdirectory.cpp
+    src/gui/talkgrouplistmodel.cpp
   )
-  target_link_libraries(dv3000client_gui dextra_audio dmr_audio xlx_directory Qt6::Widgets ${ALSA_LIBRARIES})
+  target_link_libraries(dv3000client_gui dextra_audio dmr_audio xlx_directory http_get Qt6::Widgets ${ALSA_LIBRARIES})
   target_include_directories(dv3000client_gui PRIVATE src ${ALSA_INCLUDE_DIRS})
 else()
   message(STATUS "Qt6 Widgets not found -- skipping dv3000client_gui")

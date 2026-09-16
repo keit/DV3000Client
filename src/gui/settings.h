@@ -25,6 +25,21 @@ struct GuiSettings {
     QString dmrServer; // host:port, e.g. "3101.brandmeister.network:62031"
     unsigned dmrColorCode = 1;
 
+    // RPTC configuration fields -- mostly cosmetic/informational (shown on
+    // the network's dashboard), but real masters (unlike xlxd's own
+    // minimal RPTC handling) can validate them against your account's
+    // actual registration and reject RPTC outright over a mismatch, e.g.
+    // a generic placeholder frequency instead of your real one -- so
+    // these default to plausible-but-generic values and are meant to be
+    // overridden with your actual repeater/hotspot details (the same
+    // numbers Pi-Star or BlueDV already has, if you run those).
+    double dmrFrequencyMhz = 438.8;
+    double dmrLatitude = 0.0;
+    double dmrLongitude = 0.0;
+    QString dmrLocation = "Unknown";
+    QString dmrDescription = "DV3000Client";
+    QString dmrUrl;
+
     static QString filePath();
     static GuiSettings load();
     bool save() const;

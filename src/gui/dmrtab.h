@@ -22,10 +22,11 @@
 #include "protocoltab.h"
 #include "settings.h"
 
+class QComboBox;
 class QLabel;
-class QLineEdit;
 class QPushButton;
 class QTableWidget;
+class TalkgroupListModel;
 
 class DmrTab : public ProtocolTab {
     Q_OBJECT
@@ -61,9 +62,18 @@ private:
     void setConnected(bool connected, const QString &status);
     void updatePttButtonEnabled();
 
+    // Extracts the leading run of digits from the talkgroup combo's
+    // current text -- unlike DStarTab's reflector combo, any positive
+    // integer is a legal talkgroup whether or not it's a row in the
+    // directory, so this works equally for a picked row ("91 — World-
+    // wide") and a number typed free-form that matches nothing listed.
+    // Returns 0 if there's no leading digit yet (still mid-search).
+    uint32_t currentTalkgroupId() const;
+
     GuiSettings m_settings;
 
-    QLineEdit *m_talkgroupField;
+    QComboBox *m_talkgroupCombo;
+    TalkgroupListModel *m_talkgroupModel;
     QPushButton *m_connectButton;
     QPushButton *m_pttButton;
     QLabel *m_statusLabel;
@@ -78,9 +88,11 @@ private:
     std::thread m_worker; // the in-flight connect/disconnect sequence, if any
     std::atomic<bool> m_pttActive{false};
     // Read by the capture thread once per transmission (at the PTT-down
-    // edge) via a lambda closing over this -- kept as an atomic rather
-    // than reading m_talkgroupField->text() directly from that thread,
-    // since QLineEdit isn't safe to touch off the GUI thread.
+    // edge) via a lambda closing over this -- kept as an atomic, updated
+    // from currentTalkgroupId() on every GUI-thread text change, rather
+    // than calling currentTalkgroupId() (which touches the combo box)
+    // directly from that thread, since QWidget isn't safe to touch off
+    // the GUI thread.
     std::atomic<uint32_t> m_talkgroup{0};
     bool m_connected = false;
     bool m_busy = false;

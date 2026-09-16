@@ -1,9 +1,10 @@
 #include "dmrtab.h"
 
 #include <QAbstractItemView>
+#include <QComboBox>
+#include <QCompleter>
 #include <QHBoxLayout>
 #include <QHeaderView>
-#include <QIntValidator>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -12,6 +13,8 @@
 #include <QTableWidget>
 #include <QTime>
 #include <QVBoxLayout>
+
+#include "talkgrouplistmodel.h"
 
 namespace {
 // Same palette as DStarTab -- kept as a separate copy rather than shared
@@ -25,14 +28,47 @@ const char *kLightGrayBackground = "#e8e8e8";
 } // namespace
 
 DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(parent), m_settings(settings) {
-    m_talkgroupField = new QLineEdit;
-    m_talkgroupField->setPlaceholderText("Talkgroup, e.g. 91 (Worldwide) or 3100 (a local one)");
-    // 24-bit dstId field -- see dmr_voice.h's appendId24.
-    m_talkgroupField->setValidator(new QIntValidator(1, 16777215, m_talkgroupField));
-    connect(m_talkgroupField, &QLineEdit::textChanged, this, [this](const QString &text) {
-        m_talkgroup.store(static_cast<uint32_t>(text.toULong()));
+    m_talkgroupModel = new TalkgroupListModel(this);
+    connect(m_talkgroupModel, &TalkgroupListModel::refreshFailed, this, [this](const QString &error) {
+        m_statusLabel->setText("Talkgroup list: " + error + " (showing built-in list only)");
+    });
+
+    // Same editable-combo-with-completer pattern as DStarTab's reflector
+    // picker: typing narrows a popup of matches (by number or name
+    // substring -- "530" and "zealand" both find "5302 — ZL2 Regional"),
+    // picking one fills the line edit. Unlike the reflector combo, a typed
+    // value that matches nothing listed is still perfectly valid here (see
+    // currentTalkgroupId()), so there's no equivalent of
+    // hasValidReflectorSelection() gating anything.
+    m_talkgroupCombo = new QComboBox;
+    m_talkgroupCombo->setEditable(true);
+    m_talkgroupCombo->setInsertPolicy(QComboBox::NoInsert);
+    m_talkgroupCombo->setModel(m_talkgroupModel);
+    m_talkgroupCombo->setCurrentIndex(-1);
+    m_talkgroupCombo->lineEdit()->setPlaceholderText("Talkgroup, e.g. 91 (World-wide) or a number/name to search...");
+    m_talkgroupCombo->setStyleSheet(
+        QString("QComboBox QAbstractItemView { background-color: %1; }").arg(kLightGrayBackground));
+
+    // See ReflectorListModel's identical connection for why: QComboBox
+    // resets currentIndex to row 0 on its own whenever its model resets,
+    // which would otherwise silently "select" row 0 the moment the live
+    // directory fetch replaces the static fallback rows.
+    connect(m_talkgroupModel, &QAbstractItemModel::modelReset, this, [this] { m_talkgroupCombo->setCurrentIndex(-1); });
+
+    auto *completer = new QCompleter(m_talkgroupModel, this);
+    completer->setCompletionRole(Qt::DisplayRole);
+    completer->setCaseSensitivity(Qt::CaseInsensitive);
+    completer->setFilterMode(Qt::MatchContains);
+    completer->setCompletionMode(QCompleter::PopupCompletion);
+    completer->popup()->setStyleSheet(QString("background-color: %1;").arg(kLightGrayBackground));
+    m_talkgroupCombo->setCompleter(completer);
+
+    connect(m_talkgroupCombo->lineEdit(), &QLineEdit::textChanged, this, [this] {
+        m_talkgroup.store(currentTalkgroupId());
         updatePttButtonEnabled();
     });
+
+    m_talkgroupModel->refresh();
 
     m_connectButton = new QPushButton("Connect");
     connect(m_connectButton, &QPushButton::clicked, this, &DmrTab::onConnectClicked);
@@ -67,7 +103,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
 
     auto *tgRow = new QHBoxLayout;
     tgRow->addWidget(new QLabel("Talkgroup:"));
-    tgRow->addWidget(m_talkgroupField, 1);
+    tgRow->addWidget(m_talkgroupCombo, 1);
 
     auto *bottomRow = new QHBoxLayout;
     bottomRow->addWidget(m_connectButton);
@@ -80,7 +116,17 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     layout->addWidget(m_lastHeardTable, 1);
 }
 
-QWidget *DmrTab::spaceExemptFocusWidget() const { return m_talkgroupField; }
+QWidget *DmrTab::spaceExemptFocusWidget() const { return m_talkgroupCombo->lineEdit(); }
+
+uint32_t DmrTab::currentTalkgroupId() const {
+    QString text = m_talkgroupCombo->currentText();
+    int i = 0;
+    while (i < text.size() && !text.at(i).isDigit()) i++;
+    int start = i;
+    while (i < text.size() && text.at(i).isDigit()) i++;
+    if (i == start) return 0;
+    return text.mid(start, i - start).toUInt();
+}
 
 void DmrTab::onConnectClicked() {
     if (m_busy) return;
@@ -153,7 +199,14 @@ void DmrTab::connectWorker(GuiSettings settings) {
         dmr::RepeaterConfig config;
         config.callsign = settings.callsign.toStdString();
         config.colorCode = settings.dmrColorCode;
-        config.description = "DV3000Client GUI";
+        config.description = settings.dmrDescription.toStdString();
+        config.url = settings.dmrUrl.toStdString();
+        auto freqHz = static_cast<uint32_t>(settings.dmrFrequencyMhz * 1000000.0);
+        config.rxFrequencyHz = freqHz;
+        config.txFrequencyHz = freqHz; // simplex -- see settings.h's dmrFrequencyMhz comment
+        config.latitude = static_cast<float>(settings.dmrLatitude);
+        config.longitude = static_cast<float>(settings.dmrLongitude);
+        config.location = settings.dmrLocation.toStdString();
         m_client->setIdentity(settings.dmrId, settings.dmrPassword.toStdString(), config);
 
         m_client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_dv.get(), &m_rxQueue));
@@ -266,4 +319,4 @@ void DmrTab::setConnected(bool connected, const QString &status) {
     setBusy(false, status);
 }
 
-void DmrTab::updatePttButtonEnabled() { m_pttButton->setEnabled(m_connected && m_talkgroupField->hasAcceptableInput()); }
+void DmrTab::updatePttButtonEnabled() { m_pttButton->setEnabled(m_connected && currentTalkgroupId() != 0); }

@@ -6,12 +6,7 @@
 #include <fstream>
 #include <sstream>
 
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <unistd.h>
+#include "http_get.h"
 
 namespace xlx {
 
@@ -20,82 +15,12 @@ namespace {
 constexpr const char *XLX_API_HOST = "xlxapi.rlx.lu";
 constexpr const char *XLX_API_PATH = "/api.php?do=GetReflectorList";
 constexpr int HTTP_PORT = 80;
-constexpr int HTTP_TIMEOUT_SEC = 10;
 
 std::string trim(const std::string &s) {
     size_t b = s.find_first_not_of(" \t\r\n");
     if (b == std::string::npos) return "";
     size_t e = s.find_last_not_of(" \t\r\n");
     return s.substr(b, e - b + 1);
-}
-
-// Raw-socket HTTP/1.0 GET against xlxapi.rlx.lu, mirroring the pattern
-// already vendored in third_party/xlxd/src/cysfnodedirhttp.cpp for the same
-// server, but resolving with getaddrinfo (matching this app's own
-// convention in dextra_test.cpp) and properly splitting off the HTTP
-// headers before returning the body.
-bool httpGetRaw(const std::string &host, const std::string &path, int port,
-                 std::string &body, std::string &error) {
-    struct addrinfo hints{};
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    struct addrinfo *res = nullptr;
-    char portStr[8];
-    std::snprintf(portStr, sizeof(portStr), "%d", port);
-    if (getaddrinfo(host.c_str(), portStr, &hints, &res) != 0 || !res) {
-        error = "cannot resolve " + host;
-        return false;
-    }
-
-    int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) {
-        error = "socket() failed";
-        freeaddrinfo(res);
-        return false;
-    }
-
-    if (::connect(fd, res->ai_addr, res->ai_addrlen) < 0) {
-        error = "connect() to " + host + " failed";
-        freeaddrinfo(res);
-        ::close(fd);
-        return false;
-    }
-    freeaddrinfo(res);
-
-    std::string request = "GET " + path + " HTTP/1.0\r\nHost: " + host +
-                           "\r\nUser-Agent: dv3000client\r\nConnection: close\r\n\r\n";
-    if (::write(fd, request.data(), request.size()) < 0) {
-        error = "write() to " + host + " failed";
-        ::close(fd);
-        return false;
-    }
-
-    std::string response;
-    char buf[4096];
-    for (;;) {
-        fd_set readSet;
-        FD_ZERO(&readSet);
-        FD_SET(fd, &readSet);
-        struct timeval timeout{HTTP_TIMEOUT_SEC, 0};
-        int sel = ::select(fd + 1, &readSet, nullptr, nullptr, &timeout);
-        if (sel <= 0) {
-            error = "timed out waiting for " + host;
-            ::close(fd);
-            return false;
-        }
-        ssize_t n = ::read(fd, buf, sizeof(buf));
-        if (n <= 0) break;
-        response.append(buf, static_cast<size_t>(n));
-    }
-    ::close(fd);
-
-    size_t headerEnd = response.find("\r\n\r\n");
-    if (headerEnd == std::string::npos) {
-        error = "malformed HTTP response from " + host;
-        return false;
-    }
-    body = response.substr(headerEnd + 4);
-    return true;
 }
 
 // Naive substring tag search -- no escaping/CDATA handling, but sufficient

@@ -89,8 +89,16 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
         // the press toggles -- the release is still swallowed (returning
         // true for both) so it can't leak through as e.g. activating
         // whatever widget happens to have focus.
+        // Being an application-wide filter, this would otherwise also
+        // intercept space bar inside any modal dialog on top of the main
+        // window (Settings, a QMessageBox, ...) -- e.g. typing a space
+        // into a Settings field would get swallowed as a PTT toggle for
+        // whichever tab is still sitting behind it, instead of reaching
+        // the field at all. Skip entirely whenever a modal is active;
+        // this shortcut only makes sense when the main window itself
+        // actually has the user's attention.
         ProtocolTab *tab = currentProtocolTab();
-        if (tab && ke->key() == Qt::Key_Space && !ke->isAutoRepeat() &&
+        if (tab && !QApplication::activeModalWidget() && ke->key() == Qt::Key_Space && !ke->isAutoRepeat() &&
             qApp->focusWidget() != tab->spaceExemptFocusWidget() && qApp->focusWidget() != tab->connectButton()) {
             if (event->type() == QEvent::KeyPress && tab->pttButton()->isEnabled()) tab->pttButton()->toggle();
             return true;

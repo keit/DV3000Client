@@ -2,6 +2,7 @@
 
 #include "sha256.h"
 
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -42,6 +43,19 @@ void appendDmrId(std::vector<uint8_t> &pkt, uint32_t id) {
 
 void appendTag(std::vector<uint8_t> &pkt, const char *tag) {
     pkt.insert(pkt.end(), tag, tag + std::strlen(tag));
+}
+
+// Logs a reply that didn't match any pattern the caller was checking for
+// (wrong size, or right size but not RPTACK/MSTNAK) -- otherwise
+// indistinguishable in the log from a genuine timeout, which matters if a
+// real master's reply shape ever differs from xlxd's (the only server
+// this handshake had been tested against before real BrandMeister).
+void logUnexpectedReply(const char *step, const uint8_t *buf, ssize_t n) {
+    std::fprintf(stderr, "dmr_client: unexpected reply to %s (%zd bytes):", step, n);
+    ssize_t dumpLen = n < 32 ? n : 32;
+    for (ssize_t i = 0; i < dumpLen; i++) std::fprintf(stderr, " %02x", buf[i]);
+    if (n > dumpLen) std::fprintf(stderr, " ...");
+    std::fprintf(stderr, "\n");
 }
 
 // Fixed-width field: left-justified, space-padded/truncated to exactly
@@ -108,7 +122,15 @@ ssize_t DmrClient::recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs) {
     tv.tv_usec = (timeoutMs % 1000) * 1000;
     int r = ::select(m_fd + 1, &fds, nullptr, nullptr, &tv);
     if (r <= 0) return 0;
-    return ::recv(m_fd, buf, len, 0);
+    ssize_t n = ::recv(m_fd, buf, len, 0);
+    // A connected UDP socket surfaces an async ICMP port-unreachable as a
+    // real recv() error (commonly ECONNREFUSED) rather than a plain
+    // timeout -- worth telling apart from "nothing came back at all",
+    // since it specifically means nothing is listening on that host:port
+    // (wrong port being the most likely cause) rather than a dropped/
+    // ignored packet.
+    if (n < 0) std::fprintf(stderr, "dmr_client: recv() error: %s\n", std::strerror(errno));
+    return n;
 }
 
 LinkResult DmrClient::link() {
@@ -124,12 +146,19 @@ LinkResult DmrClient::link() {
 
         uint8_t buf[64];
         ssize_t n = recvWithTimeout(buf, sizeof(buf), 1000);
-        if (n == 10 && std::memcmp(buf, "RPTACK", 6) == 0) {
+        // Prefix match, not exact length -- real BrandMeister masters
+        // append trailing bytes beyond the salt that xlxd's reference
+        // implementation doesn't, and DMRGateway's own parser (the real
+        // client this was cross-checked against) never checks total
+        // packet length for these replies either, just the leading tag.
+        if (n >= 10 && std::memcmp(buf, "RPTACK", 6) == 0) {
             std::memcpy(m_salt, buf + 6, 4);
             gotAck = true;
-        } else if (n == 6 && std::memcmp(buf, "MSTNAK", 6) == 0) {
+        } else if (n >= 6 && std::memcmp(buf, "MSTNAK", 6) == 0) {
             std::fprintf(stderr, "dmr_client: RPTL rejected\n");
             return LinkResult::LoginRejected;
+        } else if (n > 0) {
+            logUnexpectedReply("RPTL", buf, n);
         }
     }
     if (!gotAck) {
@@ -155,11 +184,13 @@ LinkResult DmrClient::link() {
 
         uint8_t buf[64];
         ssize_t n = recvWithTimeout(buf, sizeof(buf), 1000);
-        if (n == 6 && std::memcmp(buf, "RPTACK", 6) == 0) {
+        if (n >= 6 && std::memcmp(buf, "RPTACK", 6) == 0) {
             gotAck = true;
-        } else if (n == 6 && std::memcmp(buf, "MSTNAK", 6) == 0) {
+        } else if (n >= 6 && std::memcmp(buf, "MSTNAK", 6) == 0) {
             std::fprintf(stderr, "dmr_client: RPTK rejected -- wrong password?\n");
             return LinkResult::AuthRejected;
+        } else if (n > 0) {
+            logUnexpectedReply("RPTK", buf, n);
         }
     }
     if (!gotAck) {
@@ -194,8 +225,28 @@ LinkResult DmrClient::link() {
     appendField(rptc, m_config.description, 19);
     rptc.push_back(static_cast<uint8_t>('4')); // slots: '4' = simplex/no duplex, matches a hotspot-style single client
     appendField(rptc, m_config.url, 124);
-    appendField(rptc, "DV3000Client", 40); // software id
-    appendField(rptc, "MMDVM", 40);        // package id -- some masters gate features on recognising this string
+    // Confirmed root cause (via a packet capture of a real, accepted
+    // Pi-Star/MMDVMHost RPTC, compared byte-for-byte against ours):
+    // BrandMeister's master gates RPTC acceptance on software id and
+    // package id together matching a recognised combination. Individually
+    // trying a bare "MMDVM" package id, an honestly-named
+    // "MMDVM_"-prefixed package id, and an honest software id paired with
+    // the working package id were all silently rejected -- only this
+    // exact pair (copied verbatim from that capture) is accepted. So
+    // this isn't spoofing a specific claim BrandMeister cares about
+    // (there's no evidence it distinguishes real MMDVM_HS_Hat hardware
+    // from this), it's satisfying an allowlist gate -- but don't change
+    // either field without retesting against a real master, not just
+    // xlxd (which never validated this at all).
+    appendField(rptc, "20250925_PS4", 40);       // software id -- part of the confirmed-working pair
+    appendField(rptc, "MMDVM_MMDVM_HS_Hat", 40); // package id -- part of the confirmed-working pair
+
+    // Same diagnostic DMRGateway.cpp's own getConfig() logs -- the 294-byte
+    // config portion is fixed-width printable ASCII by construction, safe
+    // to dump directly, and the fastest way to spot a field-content issue
+    // a real master rejects but xlxd (which barely validates RPTC) never
+    // caught.
+    std::fprintf(stderr, "dmr_client: RPTC config: [%.*s]\n", 294, reinterpret_cast<const char *>(rptc.data() + 8));
 
     gotAck = false;
     for (int attempt = 0; attempt < 5 && g_running && !gotAck; attempt++) {
@@ -204,11 +255,13 @@ LinkResult DmrClient::link() {
 
         uint8_t buf[64];
         ssize_t n = recvWithTimeout(buf, sizeof(buf), 1000);
-        if (n == 6 && std::memcmp(buf, "RPTACK", 6) == 0) {
+        if (n >= 6 && std::memcmp(buf, "RPTACK", 6) == 0) {
             gotAck = true;
-        } else if (n == 6 && std::memcmp(buf, "MSTNAK", 6) == 0) {
+        } else if (n >= 6 && std::memcmp(buf, "MSTNAK", 6) == 0) {
             std::fprintf(stderr, "dmr_client: RPTC rejected\n");
             return LinkResult::ConfigRejected;
+        } else if (n > 0) {
+            logUnexpectedReply("RPTC", buf, n);
         }
     }
     if (!gotAck) {
@@ -282,7 +335,7 @@ void DmrClient::run() {
         ssize_t n = recvWithTimeout(buf, sizeof(buf), 200);
         if (n <= 0) continue;
 
-        if (n == 11 && std::memcmp(buf, "MSTPONG", 7) == 0) {
+        if (n >= 11 && std::memcmp(buf, "MSTPONG", 7) == 0) {
             std::fprintf(stderr, "dmr_client: keepalive pong\n");
         } else if (n >= 5 && std::memcmp(buf, "MSTCL", 5) == 0) {
             std::fprintf(stderr, "dmr_client: master closed the connection\n");

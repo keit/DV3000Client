@@ -47,8 +47,14 @@ enum class LinkResult {
 const char *ToString(LinkResult result);
 
 // The RPTC packet's declared repeater info -- mostly cosmetic for a
-// hotspot-style connection (shown on the network's dashboard), not
-// re-validated by the master beyond basic sanity/size checks.
+// hotspot-style connection (shown on the network's dashboard). Mostly
+// cosmetic, but not unvalidated: per the Homebrew protocol spec, the
+// free-text fields (Location, Description, URL) must contain no HTML, no
+// special/non-ASCII characters, and -- for URL specifically -- no
+// advertisements or links unrelated to amateur radio. A real master (unlike
+// xlxd's own minimal RPTC handling, which barely checks anything) can and
+// does reject RPTC outright over content in these fields, which is why
+// `url` defaults to empty rather than some placeholder link.
 struct RepeaterConfig {
     std::string callsign;
     uint32_t rxFrequencyHz = 438800000;
@@ -60,7 +66,7 @@ struct RepeaterConfig {
     int heightMeters = 0;
     std::string location = "Unknown";
     std::string description = "DV3000Client";
-    std::string url = "https://github.com/";
+    std::string url; // optional per spec; left blank rather than a generic (non-ham-related) placeholder
 };
 
 class DmrClient {

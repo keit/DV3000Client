@@ -5,6 +5,8 @@
 
 #include <QMetaObject>
 
+#include "localcache.h"
+
 namespace {
 
 // Universal, well-known entries, verified directly against a live fetch of
@@ -26,7 +28,11 @@ QString displayText(const bm::TalkgroupInfo &tg) {
 } // namespace
 
 TalkgroupListModel::TalkgroupListModel(QObject *parent) : QAbstractListModel(parent) {
-    m_rows = staticFallback();
+    // Last run's cached copy (if any) is a much better starting point than
+    // the tiny hardcoded fallback -- refresh() (called by DmrTab right
+    // after construction) still kicks off a live fetch to replace this
+    // with current data in the background.
+    if (!bm::loadCachedTalkgroupList(m_rows)) m_rows = staticFallback();
 }
 
 int TalkgroupListModel::rowCount(const QModelIndex &parent) const {
@@ -50,6 +56,10 @@ QVariant TalkgroupListModel::data(const QModelIndex &index, int role) const {
 
 void TalkgroupListModel::refresh() {
     if (m_refreshing) return;
+    // The constructor already loaded this same cached copy synchronously
+    // (see loadCachedTalkgroupList() there) -- if it's still fresh, m_rows
+    // already reflects it and there's nothing this fetch would change.
+    if (bm::isTalkgroupCacheFresh(cache::ONE_DAY_SECONDS)) return;
     m_refreshing = true;
 
     std::thread([this] {

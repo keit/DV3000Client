@@ -21,8 +21,19 @@ struct TalkgroupInfo {
 
 // Fetches the live directory over plain HTTP (the API happens to serve
 // both HTTP and HTTPS; HTTP avoids needing a TLS-capable client for one
-// small occasional GET -- see http_get.h). Returns false with `error` set
-// on any network/parse failure.
+// small occasional GET -- see http_get.h). On success, also writes the
+// raw response to the local disk cache (see localcache.h) for
+// loadCachedTalkgroupList() to use on a future startup. Returns false
+// with `error` set on any network/parse failure.
 bool fetchTalkgroupList(std::vector<TalkgroupInfo> &out, QString &error);
+
+// Loads the last successfully cached directory from disk, if any --
+// synchronous and network-free. Returns false if there's no cache yet.
+bool loadCachedTalkgroupList(std::vector<TalkgroupInfo> &out);
+
+// True if the cached directory exists and is less than maxAgeSeconds old
+// -- callers use this to skip fetchTalkgroupList() entirely on a given
+// startup rather than re-fetching every time.
+bool isTalkgroupCacheFresh(qint64 maxAgeSeconds);
 
 } // namespace bm

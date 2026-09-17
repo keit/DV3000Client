@@ -19,6 +19,7 @@
 #include <thread>
 
 #include "dmriddirectory.h"
+#include "localcache.h"
 #include "talkgrouplistmodel.h"
 
 namespace {
@@ -133,26 +134,34 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     layout->addLayout(bottomRow);
     layout->addWidget(m_lastHeardTable, 1);
 
-    // One-shot background fetch of the DMR ID directory (see
-    // dmriddirectory.h) -- not refreshed periodically the way Pi-Star
-    // does (every 24h), since this client isn't typically left running
-    // that long, but nothing stops a future connect from re-resolving
-    // against whatever's cached by then anyway.
-    std::thread([this] {
-        QHash<uint32_t, QString> directory;
-        QString error;
-        bool ok = dmr::fetchDmrIdDirectory(directory, error);
-        QMetaObject::invokeMethod(
-            this,
-            [this, ok, directory = std::move(directory), error]() mutable {
-                if (ok) {
-                    m_dmrIdDirectory = std::move(directory);
-                } else {
-                    std::fprintf(stderr, "dmrtab: DMR ID directory fetch failed: %s\n", error.toUtf8().constData());
-                }
-            },
-            Qt::QueuedConnection);
-    }).detach();
+    // Load last run's cached DMR ID directory synchronously -- fast (it's
+    // a local file), so Last Heard can resolve callsigns immediately
+    // instead of waiting on the ~330k-line network fetch below to finish.
+    dmr::loadCachedDmrIdDirectory(m_dmrIdDirectory);
+
+    // One-shot background fetch of the live DMR ID directory (see
+    // dmriddirectory.h), replacing the cached copy above once it lands
+    // and refreshing the on-disk cache for next startup -- skipped
+    // entirely if the cache is still fresh (matches Pi-Star's own 24h
+    // reload interval for this exact directory), so this multi-megabyte
+    // fetch doesn't happen on every single launch.
+    if (!dmr::isDmrIdDirectoryCacheFresh(cache::ONE_DAY_SECONDS)) {
+        std::thread([this] {
+            QHash<uint32_t, QString> directory;
+            QString error;
+            bool ok = dmr::fetchDmrIdDirectory(directory, error);
+            QMetaObject::invokeMethod(
+                this,
+                [this, ok, directory = std::move(directory), error]() mutable {
+                    if (ok) {
+                        m_dmrIdDirectory = std::move(directory);
+                    } else {
+                        std::fprintf(stderr, "dmrtab: DMR ID directory fetch failed: %s\n", error.toUtf8().constData());
+                    }
+                },
+                Qt::QueuedConnection);
+        }).detach();
+    }
 }
 
 QWidget *DmrTab::spaceExemptFocusWidget() const { return m_talkgroupCombo->lineEdit(); }

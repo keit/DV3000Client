@@ -7,8 +7,13 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QMetaObject>
+#include <QTimer>
+
+#include "localcache.h"
 
 namespace {
+
+constexpr const char *CACHE_KEY = "reflectors";
 
 // data/DExtra_Hosts.txt is a repo-relative path everywhere else in this
 // project too (see dextra_test.cpp), which assumes the binary is run from
@@ -38,6 +43,24 @@ QString displayText(const xlx::ReflectorInfo &r) {
 ReflectorListModel::ReflectorListModel(QObject *parent) : QAbstractListModel(parent) {
     xlx::loadStaticFallback(findFallbackHostsFile().toStdString(), m_fallback);
     rebuildRows();
+
+    // Loading the cached live list is deferred by one event-loop tick
+    // (rather than done here, synchronously, before the window is ever
+    // shown) -- empirically, populating this model with its full live
+    // row count *before* first show breaks window resize/splitter-drag
+    // under GNOME/Wayland (confirmed by bisection; root cause is likely
+    // the reflector combo's QCompleter popup -- a separate top-level
+    // surface -- getting sized against a large model during the same
+    // window's initial show/map handshake). A zero-delay QTimer still
+    // fires effectively immediately from the user's perspective, just
+    // after that handshake has settled instead of during it.
+    QTimer::singleShot(0, this, [this] {
+        QByteArray cached;
+        if (cache::read(CACHE_KEY, cached)) {
+            m_live = xlx::parseReflectorList(std::string(cached.constData(), static_cast<size_t>(cached.size())));
+            rebuildRows();
+        }
+    });
 }
 
 int ReflectorListModel::rowCount(const QModelIndex &parent) const {
@@ -65,18 +88,31 @@ QVariant ReflectorListModel::data(const QModelIndex &index, int role) const {
 
 void ReflectorListModel::refresh() {
     if (m_refreshing) return;
+    // The constructor's deferred QTimer::singleShot (above) already loads
+    // this same cached copy -- if it's still fresh, there's nothing this
+    // live fetch would change, whether or not that deferred load has
+    // actually run yet (it reads the same on-disk file either way).
+    if (cache::isFresh(CACHE_KEY, cache::ONE_DAY_SECONDS)) return;
     m_refreshing = true;
 
     std::thread([this] {
+        std::string body, error;
+        bool ok = xlx::fetchReflectorListRaw(body, error);
         std::vector<xlx::ReflectorInfo> live;
-        std::string error;
-        bool ok = xlx::fetchReflectorList(live, error);
+        if (ok) {
+            live = xlx::parseReflectorList(body);
+            if (live.empty()) {
+                ok = false;
+                error = "no reflectors parsed from response";
+            }
+        }
 
         QMetaObject::invokeMethod(
             this,
-            [this, ok, live = std::move(live), error]() mutable {
+            [this, ok, live = std::move(live), body = std::move(body), error]() mutable {
                 m_refreshing = false;
                 if (ok) {
+                    cache::write(CACHE_KEY, QByteArray(body.data(), static_cast<int>(body.size())));
                     applyLive(std::move(live));
                 } else {
                     emit refreshFailed(QString::fromStdString(error));

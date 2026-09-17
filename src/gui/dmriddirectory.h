@@ -15,10 +15,24 @@
 
 namespace dmr {
 
-// Fetches the full directory and returns it as an id->callsign map.
-// Returns false with `error` set on any network/parse failure; on success,
-// `out` is never empty (a suspiciously small or unparseable response is
-// treated as a failure, same reasoning as xlx_directory's own checks).
+// Fetches the full directory and returns it as an id->callsign map. On
+// success, also writes the raw response to the local disk cache (see
+// localcache.h) for loadCachedDmrIdDirectory() to use on a future
+// startup. Returns false with `error` set on any network/parse failure;
+// on success, `out` is never empty (a suspiciously small or unparseable
+// response is treated as a failure, same reasoning as xlx_directory's
+// own checks).
 bool fetchDmrIdDirectory(QHash<uint32_t, QString> &out, QString &error);
+
+// Loads the last successfully cached directory from disk, if any --
+// synchronous and network-free, meant for populating the lookup
+// immediately at startup while fetchDmrIdDirectory() refreshes it (and
+// the cache) in the background. Returns false if there's no cache yet.
+bool loadCachedDmrIdDirectory(QHash<uint32_t, QString> &out);
+
+// True if the cached directory exists and is less than maxAgeSeconds old
+// -- callers use this to skip fetchDmrIdDirectory() entirely on a given
+// startup rather than re-fetching this ~330k-line directory every time.
+bool isDmrIdDirectoryCacheFresh(qint64 maxAgeSeconds);
 
 } // namespace dmr

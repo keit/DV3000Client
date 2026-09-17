@@ -28,6 +28,16 @@ struct ReflectorInfo {
 // Returns false (with `error` set) on any network or parse failure.
 bool fetchReflectorList(std::vector<ReflectorInfo> &out, std::string &error);
 
+// Fetches the raw XML body without parsing it, and parses an already-
+// fetched (or disk-cached) body -- split out of fetchReflectorList() so
+// the GUI's local disk cache (see src/gui/localcache.h) can store/reuse
+// the raw response without this Qt-free module needing to know anything
+// about caching itself. fetchReflectorList() is implemented in terms of
+// these two and remains the simpler choice for callers that don't cache
+// (dextra_test, xlx_directory_test).
+bool fetchReflectorListRaw(std::string &body, std::string &error);
+std::vector<ReflectorInfo> parseReflectorList(const std::string &xml);
+
 // Parses a legacy DExtra_Hosts.txt-style file ("NAME<whitespace>host" per
 // line, blank lines and '#' comments ignored) as a fallback list for
 // reflectors with no live entry. Returns false if the file can't be opened.

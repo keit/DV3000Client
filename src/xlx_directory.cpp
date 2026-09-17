@@ -78,12 +78,14 @@ int extractNumber(const std::string &s) {
 
 } // namespace
 
+bool fetchReflectorListRaw(std::string &body, std::string &error) { return httpGetRaw(XLX_API_HOST, XLX_API_PATH, HTTP_PORT, body, error); }
+
+std::vector<ReflectorInfo> parseReflectorList(const std::string &xml) { return parseReflectorListXml(xml); }
+
 bool fetchReflectorList(std::vector<ReflectorInfo> &out, std::string &error) {
     std::string body;
-    if (!httpGetRaw(XLX_API_HOST, XLX_API_PATH, HTTP_PORT, body, error)) {
-        return false;
-    }
-    out = parseReflectorListXml(body);
+    if (!fetchReflectorListRaw(body, error)) return false;
+    out = parseReflectorList(body);
     if (out.empty()) {
         error = "no reflectors parsed from " + std::string(XLX_API_HOST) + " response";
         return false;

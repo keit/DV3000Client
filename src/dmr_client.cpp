@@ -296,26 +296,29 @@ void DmrClient::setVoiceRxSink(std::function<void(const uint8_t *, const uint8_t
 
 void DmrClient::setHeaderSink(std::function<void(uint32_t, uint32_t)> sink) { m_headerSink = std::move(sink); }
 
-uint32_t DmrClient::beginVoiceTx(uint32_t dstId) {
+uint32_t DmrClient::beginVoiceTx(uint32_t dstId, dmr::CallType callType) {
     m_txStreamCounter++;
     if (m_txStreamCounter == 0) m_txStreamCounter = 1; // must stay non-zero, matching DextraClient::nextStreamId
     m_txDstId = dstId;
+    m_txParams = dmr::TxParams{callType, m_config.colorCode, m_config.timeSlot};
     m_txSeqId = 0;
-    m_txEmbeddedLC = dmr::encodeEmbeddedLC(m_dmrId, dstId);
+    m_txEmbeddedLC = dmr::encodeEmbeddedLC(m_dmrId, dstId, callType);
 
-    sendRaw(dmr::buildHeaderFrame(m_dmrId, dstId, m_dmrId, m_txStreamCounter, m_txSeqId++));
-    std::fprintf(stderr, "dmr_client: PTT down, streamId=%u, TG=%u\n", m_txStreamCounter, dstId);
+    sendRaw(dmr::buildHeaderFrame(m_dmrId, dstId, m_dmrId, m_txStreamCounter, m_txSeqId++, m_txParams));
+    std::fprintf(stderr, "dmr_client: PTT down, streamId=%u, dst=%u, %s, CC%u, TS%d\n", m_txStreamCounter, dstId,
+                 callType == dmr::CallType::Private ? "private" : "group", m_config.colorCode,
+                 m_config.timeSlot == dmr::TimeSlot::Slot2 ? 2 : 1);
     return m_txStreamCounter;
 }
 
 void DmrClient::sendVoiceFrame(uint32_t streamId, int frameInBurst, const uint8_t ambe0[dmr::AMBE_FRAME_SIZE],
                                 const uint8_t ambe1[dmr::AMBE_FRAME_SIZE], const uint8_t ambe2[dmr::AMBE_FRAME_SIZE]) {
     sendRaw(dmr::buildVoiceFrame(m_dmrId, m_txDstId, m_dmrId, streamId, m_txSeqId++, frameInBurst, ambe0, ambe1, ambe2,
-                                  m_txEmbeddedLC));
+                                  m_txEmbeddedLC, m_txParams));
 }
 
 void DmrClient::endVoiceTx(uint32_t streamId) {
-    sendRaw(dmr::buildTerminatorFrame(m_dmrId, m_txDstId, m_dmrId, streamId, m_txSeqId));
+    sendRaw(dmr::buildTerminatorFrame(m_dmrId, m_txDstId, m_dmrId, streamId, m_txSeqId, m_txParams));
     m_txSeqId = 0;
     std::fprintf(stderr, "dmr_client: PTT up, streamId=%u\n", streamId);
 }

@@ -24,6 +24,12 @@ struct GuiSettings {
     QString dmrPassword;
     QString dmrServer; // host:port, e.g. "3101.brandmeister.network:62031"
     unsigned dmrColorCode = 1;
+    // 1 or 2. Slot 2 is the confirmed convention for hotspot-style
+    // BrandMeister connections (verified against a real, working Pi-Star
+    // session's own config), hence the default -- see dmr_voice.h's
+    // TimeSlot comment. Stored as plain 1/2 rather than dmr::TimeSlot to
+    // keep this header free of a dependency on dmr_client.h.
+    unsigned dmrTimeSlot = 2;
 
     // RPTC configuration fields -- mostly cosmetic/informational (shown on
     // the network's dashboard), but real masters (unlike xlxd's own

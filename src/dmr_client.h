@@ -61,6 +61,11 @@ struct RepeaterConfig {
     uint32_t txFrequencyHz = 438800000;
     unsigned power = 1;     // watts, 0-99
     unsigned colorCode = 1; // 0-15
+    // Slot 2 is the confirmed convention for hotspot-style BrandMeister
+    // connections (verified against a real, working Pi-Star session's own
+    // config -- see dmr_voice.h's TimeSlot comment); Slot 1 exists for
+    // masters/setups that expect it instead.
+    dmr::TimeSlot timeSlot = dmr::TimeSlot::Slot2;
     float latitude = 0.0f;
     float longitude = 0.0f;
     int heightMeters = 0;
@@ -100,11 +105,14 @@ public:
 
     // Live-mode TX, driven by a capture thread's PTT state machine --
     // same shape as DextraClient::beginLiveTx/sendLiveTxFrame/endLiveTx.
-    // dstId is the talkgroup to transmit to, chosen per-transmission
-    // (dynamic TG selection, not a static RPTO assignment -- see the
-    // project's protocol-roadmap notes on why). Returns a fresh stream ID
-    // and sends the DMRD header frame.
-    uint32_t beginVoiceTx(uint32_t dstId);
+    // dstId is the talkgroup (Group call) or target DMR ID (Private call)
+    // to transmit to, chosen per-transmission (dynamic TG selection, not a
+    // static RPTO assignment -- see the project's protocol-roadmap notes
+    // on why). Returns a fresh stream ID and sends the DMRD header frame.
+    // callType defaults to Group since that's the overwhelmingly common
+    // case; some network features (e.g. BrandMeister's Parrot echo test,
+    // ID 9990) only respond to a genuine Private call.
+    uint32_t beginVoiceTx(uint32_t dstId, dmr::CallType callType = dmr::CallType::Group);
     // frameInBurst cycles 0-5 across successive calls within one
     // transmission (see dmr_voice.h's buildVoiceFrame for what each
     // position means); callers don't need to track dstId or embeddedLC
@@ -133,6 +141,7 @@ private:
     uint32_t m_txStreamCounter = 0;
     uint8_t m_txSeqId = 0;
     uint32_t m_txDstId = 0;
+    dmr::TxParams m_txParams; // colorCode/timeSlot come from m_config, callType is set per-transmission
     dmr::EmbeddedLC m_txEmbeddedLC{};
 
     std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> m_voiceRxSink;

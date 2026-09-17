@@ -5,7 +5,11 @@
 // talkgroup per-transmission (DMR has no per-connection "reflector" the
 // way D-Star does -- see the project's protocol-roadmap notes on why
 // RPTO/static TG assignment was skipped in favor of this), and PTT/last-
-// heard controls mirroring DStarTab's shape. Owns its own live session
+// heard controls mirroring DStarTab's shape. The talkgroup combo can also
+// address a Private (unit-to-unit) call to another DMR ID instead of a
+// Group call to a talkgroup -- some network features require it, e.g.
+// BrandMeister's Parrot echo test (ID 9990) only responds to a genuine
+// Private call. Owns its own live session
 // (ThumbDV + ALSA + DmrClient, and dmr_audio's capture/playback threads)
 // independently of DStarTab's -- the two are never expected to be
 // connected at once (one physical ThumbDV), but nothing here assumes
@@ -22,6 +26,7 @@
 #include "protocoltab.h"
 #include "settings.h"
 
+class QCheckBox;
 class QComboBox;
 class QLabel;
 class QPushButton;
@@ -74,6 +79,11 @@ private:
 
     QComboBox *m_talkgroupCombo;
     TalkgroupListModel *m_talkgroupModel;
+    // When checked, the talkgroup combo's value is sent as a DMR ID for a
+    // Private (unit-to-unit) call instead of a Group call to a talkgroup --
+    // some network features (e.g. BrandMeister's Parrot echo test, ID
+    // 9990) only respond to a genuine Private call.
+    QCheckBox *m_privateCallCheck;
     QPushButton *m_connectButton;
     QPushButton *m_pttButton;
     QLabel *m_statusLabel;
@@ -94,6 +104,7 @@ private:
     // directly from that thread, since QWidget isn't safe to touch off
     // the GUI thread.
     std::atomic<uint32_t> m_talkgroup{0};
+    std::atomic<bool> m_privateCall{false};
     bool m_connected = false;
     bool m_busy = false;
 };

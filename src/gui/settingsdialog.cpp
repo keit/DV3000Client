@@ -146,6 +146,13 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     for (int cc = 0; cc <= 15; cc++) m_dmrColorCode->addItem(QString::number(cc), cc);
     m_dmrColorCode->setCurrentIndex(static_cast<int>(current.dmrColorCode));
 
+    // Slot 2 is the confirmed convention for hotspot-style BrandMeister
+    // connections -- see settings.h's dmrTimeSlot comment.
+    m_dmrTimeSlot = new QComboBox;
+    m_dmrTimeSlot->addItem("1", 1);
+    m_dmrTimeSlot->addItem("2", 2);
+    m_dmrTimeSlot->setCurrentIndex(current.dmrTimeSlot == 1 ? 0 : 1);
+
     // RPTC config fields -- see settings.h's comment on why these matter
     // for real masters (BrandMeister) even though xlxd barely checks them.
     // Defaults are generic placeholders; fill in your actual repeater/
@@ -182,6 +189,7 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     form->addRow("DMR password:", m_dmrPassword);
     form->addRow("DMR server:", m_dmrServer);
     form->addRow("DMR color code:", m_dmrColorCode);
+    form->addRow("DMR time slot:", m_dmrTimeSlot);
     form->addRow("DMR frequency (MHz):", m_dmrFrequencyMhz);
     form->addRow("DMR latitude:", m_dmrLatitude);
     form->addRow("DMR longitude:", m_dmrLongitude);
@@ -210,6 +218,7 @@ GuiSettings SettingsDialog::settings() const {
     s.dmrPassword = m_dmrPassword->text();
     s.dmrServer = m_dmrServer->text().trimmed();
     s.dmrColorCode = static_cast<unsigned>(m_dmrColorCode->currentIndex());
+    s.dmrTimeSlot = static_cast<unsigned>(m_dmrTimeSlot->currentData().toInt());
     s.dmrFrequencyMhz = m_dmrFrequencyMhz->text().toDouble();
     s.dmrLatitude = m_dmrLatitude->text().toDouble();
     s.dmrLongitude = m_dmrLongitude->text().toDouble();

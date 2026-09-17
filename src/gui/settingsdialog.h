@@ -32,6 +32,7 @@ private:
     QLineEdit *m_dmrPassword;
     QLineEdit *m_dmrServer;
     QComboBox *m_dmrColorCode;
+    QComboBox *m_dmrTimeSlot;
     QLineEdit *m_dmrFrequencyMhz;
     QLineEdit *m_dmrLatitude;
     QLineEdit *m_dmrLongitude;

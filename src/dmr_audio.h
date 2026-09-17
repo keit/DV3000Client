@@ -34,11 +34,12 @@ extern std::mutex g_dvMutex;
 // dextra::captureThread's shape and fast-read throttling, but accumulating
 // three 20ms AMBE+2 half-rate frames into each 60ms voice burst before
 // calling sendVoiceFrame, and cycling frameInBurst 0-5 across bursts for
-// the lifetime of one transmission. talkgroup is read once per
-// transmission (at the PTT-down edge), not per frame, so switching the TG
-// field mid-transmission doesn't retarget an in-flight stream.
+// the lifetime of one transmission. talkgroup and callType are each read
+// once per transmission (at the PTT-down edge), not per frame, so
+// changing either mid-transmission doesn't retarget an in-flight stream.
 void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrClient *client,
-                    std::function<uint32_t()> talkgroup, std::function<bool()> pttActive);
+                    std::function<uint32_t()> talkgroup, std::function<dmr::CallType()> callType,
+                    std::function<bool()> pttActive);
 
 // Builds a DmrClient::setVoiceRxSink callback: decodes each of a burst's 3
 // AMBE half-rate frames back to PCM and pushes them onto queue, in order,

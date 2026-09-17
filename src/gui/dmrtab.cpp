@@ -1,6 +1,7 @@
 #include "dmrtab.h"
 
 #include <QAbstractItemView>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QCompleter>
 #include <QHBoxLayout>
@@ -70,6 +71,17 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
 
     m_talkgroupModel->refresh();
 
+    // Group vs Private call -- see the header comment on m_privateCallCheck.
+    // When checked, the combo above is read as a target DMR ID instead of
+    // a talkgroup; the placeholder text updates to make that clear.
+    m_privateCallCheck = new QCheckBox("Private call");
+    connect(m_privateCallCheck, &QCheckBox::toggled, this, [this](bool privateCall) {
+        m_privateCall.store(privateCall);
+        m_talkgroupCombo->lineEdit()->setPlaceholderText(
+            privateCall ? "Target DMR ID, e.g. 9990 (BrandMeister Parrot echo test)"
+                        : "Talkgroup, e.g. 91 (World-wide) or a number/name to search...");
+    });
+
     m_connectButton = new QPushButton("Connect");
     connect(m_connectButton, &QPushButton::clicked, this, &DmrTab::onConnectClicked);
 
@@ -104,6 +116,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     auto *tgRow = new QHBoxLayout;
     tgRow->addWidget(new QLabel("Talkgroup:"));
     tgRow->addWidget(m_talkgroupCombo, 1);
+    tgRow->addWidget(m_privateCallCheck);
 
     auto *bottomRow = new QHBoxLayout;
     bottomRow->addWidget(m_connectButton);
@@ -199,6 +212,7 @@ void DmrTab::connectWorker(GuiSettings settings) {
         dmr::RepeaterConfig config;
         config.callsign = settings.callsign.toStdString();
         config.colorCode = settings.dmrColorCode;
+        config.timeSlot = settings.dmrTimeSlot == 1 ? dmr::TimeSlot::Slot1 : dmr::TimeSlot::Slot2;
         config.description = settings.dmrDescription.toStdString();
         config.url = settings.dmrUrl.toStdString();
         auto freqHz = static_cast<uint32_t>(settings.dmrFrequencyMhz * 1000000.0);
@@ -247,8 +261,10 @@ void DmrTab::onConnectFinished(bool ok, QString error) {
 
     m_pttActive.store(false);
     dmr::g_running = 1;
-    m_captureThread = std::thread(dmr::captureThread, m_dv.get(), &m_capture, m_client.get(),
-                                   [this] { return m_talkgroup.load(); }, [this] { return m_pttActive.load(); });
+    m_captureThread = std::thread(
+        dmr::captureThread, m_dv.get(), &m_capture, m_client.get(), [this] { return m_talkgroup.load(); },
+        [this] { return m_privateCall.load() ? dmr::CallType::Private : dmr::CallType::Group; },
+        [this] { return m_pttActive.load(); });
     m_playbackThread = std::thread(dmr::playbackThread, &m_playback, &m_rxQueue);
     m_networkThread = std::thread([this] { m_client->run(); });
 

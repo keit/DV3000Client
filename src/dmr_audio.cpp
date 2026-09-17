@@ -23,7 +23,8 @@ void encodeSilence(SerialDV::DVController *dv, uint8_t ambe[AMBE_FRAME_SIZE]) {
 } // namespace
 
 void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrClient *client,
-                    std::function<uint32_t()> talkgroup, std::function<bool()> pttActive) {
+                    std::function<uint32_t()> talkgroup, std::function<dmr::CallType()> callType,
+                    std::function<bool()> pttActive) {
     bool transmitting = false;
     uint32_t streamId = 0;
     int frameInBurst = 0;
@@ -73,7 +74,7 @@ void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrClie
 
         bool active = pttActive();
         if (active && !transmitting) {
-            streamId = client->beginVoiceTx(talkgroup());
+            streamId = client->beginVoiceTx(talkgroup(), callType());
             transmitting = true;
             frameInBurst = 0;
             frameIndex = 0;

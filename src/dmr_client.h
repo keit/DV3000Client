@@ -99,8 +99,10 @@ public:
     // Fires once per incoming transmission, when its Voice LC Header frame
     // arrives (before any voice bursts) -- gives (srcId, dstId) straight
     // from the DMRD packet fields, for a "last heard" log. Unlike D-Star's
-    // header, this carries no callsign -- DMR IDs aren't resolved to
-    // callsigns here (see the project's protocol-roadmap notes).
+    // header, this carries no callsign -- the Homebrew wire protocol is
+    // purely numeric ID-based; a receiving client resolves callsigns (if
+    // it wants to show one) via a separate public directory, same as
+    // MMDVMHost/Pi-Star and xlxd do -- see src/gui/dmriddirectory.h.
     void setHeaderSink(std::function<void(uint32_t srcId, uint32_t dstId)> sink);
 
     // Live-mode TX, driven by a capture thread's PTT state machine --

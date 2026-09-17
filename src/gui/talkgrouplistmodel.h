@@ -32,6 +32,11 @@ public:
     // repeatedly; a refresh already in flight is left to finish.
     void refresh();
 
+    // The directory's name for `id`, or an empty string if it's not
+    // (yet) listed -- for resolving a heard talkgroup to a name outside
+    // the combo box itself, e.g. DmrTab's last-heard log.
+    QString nameForId(uint32_t id) const;
+
 signals:
     void refreshFailed(const QString &error);
 

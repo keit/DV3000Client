@@ -15,6 +15,10 @@
 #include <QTime>
 #include <QVBoxLayout>
 
+#include <cstdio>
+#include <thread>
+
+#include "dmriddirectory.h"
 #include "talkgrouplistmodel.h"
 
 namespace {
@@ -99,11 +103,12 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
 
     m_statusLabel = new QLabel("Disconnected.");
 
-    // DMR IDs aren't resolved to callsigns here (see dmr_client.h's
-    // setHeaderSink comment), so this shows the raw source/destination
-    // DMR IDs rather than a callsign column the way DStarTab's does.
+    // Callsign column shows "CALLSIGN (id)" via m_dmrIdDirectory (fetched
+    // below), or just the id if that lookup hasn't loaded yet or doesn't
+    // have this particular one. Talkgroup column similarly resolves a name
+    // via m_talkgroupModel -- see displayCallsign()/displayTalkgroup().
     m_lastHeardTable = new QTableWidget(0, 3);
-    m_lastHeardTable->setHorizontalHeaderLabels({"Time", "DMR ID", "Talkgroup"});
+    m_lastHeardTable->setHorizontalHeaderLabels({"Time", "Callsign", "Talkgroup"});
     m_lastHeardTable->verticalHeader()->setVisible(false);
     m_lastHeardTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_lastHeardTable->setSelectionMode(QAbstractItemView::NoSelection);
@@ -127,9 +132,42 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     layout->addLayout(tgRow);
     layout->addLayout(bottomRow);
     layout->addWidget(m_lastHeardTable, 1);
+
+    // One-shot background fetch of the DMR ID directory (see
+    // dmriddirectory.h) -- not refreshed periodically the way Pi-Star
+    // does (every 24h), since this client isn't typically left running
+    // that long, but nothing stops a future connect from re-resolving
+    // against whatever's cached by then anyway.
+    std::thread([this] {
+        QHash<uint32_t, QString> directory;
+        QString error;
+        bool ok = dmr::fetchDmrIdDirectory(directory, error);
+        QMetaObject::invokeMethod(
+            this,
+            [this, ok, directory = std::move(directory), error]() mutable {
+                if (ok) {
+                    m_dmrIdDirectory = std::move(directory);
+                } else {
+                    std::fprintf(stderr, "dmrtab: DMR ID directory fetch failed: %s\n", error.toUtf8().constData());
+                }
+            },
+            Qt::QueuedConnection);
+    }).detach();
 }
 
 QWidget *DmrTab::spaceExemptFocusWidget() const { return m_talkgroupCombo->lineEdit(); }
+
+QString DmrTab::displayCallsign(uint32_t dmrId) const {
+    auto it = m_dmrIdDirectory.constFind(dmrId);
+    if (it == m_dmrIdDirectory.constEnd()) return QString::number(dmrId);
+    return it.value() + " (" + QString::number(dmrId) + ")";
+}
+
+QString DmrTab::displayTalkgroup(uint32_t dstId) const {
+    QString name = m_talkgroupModel->nameForId(dstId);
+    if (name.isEmpty()) return QString::number(dstId);
+    return QString::number(dstId) + " — " + name;
+}
 
 uint32_t DmrTab::currentTalkgroupId() const {
     QString text = m_talkgroupCombo->currentText();
@@ -293,8 +331,8 @@ void DmrTab::onHeaderReceived(uint32_t srcId, uint32_t dstId) { addLastHeardEntr
 void DmrTab::addLastHeardEntry(uint32_t srcId, uint32_t dstId) {
     m_lastHeardTable->insertRow(0);
     m_lastHeardTable->setItem(0, 0, new QTableWidgetItem(QTime::currentTime().toString("HH:mm:ss")));
-    m_lastHeardTable->setItem(0, 1, new QTableWidgetItem(QString::number(srcId)));
-    m_lastHeardTable->setItem(0, 2, new QTableWidgetItem(QString::number(dstId)));
+    m_lastHeardTable->setItem(0, 1, new QTableWidgetItem(displayCallsign(srcId)));
+    m_lastHeardTable->setItem(0, 2, new QTableWidgetItem(displayTalkgroup(dstId)));
 
     constexpr int kMaxLastHeardRows = 100;
     while (m_lastHeardTable->rowCount() > kMaxLastHeardRows) {

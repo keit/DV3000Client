@@ -19,6 +19,8 @@
 #include <memory>
 #include <thread>
 
+#include <QHash>
+
 #include "dextra_audio.h" // AlsaPcm, PcmQueue (protocol-agnostic, see dmr_audio.h)
 #include "dmr_audio.h"
 #include "dmr_client.h"
@@ -63,6 +65,16 @@ private:
     void onHeaderReceived(uint32_t srcId, uint32_t dstId);
     void addLastHeardEntry(uint32_t srcId, uint32_t dstId);
 
+    // "CALLSIGN (id)" for a heard srcId, or just "id" if it's not (yet) in
+    // m_dmrIdDirectory -- there's no callsign anywhere in the Homebrew
+    // wire protocol itself, see dmriddirectory.h.
+    QString displayCallsign(uint32_t dmrId) const;
+
+    // "id — Name" for a heard dstId, using the same directory the
+    // talkgroup combo's own entries come from, or just "id" if it's not
+    // listed there (private-call target IDs, or an unlisted talkgroup).
+    QString displayTalkgroup(uint32_t dstId) const;
+
     void setBusy(bool busy, const QString &status);
     void setConnected(bool connected, const QString &status);
     void updatePttButtonEnabled();
@@ -88,6 +100,10 @@ private:
     QPushButton *m_pttButton;
     QLabel *m_statusLabel;
     QTableWidget *m_lastHeardTable;
+    // Fetched once in the background at construction (see
+    // dmriddirectory.h) -- read-only after that fetch completes, so safe
+    // to read directly from the GUI thread without locking.
+    QHash<uint32_t, QString> m_dmrIdDirectory;
 
     // Live session state -- only meaningful while m_connected.
     std::unique_ptr<SerialDV::DVController> m_dv;

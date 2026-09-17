@@ -71,6 +71,13 @@ void TalkgroupListModel::refresh() {
     }).detach();
 }
 
+QString TalkgroupListModel::nameForId(uint32_t id) const {
+    for (const bm::TalkgroupInfo &tg : m_rows) {
+        if (tg.id == id) return tg.name;
+    }
+    return {};
+}
+
 void TalkgroupListModel::applyLive(std::vector<bm::TalkgroupInfo> live) {
     beginResetModel();
     std::sort(live.begin(), live.end(), [](const bm::TalkgroupInfo &a, const bm::TalkgroupInfo &b) {

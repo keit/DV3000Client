@@ -99,6 +99,15 @@ private:
     QPushButton *m_connectButton;
     QPushButton *m_pttButton;
     QLabel *m_statusLabel;
+    // BrandMeister has no persistent "connected to TG X" state -- the
+    // login is to the master, not a talkgroup, and (per the project's
+    // protocol-roadmap notes on skipping RPTO) it only relays a
+    // talkgroup's traffic to you after you've transmitted to it, the same
+    // "last used TG" convention real hotspots use. So your last-
+    // transmitted TG is effectively your current one for RX too; this
+    // label shows it, since it's otherwise invisible once PTT is released
+    // and the combo box may have since been edited to something else.
+    QLabel *m_activeTalkgroupLabel;
     QTableWidget *m_lastHeardTable;
     // Fetched once in the background at construction (see
     // dmriddirectory.h) -- read-only after that fetch completes, so safe

@@ -100,9 +100,29 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
         m_pttActive.store(sending);
         m_pttButton->setText(sending ? "Sending (click to stop)" : "PTT to send");
         m_pttButton->setStyleSheet(sending ? kSendingButtonStyle : "");
+        // Captured here (GUI thread, at the exact moment PTT goes down)
+        // rather than read back from the capture thread -- at this instant
+        // the combo box's current value is exactly what captureThread is
+        // about to read and use for this transmission (see m_talkgroup's
+        // own comment on why the two threads don't share the widget
+        // directly). Stays showing this after PTT releases -- see
+        // m_activeTalkgroupLabel's comment for why that's the right
+        // "current TG" to keep displayed.
+        if (sending) {
+            uint32_t id = currentTalkgroupId();
+            // TG 4000 is treated as "no talkgroup" for display purposes.
+            // displayTalkgroup() otherwise already falls back to the plain
+            // numeric ID when there's no matching directory entry, which is
+            // always the case for a private-call target (a subscriber ID,
+            // not a talkgroup) -- no separate private-call formatting
+            // needed there.
+            QString target = id == 4000 ? "None" : displayTalkgroup(id);
+            m_activeTalkgroupLabel->setText("Current subscription: " + target + (m_privateCall.load() ? " (private call)" : ""));
+        }
     });
 
     m_statusLabel = new QLabel("Disconnected.");
+    m_activeTalkgroupLabel = new QLabel("Current subscription: None");
 
     // Callsign column shows "CALLSIGN (id)" via m_dmrIdDirectory (fetched
     // below), or just the id if that lookup hasn't loaded yet or doesn't
@@ -131,6 +151,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
 
     auto *layout = new QVBoxLayout(this);
     layout->addLayout(tgRow);
+    layout->addWidget(m_activeTalkgroupLabel);
     layout->addLayout(bottomRow);
     layout->addWidget(m_lastHeardTable, 1);
 
@@ -332,6 +353,7 @@ void DmrTab::disconnectWorker() {
 void DmrTab::onDisconnectFinished() {
     m_client.reset();
     m_dv.reset();
+    m_activeTalkgroupLabel->setText("Current subscription: None");
     setConnected(false, "Disconnected.");
 }
 

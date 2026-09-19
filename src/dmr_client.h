@@ -78,9 +78,15 @@ class DmrClient {
 public:
     bool open(const std::string &host, uint16_t port = DEFAULT_PORT);
 
-    // dmrId is this client's own (repeater/hotspot) DMR ID. Must be called
-    // before link().
-    void setIdentity(uint32_t dmrId, const std::string &password, const RepeaterConfig &config);
+    // dmrId is this client's own DMR ID (the subscriber/source ID carried in
+    // DMRD and the LC, 24 bits). repeaterId is the ID declared to the master
+    // in RPTL/RPTK/RPTC and pings -- 0 means "same as dmrId". BrandMeister
+    // requires a unique 9-digit ID (7-digit DMR ID + 2-digit suffix) per
+    // simultaneous connection using the same account, so a second client
+    // instance passes dmrId*100+suffix here while dmrId stays the plain
+    // 7-digit ID. Must be called before link().
+    void setIdentity(uint32_t dmrId, const std::string &password, const RepeaterConfig &config,
+                     uint32_t repeaterId = 0);
 
     // Runs the full RPTL -> RPTK -> RPTC handshake, retrying each step
     // (matching DExtra's link() retry pattern) until it succeeds, is
@@ -135,7 +141,8 @@ private:
     void sendRaw(const std::vector<uint8_t> &packet);
 
     int m_fd = -1;
-    uint32_t m_dmrId = 0;
+    uint32_t m_dmrId = 0;      // subscriber/source ID -- 24 bits on the wire (DMRD srcId, LC)
+    uint32_t m_repeaterId = 0; // login/repeater ID -- RPTL/RPTK/RPTC/pings and DMRD rptrId; may be dmrId + 2-digit suffix
     std::string m_password;
     RepeaterConfig m_config;
     uint8_t m_salt[4] = {};

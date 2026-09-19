@@ -289,7 +289,14 @@ void DmrTab::connectWorker(GuiSettings settings) {
         config.latitude = static_cast<float>(settings.dmrLatitude);
         config.longitude = static_cast<float>(settings.dmrLongitude);
         config.location = settings.dmrLocation.toStdString();
-        m_client->setIdentity(settings.dmrId, settings.dmrPassword.toStdString(), config);
+        // 9-digit repeater ID (dmrId + 2-digit suffix) when a suffix is set,
+        // so this instance can run alongside another client under the same
+        // DMR ID -- see GuiSettings::dmrIdSuffix. Blank/invalid = plain ID.
+        uint32_t repeaterId = settings.dmrId;
+        if (settings.dmrIdSuffix.size() == 2) repeaterId = settings.dmrId * 100 + settings.dmrIdSuffix.toUInt();
+        std::fprintf(stderr, "dmrtab: repeater ID %u (DMR ID %u%s)\n", repeaterId, settings.dmrId,
+                     repeaterId == settings.dmrId ? "" : " + suffix");
+        m_client->setIdentity(settings.dmrId, settings.dmrPassword.toStdString(), config, repeaterId);
 
         m_client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_dv.get(), &m_rxQueue));
         // Runs on the network thread once client->run() starts -- marshal

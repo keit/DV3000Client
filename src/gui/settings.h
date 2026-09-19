@@ -22,6 +22,13 @@ struct GuiSettings {
     // else here (see settings.cpp's comment on why JSON over QSettings).
     uint32_t dmrId = 0;
     QString dmrPassword;
+    // Optional 2-digit suffix appended to dmrId to form the 9-digit repeater
+    // ID declared to BrandMeister -- needed when more than one hotspot/client
+    // (e.g. BlueDV and this app) connect at once under the same DMR ID, since
+    // each simultaneous connection must have a unique ID. Blank = use the
+    // plain 7-digit dmrId. A QString (not a number) so "00" stays distinct
+    // from blank.
+    QString dmrIdSuffix;
     QString dmrServer; // host:port, e.g. "3101.brandmeister.network:62031"
     unsigned dmrColorCode = 1;
     // 1 or 2. Slot 2 is the confirmed convention for hotspot-style

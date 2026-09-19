@@ -9,6 +9,8 @@
 #include <QFormLayout>
 #include <QIntValidator>
 #include <QLineEdit>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
 #include <QVBoxLayout>
 
 namespace {
@@ -136,6 +138,14 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     m_dmrId->setValidator(new QIntValidator(0, 99999999, m_dmrId)); // DMR IDs are up to 8 digits
     m_dmrId->setPlaceholderText("e.g. your radioid.net-registered ID");
 
+    m_dmrIdSuffix = new QLineEdit(current.dmrIdSuffix);
+    m_dmrIdSuffix->setMaxLength(2);
+    m_dmrIdSuffix->setValidator(new QRegularExpressionValidator(QRegularExpression("[0-9]{0,2}"), m_dmrIdSuffix));
+    m_dmrIdSuffix->setPlaceholderText("optional, 2 digits");
+    m_dmrIdSuffix->setToolTip("Appended to the DMR ID above to form a 9-digit repeater ID. Needed when another hotspot or client "
+                              "(e.g. BlueDV) is connected under the same DMR ID at the same time -- each simultaneous "
+                              "connection must have a unique ID. Leave blank to use the plain DMR ID.");
+
     m_dmrPassword = new QLineEdit(current.dmrPassword);
     m_dmrPassword->setEchoMode(QLineEdit::Password);
 
@@ -186,6 +196,7 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     form->addRow("Audio output device:", m_audioOutput);
     form->addRow("ThumbDV device:", m_thumbdv);
     form->addRow("DMR ID:", m_dmrId);
+    form->addRow("DMR ID suffix:", m_dmrIdSuffix);
     form->addRow("DMR password:", m_dmrPassword);
     form->addRow("DMR server:", m_dmrServer);
     form->addRow("DMR color code:", m_dmrColorCode);
@@ -215,6 +226,7 @@ GuiSettings SettingsDialog::settings() const {
     s.audioOutputDevice = m_audioOutput->currentText().trimmed();
     s.thumbdvDevice = m_thumbdv->currentText().trimmed();
     s.dmrId = static_cast<uint32_t>(m_dmrId->text().trimmed().toULong());
+    s.dmrIdSuffix = m_dmrIdSuffix->text().trimmed();
     s.dmrPassword = m_dmrPassword->text();
     s.dmrServer = m_dmrServer->text().trimmed();
     s.dmrColorCode = static_cast<unsigned>(m_dmrColorCode->currentIndex());

@@ -107,8 +107,10 @@ bool DmrClient::open(const std::string &host, uint16_t port) {
     return true;
 }
 
-void DmrClient::setIdentity(uint32_t dmrId, const std::string &password, const RepeaterConfig &config) {
+void DmrClient::setIdentity(uint32_t dmrId, const std::string &password, const RepeaterConfig &config,
+                             uint32_t repeaterId) {
     m_dmrId = dmrId;
+    m_repeaterId = repeaterId ? repeaterId : dmrId;
     m_password = password;
     m_config = config;
 }
@@ -137,7 +139,7 @@ LinkResult DmrClient::link() {
     // Step 1: RPTL -> RPTACK(+4-byte salt) or MSTNAK.
     std::vector<uint8_t> rptl;
     appendTag(rptl, "RPTL");
-    appendDmrId(rptl, m_dmrId);
+    appendDmrId(rptl, m_repeaterId);
 
     bool gotAck = false;
     for (int attempt = 0; attempt < 5 && g_running && !gotAck; attempt++) {
@@ -174,7 +176,7 @@ LinkResult DmrClient::link() {
 
     std::vector<uint8_t> rptk;
     appendTag(rptk, "RPTK");
-    appendDmrId(rptk, m_dmrId);
+    appendDmrId(rptk, m_repeaterId);
     rptk.insert(rptk.end(), digest, digest + 32);
 
     gotAck = false;
@@ -206,7 +208,7 @@ LinkResult DmrClient::link() {
     // = 294 bytes, +4-byte tag +4-byte id = 302 total.
     std::vector<uint8_t> rptc;
     appendTag(rptc, "RPTC");
-    appendDmrId(rptc, m_dmrId);
+    appendDmrId(rptc, m_repeaterId);
     appendField(rptc, m_config.callsign, 8);
     appendNumericField(rptc, m_config.rxFrequencyHz, 9);
     appendNumericField(rptc, m_config.txFrequencyHz, 9);
@@ -276,7 +278,7 @@ LinkResult DmrClient::link() {
 void DmrClient::disconnect() {
     std::vector<uint8_t> pkt;
     appendTag(pkt, "RPTCL");
-    appendDmrId(pkt, m_dmrId);
+    appendDmrId(pkt, m_repeaterId);
     sendRaw(pkt);
     std::fprintf(stderr, "dmr_client: sent RPTCL\n");
 }
@@ -284,7 +286,7 @@ void DmrClient::disconnect() {
 void DmrClient::sendPing() {
     std::vector<uint8_t> pkt;
     appendTag(pkt, "RPTPING");
-    appendDmrId(pkt, m_dmrId);
+    appendDmrId(pkt, m_repeaterId);
     sendRaw(pkt);
 }
 
@@ -304,7 +306,7 @@ uint32_t DmrClient::beginVoiceTx(uint32_t dstId, dmr::CallType callType) {
     m_txSeqId = 0;
     m_txEmbeddedLC = dmr::encodeEmbeddedLC(m_dmrId, dstId, callType);
 
-    sendRaw(dmr::buildHeaderFrame(m_dmrId, dstId, m_dmrId, m_txStreamCounter, m_txSeqId++, m_txParams));
+    sendRaw(dmr::buildHeaderFrame(m_dmrId, dstId, m_repeaterId, m_txStreamCounter, m_txSeqId++, m_txParams));
     std::fprintf(stderr, "dmr_client: PTT down, streamId=%u, dst=%u, %s, CC%u, TS%d\n", m_txStreamCounter, dstId,
                  callType == dmr::CallType::Private ? "private" : "group", m_config.colorCode,
                  m_config.timeSlot == dmr::TimeSlot::Slot2 ? 2 : 1);
@@ -313,12 +315,12 @@ uint32_t DmrClient::beginVoiceTx(uint32_t dstId, dmr::CallType callType) {
 
 void DmrClient::sendVoiceFrame(uint32_t streamId, int frameInBurst, const uint8_t ambe0[dmr::AMBE_FRAME_SIZE],
                                 const uint8_t ambe1[dmr::AMBE_FRAME_SIZE], const uint8_t ambe2[dmr::AMBE_FRAME_SIZE]) {
-    sendRaw(dmr::buildVoiceFrame(m_dmrId, m_txDstId, m_dmrId, streamId, m_txSeqId++, frameInBurst, ambe0, ambe1, ambe2,
+    sendRaw(dmr::buildVoiceFrame(m_dmrId, m_txDstId, m_repeaterId, streamId, m_txSeqId++, frameInBurst, ambe0, ambe1, ambe2,
                                   m_txEmbeddedLC, m_txParams));
 }
 
 void DmrClient::endVoiceTx(uint32_t streamId) {
-    sendRaw(dmr::buildTerminatorFrame(m_dmrId, m_txDstId, m_dmrId, streamId, m_txSeqId, m_txParams));
+    sendRaw(dmr::buildTerminatorFrame(m_dmrId, m_txDstId, m_repeaterId, streamId, m_txSeqId, m_txParams));
     m_txSeqId = 0;
     std::fprintf(stderr, "dmr_client: PTT up, streamId=%u\n", streamId);
 }

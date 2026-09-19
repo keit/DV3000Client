@@ -26,6 +26,7 @@ GuiSettings GuiSettings::load() {
     if (obj.contains("thumbdv_device")) s.thumbdvDevice = obj["thumbdv_device"].toString();
     if (obj.contains("dmr_id")) s.dmrId = static_cast<uint32_t>(obj["dmr_id"].toDouble());
     if (obj.contains("dmr_password")) s.dmrPassword = obj["dmr_password"].toString();
+    if (obj.contains("dmr_id_suffix")) s.dmrIdSuffix = obj["dmr_id_suffix"].toString();
     if (obj.contains("dmr_server")) s.dmrServer = obj["dmr_server"].toString();
     if (obj.contains("dmr_color_code")) s.dmrColorCode = static_cast<unsigned>(obj["dmr_color_code"].toInt());
     if (obj.contains("dmr_time_slot")) s.dmrTimeSlot = static_cast<unsigned>(obj["dmr_time_slot"].toInt());
@@ -48,6 +49,7 @@ bool GuiSettings::save() const {
     obj["thumbdv_device"] = thumbdvDevice;
     obj["dmr_id"] = static_cast<double>(dmrId);
     obj["dmr_password"] = dmrPassword;
+    obj["dmr_id_suffix"] = dmrIdSuffix;
     obj["dmr_server"] = dmrServer;
     obj["dmr_color_code"] = static_cast<int>(dmrColorCode);
     obj["dmr_time_slot"] = static_cast<int>(dmrTimeSlot);

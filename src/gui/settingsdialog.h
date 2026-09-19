@@ -29,6 +29,7 @@ private:
     QComboBox *m_audioOutput;
     QComboBox *m_thumbdv;
     QLineEdit *m_dmrId;
+    QLineEdit *m_dmrIdSuffix;
     QLineEdit *m_dmrPassword;
     QLineEdit *m_dmrServer;
     QComboBox *m_dmrColorCode;

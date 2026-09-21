@@ -10,10 +10,14 @@
 
 #include <QDialog>
 
+#include <atomic>
+#include <thread>
+
 #include "settings.h"
 
 class QComboBox;
 class QLineEdit;
+class QProgressBar;
 class QPushButton;
 
 class SettingsDialog : public QDialog {
@@ -24,10 +28,21 @@ public:
     GuiSettings settings() const;
 
 private:
+    // Stops the input-level capture thread if running (sets the flag and
+    // joins -- near-instant, since each ALSA read the thread does only
+    // blocks for one ~20ms period) and resets the Test button/meter.
+    // Called both when the user clicks Stop and, via QDialog::finished,
+    // if the dialog closes while a test is still running.
+    void stopAudioInputTest();
+
     QLineEdit *m_callsign;
     QLineEdit *m_suffix;
     QComboBox *m_moduleSuffix;
     QComboBox *m_audioInput;
+    QPushButton *m_audioInputTest;
+    QProgressBar *m_audioInputLevel;
+    std::thread m_audioInputTestThread;
+    std::atomic<bool> m_audioInputTesting{false};
     QComboBox *m_audioOutput;
     QPushButton *m_audioOutputTest;
     QComboBox *m_thumbdv;

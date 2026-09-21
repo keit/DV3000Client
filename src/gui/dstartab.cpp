@@ -26,6 +26,8 @@ namespace {
 const char *kConnectedButtonStyle = "background-color: #4CAF50; color: white;";
 const char *kErrorButtonStyle = "background-color: #f44336; color: white;";
 const char *kErrorLabelStyle = "color: #f44336;";
+// Mid-dark amber/cyan (not the pure hues) so they stay readable on both light and dark window themes.
+const char *kStatusLabelStyle = "color: #b36b00;";
 // Distinct from the error red above -- an "on-air" orange, deliberately
 // hard to miss so a forgotten toggled-on transmit is obvious at a glance.
 const char *kSendingButtonStyle = "background-color: #ff9800; color: white;";
@@ -118,6 +120,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     });
 
     m_statusLabel = new QLabel("Disconnected.");
+    m_statusLabel->setStyleSheet(kStatusLabelStyle);
     // A QLabel's minimum width is its full text width, so a long status
     // would raise the left panel's minimum and squeeze the splitter.
     // Ignored lets it clip instead of dictating the panel's width.
@@ -238,7 +241,7 @@ void DStarTab::startConnect() {
     QString reflectorName = selectedReflectorName();
     char targetModule = m_targetModule->currentText().at(0).toLatin1();
     m_connectButton->setStyleSheet("");
-    m_statusLabel->setStyleSheet("");
+    m_statusLabel->setStyleSheet(kStatusLabelStyle);
     setBusy(true, "Connecting to " + host + "...");
 
     if (m_worker.joinable()) m_worker.join();
@@ -411,7 +414,7 @@ void DStarTab::setConnected(bool connected, const QString &status) {
     m_connected = connected;
     m_connectButton->setText(connected ? "Disconnect" : "Connect");
     m_connectButton->setStyleSheet(connected ? kConnectedButtonStyle : "");
-    m_statusLabel->setStyleSheet("");
+    m_statusLabel->setStyleSheet(kStatusLabelStyle);
     m_pttButton->setEnabled(connected);
     if (!connected) m_pttButton->setChecked(false); // in case we disconnected mid-send
     setBusy(false, status);

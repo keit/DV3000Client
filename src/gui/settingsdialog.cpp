@@ -7,13 +7,21 @@
 #include <QDir>
 #include <QDoubleValidator>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QIntValidator>
 #include <QLineEdit>
+#include <QMetaObject>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include <QWidget>
+
+#include <cmath>
+#include <thread>
+
+#include "dextra_audio.h"
 
 namespace {
 
@@ -116,6 +124,38 @@ QComboBox *makeEditableCombo(const QStringList &items, const QString &current) {
     return combo;
 }
 
+// Opens `device` and plays one second of a 440Hz (concert A) sine wave --
+// just enough to let the user confirm they picked the right output
+// device, same 8kHz/16-bit-mono format as everything else this app plays.
+// Blocks for the duration (AlsaPcm::write() paces itself to real time),
+// so always call this from a background thread, never the GUI thread.
+void playTestTone(const std::string &device) {
+    dextra::AlsaPcm pcm;
+    if (!pcm.open(device, SND_PCM_STREAM_PLAYBACK)) return;
+
+    constexpr double kFrequencyHz = 440.0;
+    constexpr double kSampleRateHz = 8000.0;
+    constexpr double kDurationSec = 1.0;
+    constexpr double kTwoPi = 6.283185307179586;
+    constexpr short kAmplitude = 8000; // well under full-scale (32767) -- a loud tone helps nobody
+
+    double phase = 0.0;
+    const double phaseStep = kTwoPi * kFrequencyHz / kSampleRateHz;
+    size_t samplesWritten = 0;
+    const size_t totalSamples = static_cast<size_t>(kSampleRateHz * kDurationSec);
+    while (samplesWritten < totalSamples) {
+        short chunk[SerialDV::MBE_AUDIO_BLOCK_SIZE];
+        for (short &sample : chunk) {
+            sample = static_cast<short>(kAmplitude * std::sin(phase));
+            phase += phaseStep;
+            if (phase >= kTwoPi) phase -= kTwoPi;
+        }
+        if (!pcm.write(chunk)) break;
+        samplesWritten += SerialDV::MBE_AUDIO_BLOCK_SIZE;
+    }
+    pcm.close();
+}
+
 } // namespace
 
 SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QDialog(parent) {
@@ -133,6 +173,32 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
 
     m_audioInput = makeAlsaDeviceCombo(listAlsaHardwareDevices(SND_PCM_STREAM_CAPTURE), current.audioInputDevice);
     m_audioOutput = makeAlsaDeviceCombo(listAlsaHardwareDevices(SND_PCM_STREAM_PLAYBACK), current.audioOutputDevice);
+
+    // Plays a one-second 440Hz test tone through whatever's currently
+    // selected above (even if not yet saved) so the user can confirm
+    // they picked the right output before hitting OK. Disabled for the
+    // tone's duration to avoid two overlapping playTestTone() calls
+    // fighting over the same device.
+    m_audioOutputTest = new QPushButton("Test");
+    connect(m_audioOutputTest, &QPushButton::clicked, this, [this] {
+        m_audioOutputTest->setEnabled(false);
+        std::string device = m_audioOutput->currentText().trimmed().toStdString();
+        std::thread([this, device] {
+            playTestTone(device);
+            QMetaObject::invokeMethod(
+                this,
+                [this] {
+                    // Disabling a focused widget hands focus to the next one
+                    // in tab order (here, the ThumbDV combo) and re-enabling
+                    // it doesn't hand focus back on its own -- restore it
+                    // explicitly so Test doesn't feel like it silently
+                    // shoves focus elsewhere.
+                    m_audioOutputTest->setEnabled(true);
+                    m_audioOutputTest->setFocus();
+                },
+                Qt::QueuedConnection);
+        }).detach();
+    });
 
     m_thumbdv = makeEditableCombo(listSerialByIdDevices(), current.thumbdvDevice);
 
@@ -209,9 +275,13 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     auto *generalPage = new QWidget;
     generalPage->setLayout(generalForm);
 
+    auto *audioOutputRow = new QHBoxLayout;
+    audioOutputRow->addWidget(m_audioOutput, 1);
+    audioOutputRow->addWidget(m_audioOutputTest);
+
     auto *devicesForm = new QFormLayout;
     devicesForm->addRow("Audio input device:", m_audioInput);
-    devicesForm->addRow("Audio output device:", m_audioOutput);
+    devicesForm->addRow("Audio output device:", audioOutputRow);
     devicesForm->addRow("ThumbDV device:", m_thumbdv);
     auto *devicesPage = new QWidget;
     devicesPage->setLayout(devicesForm);

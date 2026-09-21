@@ -14,6 +14,7 @@
 
 class QComboBox;
 class QLineEdit;
+class QPushButton;
 
 class SettingsDialog : public QDialog {
     Q_OBJECT
@@ -28,6 +29,7 @@ private:
     QComboBox *m_moduleSuffix;
     QComboBox *m_audioInput;
     QComboBox *m_audioOutput;
+    QPushButton *m_audioOutputTest;
     QComboBox *m_thumbdv;
     QLineEdit *m_dmrId;
     QLineEdit *m_dmrIdSuffix;

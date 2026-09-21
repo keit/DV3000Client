@@ -141,6 +141,12 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
 
     m_statusLabel = new QLabel("Disconnected.");
     m_activeTalkgroupLabel = new QLabel("Current subscription: None");
+    // A QLabel's minimum width is its full text width, so a long status
+    // ("Connected to 5051.master...") or subscription line would raise the
+    // left panel's minimum and squeeze the splitter. Ignored lets these
+    // clip instead of dictating the panel's width.
+    m_statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_activeTalkgroupLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     // Callsign column shows "CALLSIGN (id)" via m_dmrIdDirectory (fetched
     // below), or just the id if that lookup hasn't loaded yet or doesn't

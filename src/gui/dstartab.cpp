@@ -118,6 +118,10 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     });
 
     m_statusLabel = new QLabel("Disconnected.");
+    // A QLabel's minimum width is its full text width, so a long status
+    // would raise the left panel's minimum and squeeze the splitter.
+    // Ignored lets it clip instead of dictating the panel's width.
+    m_statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     m_rpt1Label = new QLabel("—");
     m_rpt2Label = new QLabel("—");

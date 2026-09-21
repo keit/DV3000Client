@@ -11,6 +11,7 @@
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
+#include <QSplitter>
 #include <QTableWidget>
 #include <QTime>
 #include <QVBoxLayout>
@@ -49,6 +50,23 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     m_talkgroupCombo = new QComboBox;
     m_talkgroupCombo->setEditable(true);
     m_talkgroupCombo->setInsertPolicy(QComboBox::NoInsert);
+    // Without this, the combo's width follows its content (QComboBox's
+    // default AdjustToContentsOnFirstShow policy), which left the
+    // DMR/Last-Heard splitter's left panel exactly at its minimum width --
+    // no room to shrink left (it looked stuck, then snapped straight to
+    // fully collapsed). A fixed contents-length keeps the combo's width
+    // independent of what's in the directory.
+    m_talkgroupCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_talkgroupCombo->setMinimumContentsLength(15);
+    // setMinimumContentsLength() alone only bounds the combo's *preferred*
+    // width -- under Qt's default sizing, a QComboBox's minimumSizeHint()
+    // tracks that same preferred width 1:1 (no smaller floor exists on its
+    // own), which is what left the splitter with zero slack to shrink into
+    // in the first place. An explicit, genuinely small minimum width
+    // overrides that and gives the splitter real room to shrink left (the
+    // combo just clips/scrolls its text at small widths, same as any
+    // shrunk QLineEdit).
+    m_talkgroupCombo->setMinimumWidth(60);
     m_talkgroupCombo->setModel(m_talkgroupModel);
     m_talkgroupCombo->setCurrentIndex(-1);
     m_talkgroupCombo->lineEdit()->setPlaceholderText("Talkgroup, e.g. 91 (World-wide) or a number/name to search...");
@@ -149,11 +167,26 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     bottomRow->addWidget(m_statusLabel, 1);
     bottomRow->addWidget(m_pttButton);
 
-    auto *layout = new QVBoxLayout(this);
+    auto *layout = new QVBoxLayout;
     layout->addLayout(tgRow);
     layout->addWidget(m_activeTalkgroupLabel);
     layout->addLayout(bottomRow);
-    layout->addWidget(m_lastHeardTable, 1);
+    layout->addStretch();
+
+    auto *leftPanel = new QWidget;
+    leftPanel->setLayout(layout);
+
+    // Same left-panel/Last-Heard split as DStarTab, for a consistent look
+    // across the two protocol tabs.
+    auto *splitter = new QSplitter;
+    splitter->addWidget(leftPanel);
+    splitter->addWidget(m_lastHeardTable);
+    splitter->setStretchFactor(0, 0);
+    splitter->setStretchFactor(1, 1);
+
+    auto *outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->addWidget(splitter);
 
     // Load last run's cached DMR ID directory synchronously -- fast (it's
     // a local file), so Last Heard can resolve callsigns immediately

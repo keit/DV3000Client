@@ -4,14 +4,23 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCompleter>
+#include <QDir>
+#include <QFile>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QListWidget>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
+#include <QShortcut>
 #include <QSplitter>
+#include <QStandardPaths>
 #include <QTableWidget>
 #include <QTime>
 #include <QVBoxLayout>
@@ -32,6 +41,15 @@ const char *kErrorButtonStyle = "background-color: #f44336; color: white;";
 const char *kErrorLabelStyle = "color: #f44336;";
 const char *kSendingButtonStyle = "background-color: #ff9800; color: white;";
 const char *kLightGrayBackground = "#e8e8e8";
+
+constexpr int kFavouriteIdRole = Qt::UserRole;
+constexpr int kFavouritePrivateRole = Qt::UserRole + 1;
+
+QString favouritesFilePath() {
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QDir().mkpath(dir);
+    return dir + "/dmr_favourites.json";
+}
 } // namespace
 
 DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(parent), m_settings(settings) {
@@ -126,17 +144,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
         // directly). Stays showing this after PTT releases -- see
         // m_activeTalkgroupLabel's comment for why that's the right
         // "current TG" to keep displayed.
-        if (sending) {
-            uint32_t id = currentTalkgroupId();
-            // TG 4000 is treated as "no talkgroup" for display purposes.
-            // displayTalkgroup() otherwise already falls back to the plain
-            // numeric ID when there's no matching directory entry, which is
-            // always the case for a private-call target (a subscriber ID,
-            // not a talkgroup) -- no separate private-call formatting
-            // needed there.
-            QString target = id == 4000 ? "None" : displayTalkgroup(id);
-            m_activeTalkgroupLabel->setText("Current subscription: " + target + (m_privateCall.load() ? " (private call)" : ""));
-        }
+        if (sending) setActiveSubscription(currentTalkgroupId(), m_privateCall.load());
     });
 
     m_statusLabel = new QLabel("Disconnected.");
@@ -147,6 +155,41 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     // clip instead of dictating the panel's width.
     m_statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     m_activeTalkgroupLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+
+    m_addFavouriteButton = new QPushButton("Add to favourites");
+    m_addFavouriteButton->setEnabled(false);
+    m_addFavouriteButton->setFixedWidth(m_addFavouriteButton->sizeHint().width());
+    connect(m_addFavouriteButton, &QPushButton::clicked, this, [this] {
+        addFavouriteItem(m_activeId, m_activePrivate);
+        saveFavourites();
+        updateAddFavouriteEnabled();
+    });
+
+    // Picking an entry loads it into the talkgroup combo (and the Private
+    // call checkbox) so PTT uses it. itemClicked rather than currentItem
+    // Changed so re-clicking the already-current entry still applies it.
+    m_favouritesList = new QListWidget;
+    m_favouritesList->setStyleSheet(QString("QListWidget { background-color: %1; }").arg(kLightGrayBackground));
+    auto applyFavourite = [this](QListWidgetItem *item) {
+        selectFavourite(item->data(kFavouriteIdRole).toUInt(), item->data(kFavouritePrivateRole).toBool());
+    };
+    connect(m_favouritesList, &QListWidget::itemClicked, this, applyFavourite);
+    connect(m_favouritesList, &QListWidget::itemActivated, this, applyFavourite);
+
+    // Remove via right-click menu or the Delete key.
+    m_favouritesList->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_favouritesList, &QListWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+        QListWidgetItem *item = m_favouritesList->itemAt(pos);
+        if (!item) return;
+        QMenu menu;
+        QAction *remove = menu.addAction("Remove from favourites");
+        if (menu.exec(m_favouritesList->viewport()->mapToGlobal(pos)) == remove) removeFavouriteItem(item);
+    });
+    auto *deleteShortcut = new QShortcut(QKeySequence::Delete, m_favouritesList);
+    deleteShortcut->setContext(Qt::WidgetShortcut);
+    connect(deleteShortcut, &QShortcut::activated, this, [this] {
+        if (QListWidgetItem *item = m_favouritesList->currentItem()) removeFavouriteItem(item);
+    });
 
     // Callsign column shows "CALLSIGN (id)" via m_dmrIdDirectory (fetched
     // below), or just the id if that lookup hasn't loaded yet or doesn't
@@ -175,9 +218,13 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
 
     auto *layout = new QVBoxLayout;
     layout->addLayout(tgRow);
-    layout->addWidget(m_activeTalkgroupLabel);
+    auto *subscriptionRow = new QHBoxLayout;
+    subscriptionRow->addWidget(m_activeTalkgroupLabel, 1);
+    subscriptionRow->addWidget(m_addFavouriteButton);
+    layout->addLayout(subscriptionRow);
     layout->addLayout(bottomRow);
-    layout->addStretch();
+    layout->addWidget(new QLabel("Favourites:"));
+    layout->addWidget(m_favouritesList, 1);
 
     auto *leftPanel = new QWidget;
     leftPanel->setLayout(layout);
@@ -198,6 +245,8 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     // a local file), so Last Heard can resolve callsigns immediately
     // instead of waiting on the ~330k-line network fetch below to finish.
     dmr::loadCachedDmrIdDirectory(m_dmrIdDirectory);
+
+    loadFavourites();
 
     // One-shot background fetch of the live DMR ID directory (see
     // dmriddirectory.h), replacing the cached copy above once it lands
@@ -236,6 +285,76 @@ QString DmrTab::displayTalkgroup(uint32_t dstId) const {
     QString name = m_talkgroupModel->nameForId(dstId);
     if (name.isEmpty()) return QString::number(dstId);
     return QString::number(dstId) + " — " + name;
+}
+
+void DmrTab::setActiveSubscription(uint32_t id, bool privateCall) {
+    // m_activeId keeps 4000 (BrandMeister's "disconnect" TG) so it can still
+    // be added as a favourite, but the label shows it as "None" since it
+    // means no subscription. displayTalkgroup() falls back to the plain
+    // numeric ID when there's no directory entry, which is always the case
+    // for a private-call target (a subscriber ID, not a talkgroup).
+    m_activeId = id;
+    m_activePrivate = id != 0 && privateCall;
+    bool none = id == 0 || id == 4000;
+    m_activeTalkgroupLabel->setText(
+        "Current subscription: " + (none ? QString("None") : displayTalkgroup(id) + (privateCall ? " (private call)" : "")));
+    updateAddFavouriteEnabled();
+}
+
+void DmrTab::updateAddFavouriteEnabled() {
+    m_addFavouriteButton->setEnabled(m_activeId != 0 && !isFavourite(m_activeId, m_activePrivate));
+}
+
+bool DmrTab::isFavourite(uint32_t id, bool privateCall) const {
+    for (int i = 0; i < m_favouritesList->count(); i++) {
+        const QListWidgetItem *item = m_favouritesList->item(i);
+        if (item->data(kFavouriteIdRole).toUInt() == id && item->data(kFavouritePrivateRole).toBool() == privateCall)
+            return true;
+    }
+    return false;
+}
+
+void DmrTab::addFavouriteItem(uint32_t id, bool privateCall) {
+    if (id == 0 || isFavourite(id, privateCall)) return;
+    QString text = displayTalkgroup(id);
+    if (id == 4000 && text == "4000") text += " — Disconnect";
+    auto *item = new QListWidgetItem(text + (privateCall ? " (private call)" : ""));
+    item->setData(kFavouriteIdRole, id);
+    item->setData(kFavouritePrivateRole, privateCall);
+    m_favouritesList->addItem(item);
+}
+
+void DmrTab::removeFavouriteItem(QListWidgetItem *item) {
+    delete m_favouritesList->takeItem(m_favouritesList->row(item));
+    saveFavourites();
+    updateAddFavouriteEnabled();
+}
+
+void DmrTab::selectFavourite(uint32_t id, bool privateCall) {
+    m_privateCallCheck->setChecked(privateCall);
+    m_talkgroupCombo->lineEdit()->setText(privateCall ? QString::number(id) : displayTalkgroup(id));
+}
+
+void DmrTab::loadFavourites() {
+    QFile f(favouritesFilePath());
+    if (!f.open(QIODevice::ReadOnly)) return;
+    for (const QJsonValue &v : QJsonDocument::fromJson(f.readAll()).array()) {
+        QJsonObject o = v.toObject();
+        addFavouriteItem(static_cast<uint32_t>(o["id"].toDouble()), o["private"].toBool());
+    }
+}
+
+void DmrTab::saveFavourites() const {
+    QJsonArray array;
+    for (int i = 0; i < m_favouritesList->count(); i++) {
+        const QListWidgetItem *item = m_favouritesList->item(i);
+        QJsonObject o;
+        o["id"] = static_cast<double>(item->data(kFavouriteIdRole).toUInt());
+        o["private"] = item->data(kFavouritePrivateRole).toBool();
+        array.append(o);
+    }
+    QFile f(favouritesFilePath());
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(QJsonDocument(array).toJson(QJsonDocument::Indented));
 }
 
 uint32_t DmrTab::currentTalkgroupId() const {
@@ -399,7 +518,7 @@ void DmrTab::disconnectWorker() {
 void DmrTab::onDisconnectFinished() {
     m_client.reset();
     m_dv.reset();
-    m_activeTalkgroupLabel->setText("Current subscription: None");
+    setActiveSubscription(0, false);
     setConnected(false, "Disconnected.");
 }
 

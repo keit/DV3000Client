@@ -31,6 +31,8 @@
 class QCheckBox;
 class QComboBox;
 class QLabel;
+class QListWidget;
+class QListWidgetItem;
 class QPushButton;
 class QTableWidget;
 class TalkgroupListModel;
@@ -79,6 +81,18 @@ private:
     void setConnected(bool connected, const QString &status);
     void updatePttButtonEnabled();
 
+    // Records the last-transmitted target (id 0 = none) and refreshes the
+    // label (which shows 0 and 4000 as "None") and the Add-to-favourites
+    // button (enabled for 4000 too, so it can be saved as a favourite).
+    void setActiveSubscription(uint32_t id, bool privateCall);
+    void updateAddFavouriteEnabled();
+    bool isFavourite(uint32_t id, bool privateCall) const;
+    void addFavouriteItem(uint32_t id, bool privateCall);
+    void removeFavouriteItem(QListWidgetItem *item);
+    void selectFavourite(uint32_t id, bool privateCall);
+    void loadFavourites();
+    void saveFavourites() const;
+
     // Extracts the leading run of digits from the talkgroup combo's
     // current text -- unlike DStarTab's reflector combo, any positive
     // integer is a legal talkgroup whether or not it's a row in the
@@ -109,6 +123,12 @@ private:
     // and the combo box may have since been edited to something else.
     QLabel *m_activeTalkgroupLabel;
     QTableWidget *m_lastHeardTable;
+    // The target shown in the "Current subscription" label (GUI thread
+    // only): what the last transmission went to. 0 = none.
+    uint32_t m_activeId = 0;
+    bool m_activePrivate = false;
+    QPushButton *m_addFavouriteButton;
+    QListWidget *m_favouritesList;
     // Fetched once in the background at construction (see
     // dmriddirectory.h) -- read-only after that fetch completes, so safe
     // to read directly from the GUI thread without locking.

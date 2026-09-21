@@ -11,7 +11,9 @@
 #include <QLineEdit>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QTabWidget>
 #include <QVBoxLayout>
+#include <QWidget>
 
 namespace {
 
@@ -188,32 +190,42 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     m_dmrUrl = new QLineEdit(current.dmrUrl);
     m_dmrUrl->setPlaceholderText("optional, e.g. a page about your station");
 
-    auto *form = new QFormLayout;
-    form->addRow("Callsign:", m_callsign);
-    form->addRow("Suffix:", m_suffix);
-    form->addRow("Module suffix:", m_moduleSuffix);
-    form->addRow("Audio input device:", m_audioInput);
-    form->addRow("Audio output device:", m_audioOutput);
-    form->addRow("ThumbDV device:", m_thumbdv);
-    form->addRow("DMR ID:", m_dmrId);
-    form->addRow("DMR ID suffix:", m_dmrIdSuffix);
-    form->addRow("DMR password:", m_dmrPassword);
-    form->addRow("DMR server:", m_dmrServer);
-    form->addRow("DMR color code:", m_dmrColorCode);
-    form->addRow("DMR time slot:", m_dmrTimeSlot);
-    form->addRow("DMR frequency (MHz):", m_dmrFrequencyMhz);
-    form->addRow("DMR latitude:", m_dmrLatitude);
-    form->addRow("DMR longitude:", m_dmrLongitude);
-    form->addRow("DMR location:", m_dmrLocation);
-    form->addRow("DMR description:", m_dmrDescription);
-    form->addRow("DMR URL:", m_dmrUrl);
+    auto *generalForm = new QFormLayout;
+    generalForm->addRow("Callsign:", m_callsign);
+    generalForm->addRow("Suffix:", m_suffix);
+    generalForm->addRow("Module suffix:", m_moduleSuffix);
+    generalForm->addRow("DMR ID:", m_dmrId);
+    generalForm->addRow("DMR ID suffix:", m_dmrIdSuffix);
+    generalForm->addRow("DMR password:", m_dmrPassword);
+    generalForm->addRow("DMR server:", m_dmrServer);
+    generalForm->addRow("DMR color code:", m_dmrColorCode);
+    generalForm->addRow("DMR time slot:", m_dmrTimeSlot);
+    generalForm->addRow("DMR frequency (MHz):", m_dmrFrequencyMhz);
+    generalForm->addRow("DMR latitude:", m_dmrLatitude);
+    generalForm->addRow("DMR longitude:", m_dmrLongitude);
+    generalForm->addRow("DMR location:", m_dmrLocation);
+    generalForm->addRow("DMR description:", m_dmrDescription);
+    generalForm->addRow("DMR URL:", m_dmrUrl);
+    auto *generalPage = new QWidget;
+    generalPage->setLayout(generalForm);
+
+    auto *devicesForm = new QFormLayout;
+    devicesForm->addRow("Audio input device:", m_audioInput);
+    devicesForm->addRow("Audio output device:", m_audioOutput);
+    devicesForm->addRow("ThumbDV device:", m_thumbdv);
+    auto *devicesPage = new QWidget;
+    devicesPage->setLayout(devicesForm);
+
+    auto *tabs = new QTabWidget;
+    tabs->addTab(generalPage, "General");
+    tabs->addTab(devicesPage, "Devices");
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     auto *layout = new QVBoxLayout(this);
-    layout->addLayout(form);
+    layout->addWidget(tabs);
     layout->addWidget(buttons);
 }
 

@@ -1,11 +1,12 @@
 #pragma once
 
-// Modal settings dialog: callsign, MYCALL2 suffix, our own module letter,
-// audio in/out device, and the ThumbDV serial device -- plus the DMR/
-// BrandMeister identity (DMR ID, hotspot password, server, color code)
-// used by the DMR tab. The device dropdowns are pre-populated by probing
-// ALSA and /dev/serial/by-id (see .cpp) but stay editable, since not every
-// valid device name shows up in either probe.
+// Modal settings dialog, split across two tabs: "General" (callsign,
+// MYCALL2 suffix, our own module letter, and the DMR/BrandMeister
+// identity -- DMR ID, hotspot password, server, color code -- used by the
+// DMR tab) and "Devices" (audio in/out device, ThumbDV serial device).
+// The device dropdowns are pre-populated by probing ALSA and
+// /dev/serial/by-id (see .cpp) but stay editable, since not every valid
+// device name shows up in either probe.
 
 #include <QDialog>
 

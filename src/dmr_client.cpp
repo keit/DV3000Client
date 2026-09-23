@@ -304,6 +304,7 @@ uint32_t DmrClient::beginVoiceTx(uint32_t dstId, dmr::CallType callType) {
     m_txDstId = dstId;
     m_txParams = dmr::TxParams{callType, m_config.colorCode, m_config.timeSlot};
     m_txSeqId = 0;
+    m_txFrameInBurst = 0;
     m_txEmbeddedLC = dmr::encodeEmbeddedLC(m_dmrId, dstId, callType);
 
     sendRaw(dmr::buildHeaderFrame(m_dmrId, dstId, m_repeaterId, m_txStreamCounter, m_txSeqId++, m_txParams));
@@ -313,10 +314,11 @@ uint32_t DmrClient::beginVoiceTx(uint32_t dstId, dmr::CallType callType) {
     return m_txStreamCounter;
 }
 
-void DmrClient::sendVoiceFrame(uint32_t streamId, int frameInBurst, const uint8_t ambe0[dmr::AMBE_FRAME_SIZE],
+void DmrClient::sendVoiceFrame(uint32_t streamId, const uint8_t ambe0[dmr::AMBE_FRAME_SIZE],
                                 const uint8_t ambe1[dmr::AMBE_FRAME_SIZE], const uint8_t ambe2[dmr::AMBE_FRAME_SIZE]) {
-    sendRaw(dmr::buildVoiceFrame(m_dmrId, m_txDstId, m_repeaterId, streamId, m_txSeqId++, frameInBurst, ambe0, ambe1, ambe2,
-                                  m_txEmbeddedLC, m_txParams));
+    sendRaw(dmr::buildVoiceFrame(m_dmrId, m_txDstId, m_repeaterId, streamId, m_txSeqId++, m_txFrameInBurst, ambe0, ambe1,
+                                  ambe2, m_txEmbeddedLC, m_txParams));
+    m_txFrameInBurst = (m_txFrameInBurst + 1) % 6;
 }
 
 void DmrClient::endVoiceTx(uint32_t streamId) {

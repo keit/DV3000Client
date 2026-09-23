@@ -18,7 +18,7 @@
 #include <mutex>
 
 #include "dextra_audio.h" // AlsaPcm, PcmQueue
-#include "dmr_client.h"
+#include "dmr_transport.h"
 #include "dvcontroller.h"
 
 namespace dmr {
@@ -30,14 +30,13 @@ namespace dmr {
 // share a DVController.
 extern std::mutex g_dvMutex;
 
-// Live-mode TX: PTT-driven mic -> ThumbDV -> DmrClient, mirroring
+// Live-mode TX: PTT-driven mic -> ThumbDV -> DmrTransport, mirroring
 // dextra::captureThread's shape and fast-read throttling, but accumulating
 // three 20ms AMBE+2 half-rate frames into each 60ms voice burst before
-// calling sendVoiceFrame, and cycling frameInBurst 0-5 across bursts for
-// the lifetime of one transmission. talkgroup and callType are each read
+// calling sendVoiceFrame. talkgroup and callType are each read
 // once per transmission (at the PTT-down edge), not per frame, so
 // changing either mid-transmission doesn't retarget an in-flight stream.
-void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrClient *client,
+void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrTransport *client,
                     std::function<uint32_t()> talkgroup, std::function<dmr::CallType()> callType,
                     std::function<bool()> pttActive);
 

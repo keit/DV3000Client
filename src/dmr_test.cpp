@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "dmr_test: sending test transmission to TG%u\n", txTalkgroup);
         uint32_t streamId = client.beginVoiceTx(txTalkgroup);
         for (int burst = 0; burst < 10 && dmr::g_running; burst++) {
-            client.sendVoiceFrame(streamId, burst % 6, ambe0, ambe1, ambe2);
+            client.sendVoiceFrame(streamId, ambe0, ambe1, ambe2);
             std::this_thread::sleep_for(std::chrono::milliseconds(60)); // one DMR voice burst = 60ms
         }
         client.endVoiceTx(streamId);

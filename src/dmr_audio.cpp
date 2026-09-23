@@ -22,12 +22,11 @@ void encodeSilence(SerialDV::DVController *dv, uint8_t ambe[AMBE_FRAME_SIZE]) {
 
 } // namespace
 
-void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrClient *client,
+void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrTransport *client,
                     std::function<uint32_t()> talkgroup, std::function<dmr::CallType()> callType,
                     std::function<bool()> pttActive) {
     bool transmitting = false;
     uint32_t streamId = 0;
-    int frameInBurst = 0;
     int frameIndex = 0; // which of this burst's 3 AMBE frames comes next
     uint8_t ambe[3][AMBE_FRAME_SIZE];
     short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
@@ -49,7 +48,7 @@ void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrClie
                 encodeSilence(dv, ambe[frameIndex]);
                 frameIndex++;
             }
-            client->sendVoiceFrame(streamId, frameInBurst, ambe[0], ambe[1], ambe[2]);
+            client->sendVoiceFrame(streamId, ambe[0], ambe[1], ambe[2]);
             frameIndex = 0;
         }
         client->endVoiceTx(streamId);
@@ -76,7 +75,6 @@ void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrClie
         if (active && !transmitting) {
             streamId = client->beginVoiceTx(talkgroup(), callType());
             transmitting = true;
-            frameInBurst = 0;
             frameIndex = 0;
         } else if (!active && transmitting) {
             endTransmission();
@@ -93,9 +91,8 @@ void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrClie
         }
         frameIndex++;
         if (frameIndex == 3) {
-            client->sendVoiceFrame(streamId, frameInBurst, ambe[0], ambe[1], ambe[2]);
+            client->sendVoiceFrame(streamId, ambe[0], ambe[1], ambe[2]);
             frameIndex = 0;
-            frameInBurst = (frameInBurst + 1) % 6;
         }
     }
 

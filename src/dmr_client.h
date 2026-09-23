@@ -19,6 +19,7 @@
 // (cdmrmmdvmprotocol.cpp) and g4klx/DMRGateway's client-side implementation
 // (the software real BrandMeister hotspots run today).
 
+#include "dmr_transport.h"
 #include "dmr_voice.h"
 
 #include <cstdint>
@@ -27,11 +28,6 @@
 #include <string>
 
 namespace dmr {
-
-// Cleared by SIGINT/SIGTERM (installed by the frontend) to unwind run()'s
-// loop cooperatively -- same pattern as dextra::g_running, but independent
-// of it: this client has no dependency on dextra_client.h.
-extern volatile sig_atomic_t g_running;
 
 constexpr uint16_t DEFAULT_PORT = 62030;
 constexpr int KEEPALIVE_PERIOD_SEC = 10; // matches DMRMMDVM_KEEPALIVE_PERIOD
@@ -74,7 +70,7 @@ struct RepeaterConfig {
     std::string url; // optional per spec; left blank rather than a generic (non-ham-related) placeholder
 };
 
-class DmrClient {
+class DmrClient : public DmrTransport {
 public:
     bool open(const std::string &host, uint16_t port = DEFAULT_PORT);
 
@@ -91,16 +87,16 @@ public:
     // Runs the full RPTL -> RPTK -> RPTC handshake, retrying each step
     // (matching DExtra's link() retry pattern) until it succeeds, is
     // rejected, or times out.
-    LinkResult link();
+    LinkResult link() override;
 
     // Sends RPTCL and closes the socket.
-    void disconnect();
+    void disconnect() override;
 
     // Live-mode RX: called with each voice burst's 3 AMBE half-rate
     // frames as they arrive, for immediate decode/playback -- same shape
     // as DextraClient's liveRxSink. Optional; unset means received voice
     // is silently ignored (still logged via run()'s own diagnostics).
-    void setVoiceRxSink(std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> sink);
+    void setVoiceRxSink(std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> sink) override;
 
     // Fires once per incoming transmission, when its Voice LC Header frame
     // arrives (before any voice bursts) -- gives (srcId, dstId) straight
@@ -109,7 +105,7 @@ public:
     // purely numeric ID-based; a receiving client resolves callsigns (if
     // it wants to show one) via a separate public directory, same as
     // MMDVMHost/Pi-Star and xlxd do -- see src/gui/dmriddirectory.h.
-    void setHeaderSink(std::function<void(uint32_t srcId, uint32_t dstId)> sink);
+    void setHeaderSink(std::function<void(uint32_t srcId, uint32_t dstId)> sink) override;
 
     // Live-mode TX, driven by a capture thread's PTT state machine --
     // same shape as DextraClient::beginLiveTx/sendLiveTxFrame/endLiveTx.
@@ -120,20 +116,21 @@ public:
     // callType defaults to Group since that's the overwhelmingly common
     // case; some network features (e.g. BrandMeister's Parrot echo test,
     // ID 9990) only respond to a genuine Private call.
-    uint32_t beginVoiceTx(uint32_t dstId, dmr::CallType callType = dmr::CallType::Group);
-    // frameInBurst cycles 0-5 across successive calls within one
-    // transmission (see dmr_voice.h's buildVoiceFrame for what each
-    // position means); callers don't need to track dstId or embeddedLC
-    // themselves, beginVoiceTx() already captured both for the duration
-    // of this transmission.
-    void sendVoiceFrame(uint32_t streamId, int frameInBurst, const uint8_t ambe0[dmr::AMBE_FRAME_SIZE],
-                         const uint8_t ambe1[dmr::AMBE_FRAME_SIZE], const uint8_t ambe2[dmr::AMBE_FRAME_SIZE]);
-    void endVoiceTx(uint32_t streamId);
+    uint32_t beginVoiceTx(uint32_t dstId, dmr::CallType callType = dmr::CallType::Group) override;
+    // The burst's sync/EMB position (0-5 -- see dmr_voice.h's
+    // buildVoiceFrame for what each position means) is tracked internally
+    // via m_txFrameInBurst, cycling across successive calls within one
+    // transmission; callers don't need to track dstId or embeddedLC
+    // themselves either, beginVoiceTx() already captured both for the
+    // duration of this transmission.
+    void sendVoiceFrame(uint32_t streamId, const uint8_t ambe0[dmr::AMBE_FRAME_SIZE],
+                         const uint8_t ambe1[dmr::AMBE_FRAME_SIZE], const uint8_t ambe2[dmr::AMBE_FRAME_SIZE]) override;
+    void endVoiceTx(uint32_t streamId) override;
 
     // Keepalive/receive loop: sends RPTPING every KEEPALIVE_PERIOD_SEC,
     // delivers incoming DMRD voice frames to the RX sink (if set), and
     // logs anything else that comes back. Returns when g_running is cleared.
-    void run();
+    void run() override;
 
 private:
     ssize_t recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs);
@@ -152,6 +149,7 @@ private:
     uint32_t m_txDstId = 0;
     dmr::TxParams m_txParams; // colorCode/timeSlot come from m_config, callType is set per-transmission
     dmr::EmbeddedLC m_txEmbeddedLC{};
+    int m_txFrameInBurst = 0; // cycles 0-5 across sendVoiceFrame() calls within one transmission
 
     std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> m_voiceRxSink;
     std::function<void(uint32_t, uint32_t)> m_headerSink;

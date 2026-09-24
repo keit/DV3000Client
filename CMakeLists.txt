@@ -103,9 +103,8 @@ add_library(dmr_audio
 target_link_libraries(dmr_audio dmr_transport dextra_audio)
 
 # BrandMeister's Open DMR Terminal (Rewind) protocol -- see dmr_rewind.h's
-# header comment. Not yet a DmrTransport implementation (spike stage,
-# driven by odt_test below); shares sha256 with dmr_client for its
-# challenge/response auth.
+# header comment. Implements DmrTransport, same as dmr_client; shares
+# sha256 with it for its own challenge/response auth.
 add_library(dmr_rewind
   src/dmr_rewind.cpp
 )

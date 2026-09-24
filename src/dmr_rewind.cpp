@@ -102,12 +102,16 @@ ssize_t RewindClient::recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs) {
     return n;
 }
 
-void RewindClient::sendPacket(uint16_t type, const std::vector<uint8_t> &payload) {
+void RewindClient::sendPacket(uint16_t type, const std::vector<uint8_t> &payload, uint16_t flags) {
+    // Two independent sequence counters, selected by the RealTime1 flag
+    // bit -- see this file's header comment.
+    uint32_t &sequence = (flags & FlagRealTime1) ? m_sequenceRealTime : m_sequence;
+
     std::vector<uint8_t> pkt;
     pkt.insert(pkt.end(), SIGN, SIGN + 8);
     appendU16LE(pkt, type);
-    appendU16LE(pkt, 0); // flags -- FlagDefaultSet (0) for everything we send
-    appendU32LE(pkt, ++m_sequence);
+    appendU16LE(pkt, flags);
+    appendU32LE(pkt, ++sequence);
     appendU16LE(pkt, static_cast<uint16_t>(payload.size()));
     pkt.insert(pkt.end(), payload.begin(), payload.end());
     ::send(m_fd, pkt.data(), pkt.size(), 0);
@@ -156,11 +160,56 @@ void RewindClient::setDmrDataSink(std::function<void(uint8_t, const uint8_t *, s
     m_dmrDataSink = std::move(sink);
 }
 
-void RewindClient::setDmrAudioSink(std::function<void(uint8_t, const uint8_t *, size_t)> sink) {
-    m_dmrAudioSink = std::move(sink);
+void RewindClient::setHeaderSink(std::function<void(uint32_t, uint32_t)> sink) { m_headerSink = std::move(sink); }
+
+void RewindClient::setVoiceRxSink(std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> sink) {
+    m_voiceRxSink = std::move(sink);
 }
 
-bool RewindClient::link() {
+uint32_t RewindClient::beginVoiceTx(uint32_t dstId, dmr::CallType callType) {
+    m_txDstId = dstId;
+    m_txPrivateCall = callType == dmr::CallType::Private;
+    m_txStreamCounter++;
+
+    // FullLC content: FLCO(6 bits)+reserved(1)+protect(1), FID, Service
+    // Options, DestinationID(3 BE), SourceID(3 BE), then 3 trailing bytes
+    // -- confirmed live these are a real DMR CRC-like field on receive,
+    // but both this client and BrandMeister's own DigestPlay reference
+    // leave them zero on transmit. FLCO 0=Group Voice, 3=Unit-to-Unit
+    // Voice (confirmed against go-brandmeister's own test vectors and
+    // pyspot_rx's encode_flc, which uses these same raw values).
+    std::vector<uint8_t> lc(12, 0);
+    lc[0] = m_txPrivateCall ? 0x03 : 0x00;
+    lc[3] = static_cast<uint8_t>(dstId >> 16);
+    lc[4] = static_cast<uint8_t>(dstId >> 8);
+    lc[5] = static_cast<uint8_t>(dstId);
+    lc[6] = static_cast<uint8_t>(m_remoteId >> 16);
+    lc[7] = static_cast<uint8_t>(m_remoteId >> 8);
+    lc[8] = static_cast<uint8_t>(m_remoteId);
+
+    // Sent 3 times for reliability, matching DigestPlay's own transmit.
+    for (int i = 0; i < 3; i++) sendPacket(TypeDMRDataBase + DMR_DATA_VOICE_HEADER, lc, FlagRealTime1);
+    std::fprintf(stderr, "dmr_rewind: PTT down, dst=%u, %s\n", dstId, m_txPrivateCall ? "private" : "group");
+    return m_txStreamCounter;
+}
+
+void RewindClient::sendVoiceFrame(uint32_t /*streamId*/, const uint8_t ambe0[dmr::AMBE_FRAME_SIZE],
+                                   const uint8_t ambe1[dmr::AMBE_FRAME_SIZE], const uint8_t ambe2[dmr::AMBE_FRAME_SIZE]) {
+    std::vector<uint8_t> payload;
+    payload.insert(payload.end(), ambe0, ambe0 + dmr::AMBE_FRAME_SIZE);
+    payload.insert(payload.end(), ambe1, ambe1 + dmr::AMBE_FRAME_SIZE);
+    payload.insert(payload.end(), ambe2, ambe2 + dmr::AMBE_FRAME_SIZE);
+    sendPacket(TypeDMRAudioBase, payload, FlagRealTime1);
+}
+
+void RewindClient::endVoiceTx(uint32_t /*streamId*/) {
+    // Empty payload -- matching DigestPlay's own terminator send exactly
+    // (TransmitRewindData(..., REWIND_TYPE_DMR_DATA_BASE + 2, ..., NULL, 0)).
+    sendPacket(TypeDMRDataBase + DMR_DATA_TERMINATOR_LC, {}, FlagRealTime1);
+    std::fprintf(stderr, "dmr_rewind: PTT up\n");
+}
+
+LinkResult RewindClient::link() {
     // Matches BrandMeister's own reference client (DigestPlay's
     // RewindClient.c, ConnectRewindClient): KeepAlive is resent every
     // loop iteration -- not just up front -- until the whole handshake
@@ -185,7 +234,7 @@ bool RewindClient::link() {
         if (type == TypeChallenge) {
             if (authAttempts >= 3) {
                 std::fprintf(stderr, "dmr_rewind: too many failed authentication attempts (wrong password?)\n");
-                return false;
+                return LinkResult::AuthRejected;
             }
             std::vector<uint8_t> hashInput(buf + HEADER_LENGTH, buf + n);
             hashInput.insert(hashInput.end(), m_password.begin(), m_password.end());
@@ -198,17 +247,17 @@ bool RewindClient::link() {
             m_authenticated = true;
             sendConfiguration(); // declare our own Options (SuperHeader, etc.)
             std::fprintf(stderr, "dmr_rewind: authenticated\n");
-            return true;
+            return LinkResult::Success;
         } else if (type == TypeClose) {
             std::fprintf(stderr, "dmr_rewind: server closed the connection (wrong password?)\n");
-            return false;
+            return LinkResult::AuthRejected;
         } else {
             std::fprintf(stderr, "dmr_rewind: unexpected reply type %#06x during handshake\n", type);
         }
     }
 
     std::fprintf(stderr, "dmr_rewind: handshake timed out\n");
-    return false;
+    return LinkResult::Timeout;
 }
 
 void RewindClient::handlePacket(const uint8_t *data, size_t len) {
@@ -242,12 +291,25 @@ void RewindClient::handlePacket(const uint8_t *data, size_t len) {
         info.sourceCall = callsignFromBytes(payload + 12, CALL_LENGTH);
         info.targetCall = callsignFromBytes(payload + 12 + CALL_LENGTH, CALL_LENGTH);
         if (m_superHeaderSink) m_superHeaderSink(info);
+        // SuperHeader arrives once per transmission, unlike the DMRData
+        // VoiceHeader (sent 3x) -- the better source for a "last heard"
+        // signal that should fire exactly once per call.
+        if (m_headerSink) m_headerSink(info.source, info.target);
     } else if (type >= TypeDMRDataBase && type < TypeDMRAudioBase) {
         uint8_t dataType = static_cast<uint8_t>(type & 0x0f);
         if (m_dmrDataSink) m_dmrDataSink(dataType, payload, payloadLen);
     } else if (type >= TypeDMRAudioBase && type < TypeDMREmbeddedData) {
-        uint8_t subType = static_cast<uint8_t>(type - TypeDMRAudioBase);
-        if (m_dmrAudioSink) m_dmrAudioSink(subType, payload, payloadLen);
+        // 3 concatenated 9-byte AMBE half-rate frames -- confirmed live,
+        // see this file's header comment. Anything else is unexpected
+        // (e.g. OptionLinearFrame's different framing, not requested
+        // here) -- logged, not guessed at.
+        if (payloadLen == 3 * dmr::AMBE_FRAME_SIZE) {
+            if (m_voiceRxSink)
+                m_voiceRxSink(payload, payload + dmr::AMBE_FRAME_SIZE, payload + 2 * dmr::AMBE_FRAME_SIZE);
+        } else {
+            std::fprintf(stderr, "dmr_rewind: DMRAudio unexpected length %zu (expected %zu)\n", payloadLen,
+                         3 * dmr::AMBE_FRAME_SIZE);
+        }
     } else {
         std::fprintf(stderr, "dmr_rewind: unhandled packet type %#06x (%zu bytes)\n", type, payloadLen);
     }

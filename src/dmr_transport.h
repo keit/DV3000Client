@@ -34,7 +34,21 @@ namespace dmr {
 // which is why it lives here rather than in dmr_client.h.
 extern volatile sig_atomic_t g_running;
 
-enum class LinkResult;
+// Shared by every backend's link(), so it lives here rather than in
+// dmr_client.h -- the RPT-flavored member names are Homebrew's own
+// handshake steps, but Success/Timeout (and, loosely, AuthRejected) are
+// generic enough for a non-Homebrew backend to reuse rather than
+// invent a parallel enum. See dmr_client.cpp's ToString() for the
+// Homebrew-specific wording of each.
+enum class LinkResult {
+    Success,
+    LoginRejected,  // DMR ID not recognised/permitted
+    AuthRejected,   // wrong password
+    ConfigRejected, // master rejected the declared config
+    Timeout,
+};
+
+const char *ToString(LinkResult result);
 
 class DmrTransport {
 public:

@@ -17,17 +17,6 @@
 
 namespace dmr {
 
-const char *ToString(LinkResult result) {
-    switch (result) {
-    case LinkResult::Success: return "success";
-    case LinkResult::LoginRejected: return "login rejected (DMR ID not recognised/permitted)";
-    case LinkResult::AuthRejected: return "authentication rejected (wrong password)";
-    case LinkResult::ConfigRejected: return "configuration rejected";
-    case LinkResult::Timeout: return "timed out";
-    }
-    return "unknown";
-}
-
 namespace {
 
 // Big-endian, matching both cdmrmmdvmprotocol.cpp's MAKEDWORD/MAKEWORD

@@ -32,15 +32,10 @@ namespace dmr {
 constexpr uint16_t DEFAULT_PORT = 62030;
 constexpr int KEEPALIVE_PERIOD_SEC = 10; // matches DMRMMDVM_KEEPALIVE_PERIOD
 
-enum class LinkResult {
-    Success,
-    LoginRejected,  // MSTNAK after RPTL -- DMR ID not recognised/permitted
-    AuthRejected,   // MSTNAK after RPTK -- wrong password
-    ConfigRejected, // MSTNAK after RPTC -- master rejected the declared config
-    Timeout,
-};
-
-const char *ToString(LinkResult result);
+// LinkResult and ToString() live in dmr_transport.h now -- shared with
+// any other DmrTransport backend. Homebrew-specific meaning of each
+// member: LoginRejected = MSTNAK after RPTL, AuthRejected = MSTNAK after
+// RPTK, ConfigRejected = MSTNAK after RPTC.
 
 // The RPTC packet's declared repeater info -- mostly cosmetic for a
 // hotspot-style connection (shown on the network's dashboard). Mostly

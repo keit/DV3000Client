@@ -9,34 +9,48 @@
 // Homebrew-side Software/Package ID pair DmrClient currently uses --
 // their recommended path for a new client going forward.
 //
-// Wire format confirmed against BrandMeister's own reference Go
-// implementation, github.com/BrandMeister/go-brandmeister (rewind/ and
-// dmr/ packages), including its unit tests' literal packet bytes -- not
-// guessed. Two things worth flagging for whoever picks this up next:
+// Confirmed working end to end against real BrandMeister (RX: heard a
+// live transmission from a Pi-Star hotspot; TX: see below), cross-checked
+// against three independent real clients: BrandMeister's own official
+// reference (github.com/BrandMeister/DigestPlay, ODMRTP branch) and two
+// community ones (github.com/BrandMeister/go-brandmeister,
+// github.com/abo4/pyspot_rx). Two real protocol details only found
+// through live testing, not documentation:
 //
-//  - Voice content: with the default Options (SuperHeader requested,
-//    LinearFrame NOT requested -- see Option below), voice arrives as
-//    DMRData sub-packets (VoiceHeader / VoiceFrameA-F / TerminatorLC)
-//    carrying the SAME on-air DMR burst content dmr_voice.h already
-//    knows how to build/parse for Homebrew (BPTC/Golay/Hamming FEC and
-//    all) -- just wrapped in Rewind's envelope instead of a DMRD packet.
-//    That's a genuine, unplanned code-reuse opportunity: going in, this
-//    was expected to be a much simpler, FEC-free wire format
-//    (OptionLinearFrame exists for exactly that, but isn't the default,
-//    and its exact byte layout isn't confirmed by anything read so far).
-//  - Not yet implemented here: actually decoding those DMRData sub-
-//    packets into AMBE frames, and wiring this into DmrTransport. This
-//    file is a first spike -- connect, authenticate, subscribe, and dump
-//    incoming SuperHeaders/DMRData/DMRAudio -- meant to be run against
-//    real BrandMeister (via odt_test.cpp) and cross-checked with a
-//    packet capture before going further, the same way Homebrew's real
-//    protocol quirks (RPTACK length matching, the Software/Package ID
-//    allowlist) were found.
+//  - VersionData's `service` byte must be SERVICE_OPEN_TERMINAL (0x21),
+//    not the generic "simple application" code (0x20) -- getting this
+//    wrong gets total silence back, not even a Challenge.
+//  - The RemoteID declared in the initial KeepAlive must be the caller's
+//    real DMR ID, not an arbitrary application ID -- an unrelated value
+//    passes the full challenge/response handshake but then gets silently
+//    dropped rather than subscribed. (setIdentity()'s remoteId parameter
+//    should always be the real DMR ID for this reason.)
+//
+// Voice content: with the default Options (SuperHeader requested,
+// LinearFrame not), voice is NOT the FEC-wrapped on-air burst format
+// dmr_voice.h builds for Homebrew, despite DMRData's VoiceHeader/
+// TerminatorLC sub-types looking like they'd carry that -- it's plain
+// AMBE instead, confirmed live: each DMRAudio packet is exactly 3
+// concatenated 9-byte AMBE+2 half-rate frames (27 bytes), matching
+// dmr::AMBE_FRAME_SIZE and DigestPlay's own MODE33_FRAME_SIZE*3. That's
+// simpler than Homebrew's framing, and is why setVoiceRxSink()/
+// sendVoiceFrame() here work directly with dmr_audio.h's existing
+// protocol-agnostic capture/playback threads.
 //
 // The outer envelope (the 18-byte header, and Configuration/Subscription/
-// SuperHeader payloads) is little-endian; the DMR burst content inside a
-// DMRData payload is the usual big-endian on-air DMR bit layout, same as
-// what dmr_voice.h builds for Homebrew.
+// SuperHeader payloads) is little-endian; DMRData's VoiceHeader/
+// TerminatorLC payloads use the usual big-endian on-air DMR field layout
+// (FLCO/FID/ServiceOptions/DestinationID/SourceID, plus 3 trailing bytes
+// that both this implementation and DigestPlay's reference leave as
+// zero on transmit and don't validate on receive).
+//
+// Two sequence counters, not one: DigestPlay's reference keeps a separate
+// counter for "real-time" packets (voice header/audio/terminator) from
+// the "routine" one (KeepAlive/Authentication/Subscription/Configuration),
+// selected by the RealTime1 flag bit -- replicated here as m_sequence /
+// m_sequenceRealTime.
+
+#include "dmr_transport.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -48,14 +62,10 @@
 namespace dmr::rewind {
 
 // 54006, confirmed against BrandMeister's own "Network Ports" wiki page
-// (via search snippets -- the page itself is behind an anti-bot gate I
-// couldn't get past directly) as the Open DMR Terminal port, distinct
-// from 54005 (Simple External Application/SAP -- a different, separately
-// admin-provisioned protocol sharing the same underlying Rewind
-// envelope). go-brandmeister's own DefaultPort constant is 54005, which
-// makes sense given that library frames itself as an SEA client -- worth
-// double-checking against BrandMeister's SelfCare panel or support if
-// this doesn't connect.
+// (via search snippets -- the page itself is behind an anti-bot gate) as
+// the Open DMR Terminal port, distinct from 54005 (Simple External
+// Application/SAP -- a different, separately admin-provisioned protocol
+// sharing the same underlying Rewind envelope).
 constexpr uint16_t DEFAULT_PORT = 54006;
 constexpr int KEEPALIVE_INTERVAL_SEC = 5; // matches go-brandmeister's DefaultKeepAliveInterval
 constexpr int TIMEOUT_SEC = 15;           // matches go-brandmeister's DefaultTimeout
@@ -63,21 +73,13 @@ constexpr size_t CALL_LENGTH = 10;
 
 enum class SessionType : uint32_t { PrivateVoice = 5, GroupVoice = 7 };
 
-// VersionData's `service` byte -- confirmed against BrandMeister's own
-// official reference client (github.com/BrandMeister/DigestPlay, ODMRTP
-// branch, RewindClient.c's CreateRewindContext): REWIND_SERVICE_OPEN_TERMINAL
-// = REWIND_ROLE_APPLICATION(0x20) + 1 = 0x21. Getting this wrong (0x20,
-// go-brandmeister's generic "simple application" service code) is why an
-// earlier version of this client got total silence back from a real
-// master -- no Challenge, nothing -- across two different masters: the
-// server appears to reject an unrecognised service type before auth is
-// ever evaluated, rather than replying with any kind of error.
+// VersionData's `service` byte -- see this file's header comment.
 constexpr uint8_t SERVICE_OPEN_TERMINAL = 0x21;
 
 // Client-declared feature options, sent in a Configuration packet.
 enum Option : uint32_t {
     OptionSuperHeader = 1u << 0, // ask the server to send SuperHeader metadata
-    OptionLinearFrame = 1u << 1, // ask for FEC-free AMBE instead of full on-air bursts -- NOT used here, see file header
+    OptionLinearFrame = 1u << 1, // an alternative voice framing, not used here -- see file header
 };
 
 // Packet type constants (ClassRewindControl=0x0000, ClassApplication=0x0900).
@@ -88,12 +90,19 @@ enum PacketType : uint16_t {
     TypeAuthentication = 0x0003,
     TypeConfiguration = 0x0900,
     TypeSubscription = 0x0901,
-    TypeDMRDataBase = 0x0910,  // + (dataType & 0x0f) -- PI header/voice header/terminator LC/voice frames A-F/...
-    TypeDMRAudioBase = 0x0920, // + subtype -- only used if OptionLinearFrame is requested
+    TypeDMRDataBase = 0x0910,  // + dataType -- 1=VoiceHeader, 2=TerminatorLC, ...
+    TypeDMRAudioBase = 0x0920, // + subtype -- the actual voice payload, see file header
     TypeDMREmbeddedData = 0x0927,
     TypeSuperHeader = 0x0928,
     TypeFailureCode = 0x0929,
 };
+
+// DMRData sub-types relevant to voice (see go-brandmeister's dmr/type.go
+// for the full list, including non-voice ones this client ignores).
+constexpr uint8_t DMR_DATA_VOICE_HEADER = 1;
+constexpr uint8_t DMR_DATA_TERMINATOR_LC = 2;
+
+constexpr uint16_t FlagRealTime1 = 1u << 0;
 
 // Metadata BrandMeister sends once per transmission (if OptionSuperHeader
 // was requested) -- notably including plaintext callsigns, something
@@ -106,45 +115,66 @@ struct SuperHeaderInfo {
     std::string targetCall;
 };
 
-class RewindClient {
+// Implements dmr::DmrTransport so callers (dmr_audio.h's
+// captureThread/playbackThread, and eventually the GUI) can use this
+// interchangeably with the Homebrew DmrClient. Connection setup (host,
+// identity, options) stays outside the interface, same reasoning as
+// DmrClient -- see dmr_transport.h.
+class RewindClient : public DmrTransport {
 public:
     bool open(const std::string &host, uint16_t port = DEFAULT_PORT);
 
+    // remoteId MUST be the caller's real DMR ID -- see file header.
     // password is BrandMeister's "Hotspot Security" password from
     // SelfCare -- the same one an existing Homebrew/MMDVM connection
-    // already uses, not the account password (confirmed against
-    // VoxDMR's own setup docs, which use this same protocol).
+    // already uses, not the account password.
     void setIdentity(uint32_t remoteId, const std::string &password, const std::string &description);
     void setOptions(uint32_t options) { m_options = options; }
 
     // Handshake: send an initial KeepAlive, wait for the server's
     // Challenge, respond with SHA256(challenge ++ password), then wait
-    // for the server's Configuration ack (which is what marks a
-    // connection authenticated, per go-brandmeister's own client).
-    // Retries the initial KeepAlive a few times, matching
-    // DmrClient::link()'s pattern, since a plain UDP send can silently
-    // vanish.
-    bool link();
+    // for either a Configuration or a plain KeepAlive back (real clients
+    // differ on which marks success -- see dmr_rewind.cpp's comment).
+    // Resends KeepAlive every iteration while waiting, matching
+    // DigestPlay's reference client.
+    LinkResult link() override;
 
     void subscribe(uint32_t targetId, SessionType type);
 
-    void disconnect();
+    void disconnect() override;
 
     void setSuperHeaderSink(std::function<void(const SuperHeaderInfo &)> sink);
-    // dataType is the DMR PDU type nibble (VoiceHeader=1, TerminatorLC=2,
-    // VoiceFrameA..F=0x0A..0x0F, etc. -- see go-brandmeister's dmr/type.go)
-    // -- raw and unparsed for now, see this file's header comment.
+    // dataType is the DMR PDU type nibble (see DMR_DATA_* above and
+    // go-brandmeister's dmr/type.go for the full list) -- raw and
+    // unparsed; mainly useful for diagnostics since the fields that
+    // matter (addressing, voice) are already surfaced via
+    // setHeaderSink()/setSuperHeaderSink()/setVoiceRxSink().
     void setDmrDataSink(std::function<void(uint8_t dataType, const uint8_t *data, size_t len)> sink);
-    // Only fires if OptionLinearFrame was requested (not the default here).
-    void setDmrAudioSink(std::function<void(uint8_t subType, const uint8_t *data, size_t len)> sink);
+    // Fires once per incoming transmission, from the SuperHeader (always
+    // requested -- see m_options) rather than the DMRData VoiceHeader,
+    // since SuperHeader arrives once per call while VoiceHeader is
+    // resent 3x and would otherwise fire this 3 times per transmission.
+    void setHeaderSink(std::function<void(uint32_t srcId, uint32_t dstId)> sink) override;
+    // Called with each transmission's 3 AMBE half-rate frames, split out
+    // of a 27-byte DMRAudio packet -- see file header.
+    void setVoiceRxSink(std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> sink) override;
+
+    // Live-mode TX. streamId is accepted only for DmrTransport
+    // conformance -- Rewind has no stream-ID concept on the wire (a
+    // transmission is just "whatever VoiceHeader was most recently sent
+    // on this authenticated session"), so it's otherwise unused.
+    uint32_t beginVoiceTx(uint32_t dstId, dmr::CallType callType) override;
+    void sendVoiceFrame(uint32_t streamId, const uint8_t ambe0[dmr::AMBE_FRAME_SIZE],
+                         const uint8_t ambe1[dmr::AMBE_FRAME_SIZE], const uint8_t ambe2[dmr::AMBE_FRAME_SIZE]) override;
+    void endVoiceTx(uint32_t streamId) override;
 
     // Keepalive/receive loop; returns when dmr::g_running is cleared or
     // the server goes quiet for longer than TIMEOUT_SEC.
-    void run();
+    void run() override;
 
 private:
     ssize_t recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs);
-    void sendPacket(uint16_t type, const std::vector<uint8_t> &payload);
+    void sendPacket(uint16_t type, const std::vector<uint8_t> &payload, uint16_t flags = 0);
     void sendKeepAlive();
     void sendConfiguration();
     void handlePacket(const uint8_t *data, size_t len);
@@ -154,12 +184,18 @@ private:
     std::string m_password;
     std::string m_description;
     uint32_t m_options = OptionSuperHeader;
-    uint32_t m_sequence = 0;
+    uint32_t m_sequence = 0;         // routine packets (KeepAlive, Authentication, Subscription, Configuration)
+    uint32_t m_sequenceRealTime = 0; // voice header/audio/terminator -- see file header
     bool m_authenticated = false;
+
+    uint32_t m_txDstId = 0;
+    bool m_txPrivateCall = false;
+    uint32_t m_txStreamCounter = 0;
 
     std::function<void(const SuperHeaderInfo &)> m_superHeaderSink;
     std::function<void(uint8_t, const uint8_t *, size_t)> m_dmrDataSink;
-    std::function<void(uint8_t, const uint8_t *, size_t)> m_dmrAudioSink;
+    std::function<void(uint32_t, uint32_t)> m_headerSink;
+    std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)> m_voiceRxSink;
 };
 
 } // namespace dmr::rewind

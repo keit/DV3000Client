@@ -17,8 +17,6 @@
 
 namespace dmr {
 
-volatile sig_atomic_t g_running = 1;
-
 const char *ToString(LinkResult result) {
     switch (result) {
     case LinkResult::Success: return "success";

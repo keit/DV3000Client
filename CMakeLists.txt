@@ -73,11 +73,19 @@ add_library(dmr_fec
 )
 target_include_directories(dmr_fec PUBLIC third_party/xlxd/src)
 
+# The DmrTransport interface and the g_running flag every backend shares
+# (dmr_transport.h/cpp) -- deliberately its own tiny library, independent
+# of any one wire protocol, so a non-Homebrew backend (dmr_rewind below)
+# doesn't need to link the Homebrew client just to get a shared global.
+add_library(dmr_transport
+  src/dmr_transport.cpp
+)
+
 add_library(dmr_client
   src/dmr_client.cpp
   src/dmr_voice.cpp
 )
-target_link_libraries(dmr_client sha256 dmr_fec)
+target_link_libraries(dmr_client dmr_transport sha256 dmr_fec)
 
 add_executable(dmr_test
   src/dmr_test.cpp
@@ -85,12 +93,28 @@ add_executable(dmr_test
 target_link_libraries(dmr_test dmr_client)
 
 # DMR's own capture/playback threads (dmr_audio.h/cpp) reuse dextra_audio's
-# AlsaPcm/PcmQueue (protocol-agnostic ALSA glue) but need dmr_client for
-# DmrClient and the voice-burst framing constants.
+# AlsaPcm/PcmQueue (protocol-agnostic ALSA glue) and only depend on the
+# generic DmrTransport interface, not any one wire protocol -- so both
+# DmrClient (Homebrew) and RewindClient (Open DMR Terminal) callers can
+# use captureThread/makeVoiceRxHandler/playbackThread as-is.
 add_library(dmr_audio
   src/dmr_audio.cpp
 )
-target_link_libraries(dmr_audio dmr_client dextra_audio)
+target_link_libraries(dmr_audio dmr_transport dextra_audio)
+
+# BrandMeister's Open DMR Terminal (Rewind) protocol -- see dmr_rewind.h's
+# header comment. Not yet a DmrTransport implementation (spike stage,
+# driven by odt_test below); shares sha256 with dmr_client for its
+# challenge/response auth.
+add_library(dmr_rewind
+  src/dmr_rewind.cpp
+)
+target_link_libraries(dmr_rewind dmr_transport sha256)
+
+add_executable(odt_test
+  src/odt_test.cpp
+)
+target_link_libraries(odt_test dmr_rewind dmr_audio)
 
 find_package(Qt6 QUIET COMPONENTS Widgets)
 if(Qt6_FOUND)
@@ -111,7 +135,7 @@ if(Qt6_FOUND)
     src/gui/talkgroupdirectory.cpp
     src/gui/talkgrouplistmodel.cpp
   )
-  target_link_libraries(dv3000client_gui dextra_audio dmr_audio xlx_directory http_get Qt6::Widgets ${ALSA_LIBRARIES})
+  target_link_libraries(dv3000client_gui dextra_audio dmr_audio dmr_client xlx_directory http_get Qt6::Widgets ${ALSA_LIBRARIES})
   target_include_directories(dv3000client_gui PRIVATE src ${ALSA_INCLUDE_DIRS})
 else()
   message(STATUS "Qt6 Widgets not found -- skipping dv3000client_gui")

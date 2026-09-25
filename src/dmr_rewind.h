@@ -56,6 +56,7 @@
 #include "dmr_transport.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -160,10 +161,13 @@ public:
     // matter (addressing, voice) are already surfaced via
     // setHeaderSink()/setSuperHeaderSink()/setVoiceRxSink().
     void setDmrDataSink(std::function<void(uint8_t dataType, const uint8_t *data, size_t len)> sink);
-    // Fires once per incoming transmission, from the SuperHeader (always
-    // requested -- see m_options) rather than the DMRData VoiceHeader,
-    // since SuperHeader arrives once per call while VoiceHeader is
-    // resent 3x and would otherwise fire this 3 times per transmission.
+    // Fires once per incoming transmission. Sourced from the DMRData
+    // VoiceHeader (which carries the source and destination IDs), NOT
+    // from SuperHeader -- confirmed live that this server never sends a
+    // SuperHeader even though it's requested, so relying on it left
+    // Last Heard permanently empty. VoiceHeader is resent 3x per call,
+    // so notifyHeader() dedupes; a SuperHeader, if one ever does arrive,
+    // goes through the same dedupe.
     void setHeaderSink(std::function<void(uint32_t srcId, uint32_t dstId)> sink) override;
     // Called with each transmission's 3 AMBE half-rate frames, split out
     // of a 27-byte DMRAudio packet -- see file header.
@@ -188,6 +192,7 @@ private:
     void sendKeepAlive();
     void sendConfiguration();
     void handlePacket(const uint8_t *data, size_t len);
+    void notifyHeader(uint32_t srcId, uint32_t dstId);
 
     int m_fd = -1;
     uint32_t m_dmrId = 0;
@@ -206,6 +211,11 @@ private:
     uint32_t m_txDstId = 0;
     bool m_txPrivateCall = false;
     uint32_t m_txStreamCounter = 0;
+
+    // notifyHeader()'s dedupe state -- network thread only.
+    bool m_haveHeader = false;
+    uint32_t m_lastHeaderSrc = 0, m_lastHeaderDst = 0;
+    std::chrono::steady_clock::time_point m_lastActivity;
 
     std::function<void(const SuperHeaderInfo &)> m_superHeaderSink;
     std::function<void(uint8_t, const uint8_t *, size_t)> m_dmrDataSink;

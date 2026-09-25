@@ -269,6 +269,22 @@ LinkResult RewindClient::link() {
     return LinkResult::Timeout;
 }
 
+void RewindClient::notifyHeader(uint32_t srcId, uint32_t dstId) {
+    auto now = std::chrono::steady_clock::now();
+    // The same call's header is resent 3x back to back (and possibly
+    // again as a SuperHeader) -- only the first should reach the sink.
+    // A different (src, dst), a terminator, or a 3s gap with no header or
+    // audio starts a new call.
+    bool sameCall = m_haveHeader && srcId == m_lastHeaderSrc && dstId == m_lastHeaderDst &&
+                    now - m_lastActivity < std::chrono::seconds(3);
+    m_lastActivity = now;
+    if (sameCall) return;
+    m_haveHeader = true;
+    m_lastHeaderSrc = srcId;
+    m_lastHeaderDst = dstId;
+    if (m_headerSink) m_headerSink(srcId, dstId);
+}
+
 void RewindClient::handlePacket(const uint8_t *data, size_t len) {
     if (len < HEADER_LENGTH || std::memcmp(data, SIGN, 8) != 0) return;
     uint16_t type = readU16LE(data + 8);
@@ -307,15 +323,25 @@ void RewindClient::handlePacket(const uint8_t *data, size_t len) {
         // SuperHeader arrives once per transmission, unlike the DMRData
         // VoiceHeader (sent 3x) -- the better source for a "last heard"
         // signal that should fire exactly once per call.
-        if (m_headerSink) m_headerSink(info.source, info.target);
+        notifyHeader(info.source, info.target);
     } else if (type >= TypeDMRDataBase && type < TypeDMRAudioBase) {
         uint8_t dataType = static_cast<uint8_t>(type & 0x0f);
+        if (dataType == DMR_DATA_VOICE_HEADER && payloadLen >= 9) {
+            // FullLC: FLCO, FID, ServiceOptions, DestinationID(3 BE),
+            // SourceID(3 BE) -- same layout beginVoiceTx() builds.
+            uint32_t dst = (payload[3] << 16) | (payload[4] << 8) | payload[5];
+            uint32_t src = (payload[6] << 16) | (payload[7] << 8) | payload[8];
+            notifyHeader(src, dst);
+        } else if (dataType == DMR_DATA_TERMINATOR_LC) {
+            m_haveHeader = false;
+        }
         if (m_dmrDataSink) m_dmrDataSink(dataType, payload, payloadLen);
     } else if (type >= TypeDMRAudioBase && type < TypeDMREmbeddedData) {
         // 3 concatenated 9-byte AMBE half-rate frames -- confirmed live,
         // see this file's header comment. Anything else is unexpected
         // (e.g. OptionLinearFrame's different framing, not requested
         // here) -- logged, not guessed at.
+        m_lastActivity = std::chrono::steady_clock::now();
         if (payloadLen == 3 * dmr::AMBE_FRAME_SIZE) {
             if (m_voiceRxSink)
                 m_voiceRxSink(payload, payload + dmr::AMBE_FRAME_SIZE, payload + 2 * dmr::AMBE_FRAME_SIZE);

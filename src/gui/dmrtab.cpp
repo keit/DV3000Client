@@ -591,6 +591,7 @@ void DmrTab::onConnectFinished(bool ok, QString error) {
 
 void DmrTab::startDisconnect() {
     setBusy(true, "Disconnecting...");
+    m_unsubscribeButton->setEnabled(false); // see stopSessionBlocking()
     if (m_worker.joinable()) m_worker.join();
     m_worker = std::thread(&DmrTab::disconnectWorker, this);
 }
@@ -630,6 +631,15 @@ void DmrTab::stopSessionBlocking() {
     if (m_captureThread.joinable()) m_captureThread.join();
     if (m_playbackThread.joinable()) m_playbackThread.join();
     if (m_networkThread.joinable()) m_networkThread.join();
+    // Open DMR Terminal only: drop the subscription explicitly rather
+    // than relying on the server to clean it up after Close. Read here
+    // without the GUI thread's involvement -- startDisconnect() disables
+    // the Unsubscribe button first, and closeEvent() runs on the GUI
+    // thread itself, so nothing else touches these meanwhile.
+    if (m_rewindClient && m_subscribedTalkgroup != 0) {
+        m_rewindClient->unsubscribe(m_subscribedTalkgroup, m_subscribedPrivate ? dmr::rewind::SessionType::PrivateVoice
+                                                                                 : dmr::rewind::SessionType::GroupVoice);
+    }
     if (m_client) m_client->disconnect();
     m_capture.close();
     m_playback.close();

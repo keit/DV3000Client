@@ -82,8 +82,8 @@ bool RewindClient::open(const std::string &host, uint16_t port) {
     return true;
 }
 
-void RewindClient::setIdentity(uint32_t remoteId, const std::string &password, const std::string &description) {
-    m_remoteId = remoteId;
+void RewindClient::setIdentity(uint32_t dmrId, const std::string &password, const std::string &description) {
+    m_dmrId = dmrId;
     m_password = password;
     m_description = description;
 }
@@ -105,26 +105,26 @@ ssize_t RewindClient::recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs) {
 void RewindClient::sendPacket(uint16_t type, const std::vector<uint8_t> &payload, uint16_t flags) {
     // Two independent sequence counters, selected by the RealTime1 flag
     // bit -- see this file's header comment.
-    uint32_t &sequence = (flags & FlagRealTime1) ? m_sequenceRealTime : m_sequence;
+    std::atomic<uint32_t> &sequence = (flags & FlagRealTime1) ? m_sequenceRealTime : m_sequence;
 
     std::vector<uint8_t> pkt;
     pkt.insert(pkt.end(), SIGN, SIGN + 8);
     appendU16LE(pkt, type);
     appendU16LE(pkt, flags);
-    appendU32LE(pkt, ++sequence);
+    appendU32LE(pkt, sequence.fetch_add(1) + 1);
     appendU16LE(pkt, static_cast<uint16_t>(payload.size()));
     pkt.insert(pkt.end(), payload.begin(), payload.end());
     ::send(m_fd, pkt.data(), pkt.size(), 0);
 }
 
 void RewindClient::sendKeepAlive() {
-    // VersionData: RemoteID(u32 LE) + Service(u8) + Description (exactly
+    // VersionData: terminal DMR ID(u32 LE) + Service(u8) + Description (exactly
     // as many bytes as the string needs -- confirmed against
     // BrandMeister/DigestPlay's RewindClient.c, where
     // RewindVersionData::description is a flexible array member, not a
     // fixed/padded field).
     std::vector<uint8_t> payload;
-    appendU32LE(payload, m_remoteId);
+    appendU32LE(payload, m_dmrId);
     payload.push_back(SERVICE_OPEN_TERMINAL);
     payload.insert(payload.end(), m_description.begin(), m_description.end());
     sendPacket(TypeKeepAlive, payload);
@@ -142,6 +142,15 @@ void RewindClient::subscribe(uint32_t targetId, SessionType type) {
     appendU32LE(payload, targetId);
     sendPacket(TypeSubscription, payload);
     std::fprintf(stderr, "dmr_rewind: subscribed to %u (%s)\n", targetId,
+                 type == SessionType::GroupVoice ? "group" : "private");
+}
+
+void RewindClient::unsubscribe(uint32_t targetId, SessionType type) {
+    std::vector<uint8_t> payload;
+    appendU32LE(payload, static_cast<uint32_t>(type));
+    appendU32LE(payload, targetId);
+    sendPacket(TypeCancelling, payload);
+    std::fprintf(stderr, "dmr_rewind: unsubscribed from %u (%s)\n", targetId,
                  type == SessionType::GroupVoice ? "group" : "private");
 }
 
@@ -183,9 +192,9 @@ uint32_t RewindClient::beginVoiceTx(uint32_t dstId, dmr::CallType callType) {
     lc[3] = static_cast<uint8_t>(dstId >> 16);
     lc[4] = static_cast<uint8_t>(dstId >> 8);
     lc[5] = static_cast<uint8_t>(dstId);
-    lc[6] = static_cast<uint8_t>(m_remoteId >> 16);
-    lc[7] = static_cast<uint8_t>(m_remoteId >> 8);
-    lc[8] = static_cast<uint8_t>(m_remoteId);
+    lc[6] = static_cast<uint8_t>(m_dmrId >> 16);
+    lc[7] = static_cast<uint8_t>(m_dmrId >> 8);
+    lc[8] = static_cast<uint8_t>(m_dmrId);
 
     // Sent 3 times for reliability, matching DigestPlay's own transmit.
     for (int i = 0; i < 3; i++) sendPacket(TypeDMRDataBase + DMR_DATA_VOICE_HEADER, lc, FlagRealTime1);
@@ -275,9 +284,13 @@ void RewindClient::handlePacket(const uint8_t *data, size_t len) {
         // Server's own Configuration echo -- nothing to do (Options are
         // declared once, right after link() succeeds).
     } else if (type == TypeSubscription) {
-        // Confirms a subscribe()/unsubscribe() request went through --
-        // fire-and-forget from this client's side, so just log it.
+        // Confirms a subscribe() request went through -- fire-and-forget
+        // from this client's side, so just log it.
         std::fprintf(stderr, "dmr_rewind: subscription confirmed\n");
+    } else if (type == TypeCancelling) {
+        // Confirms an unsubscribe() request -- same reasoning as above,
+        // but the server echoes it via this type, not TypeSubscription.
+        std::fprintf(stderr, "dmr_rewind: unsubscribe confirmed\n");
     } else if (type == TypeSuperHeader) {
         constexpr size_t SUPER_HEADER_LENGTH = 12 + 2 * CALL_LENGTH;
         if (payloadLen < SUPER_HEADER_LENGTH) {

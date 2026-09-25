@@ -134,7 +134,7 @@ if(Qt6_FOUND)
     src/gui/talkgroupdirectory.cpp
     src/gui/talkgrouplistmodel.cpp
   )
-  target_link_libraries(dv3000client_gui dextra_audio dmr_audio dmr_client xlx_directory http_get Qt6::Widgets ${ALSA_LIBRARIES})
+  target_link_libraries(dv3000client_gui dextra_audio dmr_audio dmr_client dmr_rewind xlx_directory http_get Qt6::Widgets ${ALSA_LIBRARIES})
   target_include_directories(dv3000client_gui PRIVATE src ${ALSA_INCLUDE_DIRS})
 else()
   message(STATUS "Qt6 Widgets not found -- skipping dv3000client_gui")

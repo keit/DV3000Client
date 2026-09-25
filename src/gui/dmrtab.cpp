@@ -20,6 +20,7 @@
 #include <QPushButton>
 #include <QShortcut>
 #include <QSplitter>
+#include <QTimer>
 #include <QStandardPaths>
 #include <QTableWidget>
 #include <QTime>
@@ -124,6 +125,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
         m_talkgroupCombo->lineEdit()->setPlaceholderText(
             privateCall ? "Target DMR ID, e.g. 9990 (BrandMeister Parrot echo test)"
                         : "Talkgroup, e.g. 91 (World-wide) or a number/name to search...");
+        // Deliberately not resubscribing here -- see resubscribeIfOpenTerminal().
     });
 
     m_connectButton = new QPushButton("Connect");
@@ -147,7 +149,13 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
         // directly). Stays showing this after PTT releases -- see
         // m_activeTalkgroupLabel's comment for why that's the right
         // "current TG" to keep displayed.
-        if (sending) setActiveSubscription(currentTalkgroupId(), m_privateCall.load());
+        if (sending) {
+            setActiveSubscription(currentTalkgroupId(), m_privateCall.load());
+            // Open DMR Terminal only -- PTT is an explicit action, so
+            // (unlike typing in the combo) it's a reasonable trigger to
+            // also make sure RX follows whatever was just keyed up to.
+            resubscribeIfOpenTerminal();
+        }
     });
 
     m_statusLabel = new QLabel("Disconnected.");
@@ -160,6 +168,11 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     // clip instead of dictating the panel's width.
     m_statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     m_activeTalkgroupLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+
+    m_unsubscribeButton = new QPushButton("Unsubscribe");
+    m_unsubscribeButton->setEnabled(false);
+    m_unsubscribeButton->setFixedWidth(m_unsubscribeButton->sizeHint().width());
+    connect(m_unsubscribeButton, &QPushButton::clicked, this, &DmrTab::unsubscribeCurrent);
 
     m_addFavouriteButton = new QPushButton("Add to favourites");
     m_addFavouriteButton->setEnabled(false);
@@ -225,6 +238,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     layout->addLayout(tgRow);
     auto *subscriptionRow = new QHBoxLayout;
     subscriptionRow->addWidget(m_activeTalkgroupLabel, 1);
+    subscriptionRow->addWidget(m_unsubscribeButton);
     subscriptionRow->addWidget(m_addFavouriteButton);
     layout->addLayout(subscriptionRow);
     layout->addLayout(bottomRow);
@@ -304,6 +318,7 @@ void DmrTab::setActiveSubscription(uint32_t id, bool privateCall) {
     m_activeTalkgroupLabel->setText(
         "Current subscription: " + (none ? QString("None") : displayTalkgroup(id) + (privateCall ? " (private call)" : "")));
     updateAddFavouriteEnabled();
+    updateUnsubscribeButtonEnabled();
 }
 
 void DmrTab::updateAddFavouriteEnabled() {
@@ -372,6 +387,28 @@ uint32_t DmrTab::currentTalkgroupId() const {
     return text.mid(start, i - start).toUInt();
 }
 
+void DmrTab::resubscribeIfOpenTerminal() {
+    if (!m_rewindClient) return;
+    uint32_t id = currentTalkgroupId();
+    if (id == 0) return;
+    bool privateCall = m_privateCall.load();
+    if (id == m_subscribedTalkgroup && privateCall == m_subscribedPrivate) return;
+
+    if (m_subscribedTalkgroup != 0) {
+        m_rewindClient->unsubscribe(m_subscribedTalkgroup, m_subscribedPrivate ? dmr::rewind::SessionType::PrivateVoice
+                                                                                 : dmr::rewind::SessionType::GroupVoice);
+    }
+    m_rewindClient->subscribe(id, privateCall ? dmr::rewind::SessionType::PrivateVoice
+                                               : dmr::rewind::SessionType::GroupVoice);
+    m_subscribedTalkgroup = id;
+    m_subscribedPrivate = privateCall;
+    // Unlike Homebrew (where this label tracks the last-transmitted TG,
+    // since that's the only thing that actually determines RX there),
+    // Open DMR Terminal's subscription genuinely is the current RX
+    // target -- update the label to match.
+    setActiveSubscription(id, privateCall);
+}
+
 void DmrTab::onConnectClicked() {
     if (m_busy) return;
     if (m_connected) {
@@ -382,8 +419,12 @@ void DmrTab::onConnectClicked() {
 }
 
 void DmrTab::startConnect() {
-    if (m_settings.dmrServer.isEmpty()) {
-        QMessageBox::information(this, "No DMR server", "Set a DMR server (host:port) in Settings first.");
+    bool openTerminal = m_settings.dmrProtocol == "opendmr";
+    QString server = openTerminal ? m_settings.dmrOpenTerminalServer : m_settings.dmrServer;
+    if (server.isEmpty()) {
+        QMessageBox::information(this, "No DMR server",
+                                  QString("Set a %1 server (host:port) in Settings first.")
+                                      .arg(openTerminal ? "Open DMR Terminal" : "DMR"));
         return;
     }
     if (m_settings.dmrId == 0) {
@@ -397,15 +438,23 @@ void DmrTab::startConnect() {
 
     m_connectButton->setStyleSheet("");
     m_statusLabel->setStyleSheet(kStatusLabelStyle);
-    setBusy(true, "Connecting to " + m_settings.dmrServer + "...");
+    setBusy(true, "Connecting to " + server + "...");
+
+    // Captured here (GUI thread) rather than read from connectWorker --
+    // the combo box/checkbox aren't safe to touch off the GUI thread.
+    // Only used for Open DMR Terminal's initial subscribe(); Homebrew
+    // ignores these.
+    uint32_t initialTalkgroup = currentTalkgroupId();
+    bool initialPrivate = m_privateCall.load();
 
     if (m_worker.joinable()) m_worker.join();
-    m_worker = std::thread(&DmrTab::connectWorker, this, m_settings);
+    m_worker = std::thread(&DmrTab::connectWorker, this, m_settings, initialTalkgroup, initialPrivate);
 }
 
-void DmrTab::connectWorker(GuiSettings settings) {
+void DmrTab::connectWorker(GuiSettings settings, uint32_t initialTalkgroup, bool initialPrivate) {
     QString error;
     bool ok = true;
+    bool openTerminal = settings.dmrProtocol == "opendmr";
 
     m_dv = std::make_unique<SerialDV::DVController>();
     if (!m_dv->open(settings.thumbdvDevice.toStdString())) {
@@ -423,61 +472,90 @@ void DmrTab::connectWorker(GuiSettings settings) {
         ok = false;
     }
 
-    QString host = settings.dmrServer;
-    uint16_t port = dmr::DEFAULT_PORT;
+    QString server = openTerminal ? settings.dmrOpenTerminalServer : settings.dmrServer;
+    QString host = server;
+    uint16_t port = openTerminal ? dmr::rewind::DEFAULT_PORT : dmr::DEFAULT_PORT;
     int colonIndex = host.lastIndexOf(':');
     if (colonIndex >= 0) {
         port = static_cast<uint16_t>(host.mid(colonIndex + 1).toUInt());
         host = host.left(colonIndex);
     }
 
-    if (ok) {
-        m_client = std::make_unique<dmr::DmrClient>();
-        if (!m_client->open(host.toStdString(), port)) {
-            error = "Failed to open network socket to " + settings.dmrServer;
-            ok = false;
-        }
-    }
-
-    if (ok) {
-        dmr::RepeaterConfig config;
-        config.callsign = settings.callsign.toStdString();
-        config.colorCode = settings.dmrColorCode;
-        config.timeSlot = settings.dmrTimeSlot == 1 ? dmr::TimeSlot::Slot1 : dmr::TimeSlot::Slot2;
-        config.description = settings.dmrDescription.toStdString();
-        config.url = settings.dmrUrl.toStdString();
-        auto freqHz = static_cast<uint32_t>(settings.dmrFrequencyMhz * 1000000.0);
-        config.rxFrequencyHz = freqHz;
-        config.txFrequencyHz = freqHz; // simplex -- see settings.h's dmrFrequencyMhz comment
-        config.latitude = static_cast<float>(settings.dmrLatitude);
-        config.longitude = static_cast<float>(settings.dmrLongitude);
-        config.location = settings.dmrLocation.toStdString();
-        // 9-digit repeater ID (dmrId + 2-digit suffix) when a suffix is set,
-        // so this instance can run alongside another client under the same
-        // DMR ID -- see GuiSettings::dmrIdSuffix. Blank/invalid = plain ID.
-        uint32_t repeaterId = settings.dmrId;
-        if (settings.dmrIdSuffix.size() == 2) repeaterId = settings.dmrId * 100 + settings.dmrIdSuffix.toUInt();
-        std::fprintf(stderr, "dmrtab: repeater ID %u (DMR ID %u%s)\n", repeaterId, settings.dmrId,
-                     repeaterId == settings.dmrId ? "" : " + suffix");
-        m_client->setIdentity(settings.dmrId, settings.dmrPassword.toStdString(), config, repeaterId);
-
-        m_client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_dv.get(), &m_rxQueue));
+    // headerSink/voiceRxSink are set identically either way, through the
+    // shared DmrTransport interface -- only setup (open/identity/link)
+    // differs enough between the two protocols to need its own branch.
+    auto headerSink = [this](uint32_t srcId, uint32_t dstId) {
         // Runs on the network thread once client->run() starts -- marshal
         // to the GUI thread rather than touching widgets directly here.
-        m_client->setHeaderSink([this](uint32_t srcId, uint32_t dstId) {
-            QMetaObject::invokeMethod(
-                this, [this, srcId, dstId]() { onHeaderReceived(srcId, dstId); }, Qt::QueuedConnection);
-        });
+        QMetaObject::invokeMethod(
+            this, [this, srcId, dstId]() { onHeaderReceived(srcId, dstId); }, Qt::QueuedConnection);
+    };
 
-        dmr::LinkResult result = m_client->link();
-        if (result != dmr::LinkResult::Success) {
-            error = QString("Master rejected the connection: %1").arg(dmr::ToString(result));
+    dmr::LinkResult result = dmr::LinkResult::Timeout;
+
+    if (ok && openTerminal) {
+        auto client = std::make_unique<dmr::rewind::RewindClient>();
+        if (!client->open(host.toStdString(), port)) {
+            error = "Failed to open network socket to " + server;
             ok = false;
+        } else {
+            client->setIdentity(settings.dmrId, settings.dmrPassword.toStdString(), "DV3000Client");
+            client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_dv.get(), &m_rxQueue));
+            client->setHeaderSink(headerSink);
+            result = client->link();
+            if (result != dmr::LinkResult::Success) {
+                error = QString("Master rejected the connection: %1").arg(dmr::ToString(result));
+                ok = false;
+            } else if (initialTalkgroup != 0) {
+                client->subscribe(initialTalkgroup, initialPrivate ? dmr::rewind::SessionType::PrivateVoice
+                                                                     : dmr::rewind::SessionType::GroupVoice);
+                m_subscribedTalkgroup = initialTalkgroup;
+                m_subscribedPrivate = initialPrivate;
+            }
+            m_rewindClient = client.get();
+            m_client = std::move(client);
+        }
+    } else if (ok) {
+        auto client = std::make_unique<dmr::DmrClient>();
+        if (!client->open(host.toStdString(), port)) {
+            error = "Failed to open network socket to " + server;
+            ok = false;
+        } else {
+            dmr::RepeaterConfig config;
+            config.callsign = settings.callsign.toStdString();
+            config.colorCode = settings.dmrColorCode;
+            config.timeSlot = settings.dmrTimeSlot == 1 ? dmr::TimeSlot::Slot1 : dmr::TimeSlot::Slot2;
+            config.description = settings.dmrDescription.toStdString();
+            config.url = settings.dmrUrl.toStdString();
+            auto freqHz = static_cast<uint32_t>(settings.dmrFrequencyMhz * 1000000.0);
+            config.rxFrequencyHz = freqHz;
+            config.txFrequencyHz = freqHz; // simplex -- see settings.h's dmrFrequencyMhz comment
+            config.latitude = static_cast<float>(settings.dmrLatitude);
+            config.longitude = static_cast<float>(settings.dmrLongitude);
+            config.location = settings.dmrLocation.toStdString();
+            // 9-digit repeater ID (dmrId + 2-digit suffix) when a suffix is
+            // set, so this instance can run alongside another client under
+            // the same DMR ID -- see GuiSettings::dmrIdSuffix. Blank/invalid
+            // = plain ID.
+            uint32_t repeaterId = settings.dmrId;
+            if (settings.dmrIdSuffix.size() == 2) repeaterId = settings.dmrId * 100 + settings.dmrIdSuffix.toUInt();
+            std::fprintf(stderr, "dmrtab: repeater ID %u (DMR ID %u%s)\n", repeaterId, settings.dmrId,
+                         repeaterId == settings.dmrId ? "" : " + suffix");
+            client->setIdentity(settings.dmrId, settings.dmrPassword.toStdString(), config, repeaterId);
+            client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_dv.get(), &m_rxQueue));
+            client->setHeaderSink(headerSink);
+            result = client->link();
+            if (result != dmr::LinkResult::Success) {
+                error = QString("Master rejected the connection: %1").arg(dmr::ToString(result));
+                ok = false;
+            }
+            m_client = std::move(client);
         }
     }
 
     if (!ok) {
         m_client.reset();
+        m_rewindClient = nullptr;
         m_capture.close();
         m_playback.close();
         if (m_dv) m_dv->close();
@@ -506,7 +584,9 @@ void DmrTab::onConnectFinished(bool ok, QString error) {
     m_playbackThread = std::thread(dmr::playbackThread, &m_playback, &m_rxQueue);
     m_networkThread = std::thread([this] { m_client->run(); });
 
-    setConnected(true, "Connected to " + m_settings.dmrServer);
+    bool openTerminal = m_settings.dmrProtocol == "opendmr";
+    if (m_rewindClient && m_subscribedTalkgroup != 0) setActiveSubscription(m_subscribedTalkgroup, m_subscribedPrivate);
+    setConnected(true, "Connected to " + (openTerminal ? m_settings.dmrOpenTerminalServer : m_settings.dmrServer));
 }
 
 void DmrTab::startDisconnect() {
@@ -522,6 +602,9 @@ void DmrTab::disconnectWorker() {
 
 void DmrTab::onDisconnectFinished() {
     m_client.reset();
+    m_rewindClient = nullptr;
+    m_subscribedTalkgroup = 0;
+    m_subscribedPrivate = false;
     m_dv.reset();
     setActiveSubscription(0, false);
     setConnected(false, "Disconnected.");
@@ -571,7 +654,21 @@ void DmrTab::setConnected(bool connected, const QString &status) {
     m_statusLabel->setStyleSheet(kStatusLabelStyle);
     if (!connected) m_pttButton->setChecked(false); // in case we disconnected mid-send
     updatePttButtonEnabled();
+    updateUnsubscribeButtonEnabled();
     setBusy(false, status);
 }
 
 void DmrTab::updatePttButtonEnabled() { m_pttButton->setEnabled(m_connected && currentTalkgroupId() != 0); }
+
+void DmrTab::updateUnsubscribeButtonEnabled() {
+    m_unsubscribeButton->setEnabled(m_rewindClient && m_subscribedTalkgroup != 0);
+}
+
+void DmrTab::unsubscribeCurrent() {
+    if (!m_rewindClient || m_subscribedTalkgroup == 0) return;
+    m_rewindClient->unsubscribe(m_subscribedTalkgroup, m_subscribedPrivate ? dmr::rewind::SessionType::PrivateVoice
+                                                                             : dmr::rewind::SessionType::GroupVoice);
+    m_subscribedTalkgroup = 0;
+    m_subscribedPrivate = false;
+    setActiveSubscription(0, false);
+}

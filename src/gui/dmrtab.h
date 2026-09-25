@@ -24,6 +24,8 @@
 #include "dextra_audio.h" // AlsaPcm, PcmQueue (protocol-agnostic, see dmr_audio.h)
 #include "dmr_audio.h"
 #include "dmr_client.h"
+#include "dmr_rewind.h"
+#include "dmr_transport.h"
 #include "dvcontroller.h"
 #include "protocoltab.h"
 #include "settings.h"
@@ -57,7 +59,7 @@ private:
     void onConnectClicked();
 
     void startConnect();
-    void connectWorker(GuiSettings settings);
+    void connectWorker(GuiSettings settings, uint32_t initialTalkgroup, bool initialPrivate);
     void onConnectFinished(bool ok, QString error);
 
     void startDisconnect();
@@ -101,6 +103,25 @@ private:
     // Returns 0 if there's no leading digit yet (still mid-search).
     uint32_t currentTalkgroupId() const;
 
+    // Open DMR Terminal only (no-op otherwise, incl. while disconnected):
+    // (re)subscribes to whatever the talkgroup combo / Private call
+    // checkbox currently say, so RX actually follows the UI -- see
+    // m_rewindClient's comment for why Homebrew doesn't need this.
+    // Subscriptions are additive on the wire (confirmed live -- switching
+    // talkgroup without unsubscribing the old one means hearing both), so
+    // this also unsubscribes m_subscribedTalkgroup/m_subscribedPrivate
+    // first when they're about to change. Deliberately NOT triggered by
+    // typing in the combo (even debounced) -- the same field is also used
+    // to type an arbitrary DMR ID for a private call, so there's no way
+    // to tell "still typing" from "done", and no list to validate a
+    // private-call target against. Only called from an explicit user
+    // action: PTT-down.
+    void resubscribeIfOpenTerminal();
+    // Drops the current Open DMR Terminal subscription (if any) and
+    // resets "Current subscription" to None.
+    void unsubscribeCurrent();
+    void updateUnsubscribeButtonEnabled();
+
     GuiSettings m_settings;
 
     QComboBox *m_talkgroupCombo;
@@ -127,6 +148,10 @@ private:
     // only): what the last transmission went to. 0 = none.
     uint32_t m_activeId = 0;
     bool m_activePrivate = false;
+    // Open DMR Terminal only -- stops receiving the current subscription
+    // (there's no such thing on Homebrew, where TG 4000 does that job).
+    // Enabled only while there's actually something subscribed.
+    QPushButton *m_unsubscribeButton;
     QPushButton *m_addFavouriteButton;
     QListWidget *m_favouritesList;
     // Fetched once in the background at construction (see
@@ -134,10 +159,28 @@ private:
     // to read directly from the GUI thread without locking.
     QHash<uint32_t, QString> m_dmrIdDirectory;
 
-    // Live session state -- only meaningful while m_connected.
+    // Live session state -- only meaningful while m_connected. m_client
+    // is either a DmrClient (Homebrew) or a RewindClient (Open DMR
+    // Terminal), chosen at connect time by settings.dmrProtocol --
+    // everything below uses it through the shared DmrTransport
+    // interface. m_rewindClient aliases the same object, non-owning,
+    // only when it's actually a RewindClient -- Open DMR Terminal needs
+    // an explicit subscribe() call for RX (unlike Homebrew, which
+    // relays whatever you last transmitted to with no separate
+    // subscription step), which isn't and shouldn't be part of the
+    // shared interface, so this is how the GUI reaches it when relevant.
     std::unique_ptr<SerialDV::DVController> m_dv;
     dextra::AlsaPcm m_capture, m_playback;
-    std::unique_ptr<dmr::DmrClient> m_client;
+    std::unique_ptr<dmr::DmrTransport> m_client;
+    dmr::rewind::RewindClient *m_rewindClient = nullptr;
+    // What m_rewindClient is currently subscribed to, so
+    // resubscribeIfOpenTerminal() can unsubscribe it before subscribing
+    // to something new -- GUI-thread-only (set in connectWorker's Open
+    // DMR Terminal branch and in onConnectFinished/onDisconnectFinished,
+    // both of which only ever run on the GUI thread via queued
+    // connections, same as m_client itself).
+    uint32_t m_subscribedTalkgroup = 0;
+    bool m_subscribedPrivate = false;
     dextra::PcmQueue m_rxQueue;
     std::thread m_captureThread, m_playbackThread, m_networkThread;
     std::thread m_worker; // the in-flight connect/disconnect sequence, if any

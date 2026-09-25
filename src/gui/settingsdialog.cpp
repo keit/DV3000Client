@@ -314,9 +314,24 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
 
     m_dmrPassword = new QLineEdit(current.dmrPassword);
     m_dmrPassword->setEchoMode(QLineEdit::Password);
+    m_dmrPassword->setToolTip("BrandMeister's \"Hotspot Security\" password from SelfCare -- used for both protocols "
+                               "below, not your account password.");
+
+    // Homebrew (traditional MMDVM/RPTC) vs BrandMeister's own lighter Open
+    // DMR Terminal protocol -- see dmr_rewind.h's header comment. Toggling
+    // this enables/disables whichever fields below don't apply, rather
+    // than hiding them, so the form doesn't reflow when switching.
+    m_dmrProtocol = new QComboBox;
+    m_dmrProtocol->addItem("Homebrew (MMDVM)", "homebrew");
+    m_dmrProtocol->addItem("Open DMR Terminal", "opendmr");
+    m_dmrProtocol->setCurrentIndex(current.dmrProtocol == "opendmr" ? 1 : 0);
+    connect(m_dmrProtocol, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateDmrProtocolFieldsEnabled);
 
     m_dmrServer = new QLineEdit(current.dmrServer);
-    m_dmrServer->setPlaceholderText("host:port, e.g. 3101.brandmeister.network:62031");
+    m_dmrServer->setPlaceholderText("e.g. 3101.brandmeister.network -- port is always 62031, no need to specify it");
+
+    m_dmrOpenTerminalServer = new QLineEdit(current.dmrOpenTerminalServer);
+    m_dmrOpenTerminalServer->setPlaceholderText("e.g. 3101.brandmeister.network -- port is always 54006, no need to specify it");
 
     m_dmrColorCode = new QComboBox;
     for (int cc = 0; cc <= 15; cc++) m_dmrColorCode->addItem(QString::number(cc), cc);
@@ -361,7 +376,9 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     generalForm->addRow("DMR ID:", m_dmrId);
     generalForm->addRow("DMR ID suffix:", m_dmrIdSuffix);
     generalForm->addRow("DMR password:", m_dmrPassword);
-    generalForm->addRow("DMR server:", m_dmrServer);
+    generalForm->addRow("DMR protocol:", m_dmrProtocol);
+    generalForm->addRow("DMR server (Homebrew):", m_dmrServer);
+    generalForm->addRow("DMR server (Open DMR Terminal):", m_dmrOpenTerminalServer);
     generalForm->addRow("DMR color code:", m_dmrColorCode);
     generalForm->addRow("DMR time slot:", m_dmrTimeSlot);
     generalForm->addRow("DMR frequency (MHz):", m_dmrFrequencyMhz);
@@ -372,6 +389,8 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     generalForm->addRow("DMR URL:", m_dmrUrl);
     auto *generalPage = new QWidget;
     generalPage->setLayout(generalForm);
+
+    updateDmrProtocolFieldsEnabled();
 
     // Fixed, matched width for both Test buttons so the two device rows
     // -- and their dropdowns -- line up. Measured against "Stop" (not
@@ -424,6 +443,24 @@ void SettingsDialog::stopAudioInputTest() {
     m_audioInputLevel->setValue(0);
 }
 
+void SettingsDialog::updateDmrProtocolFieldsEnabled() {
+    bool homebrew = m_dmrProtocol->currentData().toString() == "homebrew";
+    m_dmrServer->setEnabled(homebrew);
+    m_dmrOpenTerminalServer->setEnabled(!homebrew);
+    // Homebrew-only: Open DMR Terminal has no repeater config to declare
+    // (no RPTC equivalent -- see dmr_rewind.h) and no separate suffix
+    // scheme for running two clients under one DMR ID.
+    m_dmrIdSuffix->setEnabled(homebrew);
+    m_dmrColorCode->setEnabled(homebrew);
+    m_dmrTimeSlot->setEnabled(homebrew);
+    m_dmrFrequencyMhz->setEnabled(homebrew);
+    m_dmrLatitude->setEnabled(homebrew);
+    m_dmrLongitude->setEnabled(homebrew);
+    m_dmrLocation->setEnabled(homebrew);
+    m_dmrDescription->setEnabled(homebrew);
+    m_dmrUrl->setEnabled(homebrew);
+}
+
 GuiSettings SettingsDialog::settings() const {
     GuiSettings s;
     s.callsign = m_callsign->text().trimmed().toUpper();
@@ -435,7 +472,9 @@ GuiSettings SettingsDialog::settings() const {
     s.dmrId = static_cast<uint32_t>(m_dmrId->text().trimmed().toULong());
     s.dmrIdSuffix = m_dmrIdSuffix->text().trimmed();
     s.dmrPassword = m_dmrPassword->text();
+    s.dmrProtocol = m_dmrProtocol->currentData().toString();
     s.dmrServer = m_dmrServer->text().trimmed();
+    s.dmrOpenTerminalServer = m_dmrOpenTerminalServer->text().trimmed();
     s.dmrColorCode = static_cast<unsigned>(m_dmrColorCode->currentIndex());
     s.dmrTimeSlot = static_cast<unsigned>(m_dmrTimeSlot->currentData().toInt());
     s.dmrFrequencyMhz = m_dmrFrequencyMhz->text().toDouble();

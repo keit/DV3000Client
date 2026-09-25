@@ -20,11 +20,14 @@
 //  - VersionData's `service` byte must be SERVICE_OPEN_TERMINAL (0x21),
 //    not the generic "simple application" code (0x20) -- getting this
 //    wrong gets total silence back, not even a Challenge.
-//  - The RemoteID declared in the initial KeepAlive must be the caller's
-//    real DMR ID, not an arbitrary application ID -- an unrelated value
-//    passes the full challenge/response handshake but then gets silently
-//    dropped rather than subscribed. (setIdentity()'s remoteId parameter
-//    should always be the real DMR ID for this reason.)
+//  - The first field of the initial KeepAlive's VersionData is the
+//    terminal's DMR ID (per the Open DMR Terminal protocol document; the
+//    reference clients' own names for it -- "RemoteID"/"number" in
+//    DigestPlay and go-brandmeister, "terminal_id" in pyspot_rx -- are
+//    misleading). It must be the caller's real DMR ID, not an arbitrary
+//    application ID: an unrelated value passes the full challenge/
+//    response handshake but then gets silently dropped rather than
+//    subscribed.
 //
 // Voice content: with the default Options (SuperHeader requested,
 // LinearFrame not), voice is NOT the FEC-wrapped on-air burst format
@@ -52,6 +55,7 @@
 
 #include "dmr_transport.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -90,6 +94,7 @@ enum PacketType : uint16_t {
     TypeAuthentication = 0x0003,
     TypeConfiguration = 0x0900,
     TypeSubscription = 0x0901,
+    TypeCancelling = 0x0902, // unsubscribe -- see unsubscribe() below
     TypeDMRDataBase = 0x0910,  // + dataType -- 1=VoiceHeader, 2=TerminatorLC, ...
     TypeDMRAudioBase = 0x0920, // + subtype -- the actual voice payload, see file header
     TypeDMREmbeddedData = 0x0927,
@@ -124,11 +129,12 @@ class RewindClient : public DmrTransport {
 public:
     bool open(const std::string &host, uint16_t port = DEFAULT_PORT);
 
-    // remoteId MUST be the caller's real DMR ID -- see file header.
+    // dmrId is the terminal's DMR ID, sent in the KeepAlive and also used
+    // as the source ID of anything transmitted -- see file header.
     // password is BrandMeister's "Hotspot Security" password from
     // SelfCare -- the same one an existing Homebrew/MMDVM connection
     // already uses, not the account password.
-    void setIdentity(uint32_t remoteId, const std::string &password, const std::string &description);
+    void setIdentity(uint32_t dmrId, const std::string &password, const std::string &description);
     void setOptions(uint32_t options) { m_options = options; }
 
     // Handshake: send an initial KeepAlive, wait for the server's
@@ -139,7 +145,11 @@ public:
     // DigestPlay's reference client.
     LinkResult link() override;
 
+    // Subscriptions are additive, confirmed live -- subscribing to a new
+    // target does NOT drop a previous one; callers that want to actually
+    // switch talkgroups need to unsubscribe() the old target themselves.
     void subscribe(uint32_t targetId, SessionType type);
+    void unsubscribe(uint32_t targetId, SessionType type);
 
     void disconnect() override;
 
@@ -180,12 +190,17 @@ private:
     void handlePacket(const uint8_t *data, size_t len);
 
     int m_fd = -1;
-    uint32_t m_remoteId = 0;
+    uint32_t m_dmrId = 0;
     std::string m_password;
     std::string m_description;
     uint32_t m_options = OptionSuperHeader;
-    uint32_t m_sequence = 0;         // routine packets (KeepAlive, Authentication, Subscription, Configuration)
-    uint32_t m_sequenceRealTime = 0; // voice header/audio/terminator -- see file header
+    // Atomic: unlike beginVoiceTx/sendVoiceFrame/endVoiceTx (only ever
+    // called from one capture thread), subscribe() is meant to be safe
+    // to call from whatever thread owns the UI (e.g. to resubscribe when
+    // the user changes talkgroup) concurrently with run()'s own thread
+    // sending periodic KeepAlives -- both share m_sequence.
+    std::atomic<uint32_t> m_sequence{0};         // routine packets (KeepAlive, Authentication, Subscription, Configuration)
+    std::atomic<uint32_t> m_sequenceRealTime{0}; // voice header/audio/terminator -- see file header
     bool m_authenticated = false;
 
     uint32_t m_txDstId = 0;

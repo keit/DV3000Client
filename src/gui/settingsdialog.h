@@ -35,6 +35,11 @@ private:
     // if the dialog closes while a test is still running.
     void stopAudioInputTest();
 
+    // Enables/disables the Homebrew-only fields (and toggles which of
+    // m_dmrServer/m_dmrOpenTerminalServer applies) based on m_dmrProtocol
+    // -- called once at construction and again on every protocol change.
+    void updateDmrProtocolFieldsEnabled();
+
     QLineEdit *m_callsign;
     QLineEdit *m_suffix;
     QComboBox *m_moduleSuffix;
@@ -49,7 +54,9 @@ private:
     QLineEdit *m_dmrId;
     QLineEdit *m_dmrIdSuffix;
     QLineEdit *m_dmrPassword;
+    QComboBox *m_dmrProtocol;
     QLineEdit *m_dmrServer;
+    QLineEdit *m_dmrOpenTerminalServer;
     QComboBox *m_dmrColorCode;
     QComboBox *m_dmrTimeSlot;
     QLineEdit *m_dmrFrequencyMhz;

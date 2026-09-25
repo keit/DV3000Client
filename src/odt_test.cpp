@@ -9,11 +9,11 @@
 // functions DmrTab uses for Homebrew.
 //
 // Usage: odt_test <host> <dmrId> <password> <thumbdv-device> <playback-device> [<capture-device> <tx-talkgroup> <group|private>] [rx-talkgroup ...]
-//   dmrId must be your real DMR ID here, not an arbitrary application ID
-//   -- confirmed against a live master that BrandMeister ties the
-//   RemoteID declared in the initial KeepAlive to the account the
-//   password belongs to; an unrelated placeholder value gets a
-//   correctly-authenticated session silently dropped.
+//   dmrId must be your real DMR ID -- it's the terminal DMR ID field of
+//   the initial KeepAlive, and confirmed against a live master that
+//   BrandMeister ties it to the account the password belongs to; an
+//   unrelated placeholder value gets a correctly-authenticated session
+//   silently dropped.
 //   password is BrandMeister's "Hotspot Security" password from
 //   SelfCare, the same one an existing Homebrew/MMDVM connection
 //   already uses.

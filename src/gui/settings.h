@@ -29,7 +29,16 @@ struct GuiSettings {
     // plain 7-digit dmrId. A QString (not a number) so "00" stays distinct
     // from blank.
     QString dmrIdSuffix;
-    QString dmrServer; // host:port, e.g. "3101.brandmeister.network:62031"
+    // Which wire protocol to use: "homebrew" (MMDVM/RPTC-style, the
+    // traditional hotspot protocol) or "opendmr" (BrandMeister's own
+    // lighter Open DMR Terminal / Rewind protocol -- see dmr_rewind.h).
+    // Both share dmrId/dmrPassword (same DMR ID and Hotspot Security
+    // password either way); everything below dmrOpenTerminalServer is
+    // Homebrew-only (RPTC declares a virtual repeater; Open DMR Terminal
+    // has no equivalent).
+    QString dmrProtocol = "homebrew";
+    QString dmrServer;             // host:port, e.g. "3101.brandmeister.network:62031"
+    QString dmrOpenTerminalServer; // host:port, e.g. "3101.brandmeister.network:54006"
     unsigned dmrColorCode = 1;
     // 1 or 2. Slot 2 is the confirmed convention for hotspot-style
     // BrandMeister connections (verified against a real, working Pi-Star

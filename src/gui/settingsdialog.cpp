@@ -171,7 +171,7 @@ int peakLevelPercent(const short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE]) {
 
 } // namespace
 
-SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QDialog(parent) {
+SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QDialog(parent), m_initial(current) {
     setWindowTitle("Settings");
 
     m_callsign = new QLineEdit(current.callsign);
@@ -462,7 +462,7 @@ void SettingsDialog::updateDmrProtocolFieldsEnabled() {
 }
 
 GuiSettings SettingsDialog::settings() const {
-    GuiSettings s;
+    GuiSettings s = m_initial;
     s.callsign = m_callsign->text().trimmed().toUpper();
     s.suffix = m_suffix->text().trimmed().toUpper();
     s.moduleSuffix = m_moduleSuffix->currentText();

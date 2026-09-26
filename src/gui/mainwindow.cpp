@@ -12,6 +12,8 @@
 
 #include "dmrtab.h"
 #include "dstartab.h"
+#include <utility>
+
 #include "filelogging.h"
 #include "protocoltab.h"
 #include "settingsdialog.h"
@@ -57,6 +59,20 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_dmrTab = new DmrTab(m_settings);
     connect(m_dstarTab, &ProtocolTab::stateChanged, this, &MainWindow::updateSettingsActionEnabled);
     connect(m_dmrTab, &ProtocolTab::stateChanged, this, &MainWindow::updateSettingsActionEnabled);
+
+    // Volume sliders live on both tabs but are one setting: moving either
+    // pair updates the other tab and the saved settings (written once the
+    // slider settles, not on every step). Applied to the tabs up front so
+    // the saved levels are in effect from the first connect.
+    for (auto [tab, other] : {std::pair<ProtocolTab *, ProtocolTab *>{m_dstarTab, m_dmrTab}, {m_dmrTab, m_dstarTab}}) {
+        connect(tab, &ProtocolTab::volumesChanged, this, [this, other](int mic, int speaker) {
+            m_settings.micVolume = mic;
+            m_settings.speakerVolume = speaker;
+            other->setVolumes(mic, speaker);
+        });
+        connect(tab, &ProtocolTab::volumesCommitted, this, [this] { m_settings.save(); });
+        tab->setVolumes(m_settings.micVolume, m_settings.speakerVolume);
+    }
 
     m_tabs = new QTabWidget;
     m_tabs->addTab(m_dstarTab, "D-Star");

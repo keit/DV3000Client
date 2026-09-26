@@ -49,6 +49,16 @@ public:
     // MainWindow::closeEvent on app shutdown, after joinWorker() above.
     virtual void stopSessionBlocking() = 0;
 
+    // Sets this tab's mic and speaker volume sliders (0..100, 50 = unity)
+    // and applies them to its audio devices, without emitting
+    // volumesChanged() -- MainWindow uses it to sync the two tabs and to
+    // apply the saved values at startup.
+    virtual void setVolumes(int mic, int speaker) = 0;
+
 signals:
     void stateChanged(); // isActiveOrBusy() may have changed
+    // The user moved one of this tab's volume sliders.
+    void volumesChanged(int mic, int speaker);
+    // ...and it has settled -- time to save.
+    void volumesCommitted();
 };

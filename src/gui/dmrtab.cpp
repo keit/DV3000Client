@@ -29,6 +29,8 @@
 #include <cstdio>
 #include <thread>
 
+#include "audio_gain.h"
+#include "audiolevelspanel.h"
 #include "dmriddirectory.h"
 #include "localcache.h"
 #include "talkgrouplistmodel.h"
@@ -244,6 +246,26 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     layout->addLayout(bottomRow);
     layout->addWidget(new QLabel("Favourites:"));
     layout->addWidget(m_favouritesList, 1);
+
+    // Mic/speaker volume, at the bottom so it's always in reach mid-QSO.
+    // Forwarded up (volumesChanged) so MainWindow can keep the D-Star
+    // tab's sliders and the saved settings in step.
+    m_audioLevels = new AudioLevelsPanel;
+    connect(m_audioLevels, &AudioLevelsPanel::changed, this, [this](int mic, int speaker) {
+        setVolumes(mic, speaker);
+        emit volumesChanged(mic, speaker);
+    });
+    connect(m_audioLevels, &AudioLevelsPanel::committed, this, &ProtocolTab::volumesCommitted);
+    layout->addWidget(m_audioLevels);
+
+    // Level meters: peak of what the mic device is delivering and what's
+    // going to the speaker (both after gain), polled from the AlsaPcm
+    // objects. Idle when disconnected -- nothing reads or writes them, so
+    // the bars just fall to zero.
+    auto *levelTimer = new QTimer(this);
+    connect(levelTimer, &QTimer::timeout, this,
+            [this] { m_audioLevels->updateLevels(m_capture.takePeak(), m_playback.takePeak()); });
+    levelTimer->start(50);
 
     auto *leftPanel = new QWidget;
     leftPanel->setLayout(layout);
@@ -645,6 +667,15 @@ void DmrTab::stopSessionBlocking() {
     m_playback.close();
     if (m_dv) m_dv->close();
     dmr::g_running = 1;
+}
+
+// Applied to the AlsaPcm objects themselves, which outlive any one
+// connection -- so this works while disconnected too and carries over to
+// the next connect.
+void DmrTab::setVolumes(int mic, int speaker) {
+    m_audioLevels->setVolumes(mic, speaker);
+    m_capture.setGain(sliderToGain(mic));
+    m_playback.setGain(sliderToGain(speaker));
 }
 
 void DmrTab::setBusy(bool busy, const QString &status) {

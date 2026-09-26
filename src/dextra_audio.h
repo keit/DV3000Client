@@ -8,6 +8,7 @@
 // shouldn't have to link this.
 
 #include <array>
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -36,8 +37,24 @@ public:
     bool read(short *pcm);
     bool write(const short *pcm);
 
+    // Linear gain applied to everything read()/written from now on (see
+    // audio_gain.h) -- how the GUI's mic and speaker volume sliders take
+    // effect mid-transmission, without the capture/playback threads
+    // needing to know about them. Atomic since the GUI thread sets it
+    // while those threads are inside read()/write().
+    void setGain(float gain) { m_gain.store(gain); }
+
+    // Peak level (0..100, after gain) of everything read()/written since
+    // the last call, then resets -- what the GUI's level meters poll.
+    int takePeak() { return m_peak.exchange(0); }
+
 private:
     bool recover(int err);
+
+    void notePeak(const short *pcm);
+
+    std::atomic<float> m_gain{1.0f};
+    std::atomic<int> m_peak{0};
 
     snd_pcm_t *m_handle = nullptr;
     snd_pcm_stream_t m_stream = SND_PCM_STREAM_CAPTURE;

@@ -28,6 +28,10 @@ public:
     GuiSettings settings() const;
 
 private:
+    // What the dialog was opened with -- settings() starts from it so fields
+    // the dialog doesn't edit (e.g. the tabs' volume sliders) aren't reset.
+    GuiSettings m_initial;
+
     // Stops the input-level capture thread if running (sets the flag and
     // joins -- near-instant, since each ALSA read the thread does only
     // blocks for one ~20ms period) and resets the Test button/meter.

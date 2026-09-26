@@ -15,6 +15,14 @@ struct GuiSettings {
     QString audioOutputDevice = "default";
     QString thumbdvDevice;
 
+    // Mic and speaker volume sliders on both protocol tabs (shared, so the
+    // two tabs always agree), 0..100 with 50 = unity gain -- see
+    // audio_gain.h. Adjusted live while communicating, unlike the device
+    // choices above, so they're saved by the sliders themselves rather
+    // than through the Settings dialog.
+    int micVolume = 50;
+    int speakerVolume = 50;
+
     // DMR/BrandMeister identity -- separate from the D-Star callsign
     // identity above since DMR addresses by ID, not callsign. dmrPassword
     // is the repeater/hotspot password for dmrServer, not any kind of

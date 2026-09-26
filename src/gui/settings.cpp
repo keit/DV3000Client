@@ -24,6 +24,8 @@ GuiSettings GuiSettings::load() {
     if (obj.contains("audio_input_device")) s.audioInputDevice = obj["audio_input_device"].toString();
     if (obj.contains("audio_output_device")) s.audioOutputDevice = obj["audio_output_device"].toString();
     if (obj.contains("thumbdv_device")) s.thumbdvDevice = obj["thumbdv_device"].toString();
+    if (obj.contains("mic_volume")) s.micVolume = qBound(0, obj["mic_volume"].toInt(), 100);
+    if (obj.contains("speaker_volume")) s.speakerVolume = qBound(0, obj["speaker_volume"].toInt(), 100);
     if (obj.contains("dmr_id")) s.dmrId = static_cast<uint32_t>(obj["dmr_id"].toDouble());
     if (obj.contains("dmr_password")) s.dmrPassword = obj["dmr_password"].toString();
     if (obj.contains("dmr_id_suffix")) s.dmrIdSuffix = obj["dmr_id_suffix"].toString();
@@ -49,6 +51,8 @@ bool GuiSettings::save() const {
     obj["audio_input_device"] = audioInputDevice;
     obj["audio_output_device"] = audioOutputDevice;
     obj["thumbdv_device"] = thumbdvDevice;
+    obj["mic_volume"] = micVolume;
+    obj["speaker_volume"] = speakerVolume;
     obj["dmr_id"] = static_cast<double>(dmrId);
     obj["dmr_password"] = dmrPassword;
     obj["dmr_id_suffix"] = dmrIdSuffix;

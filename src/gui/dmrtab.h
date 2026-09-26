@@ -30,6 +30,7 @@
 #include "protocoltab.h"
 #include "settings.h"
 
+class AudioLevelsPanel;
 class QCheckBox;
 class QComboBox;
 class QLabel;
@@ -54,6 +55,7 @@ public:
         if (m_worker.joinable()) m_worker.join();
     }
     void stopSessionBlocking() override;
+    void setVolumes(int mic, int speaker) override;
 
 private:
     void onConnectClicked();
@@ -154,6 +156,7 @@ private:
     QPushButton *m_unsubscribeButton;
     QPushButton *m_addFavouriteButton;
     QListWidget *m_favouritesList;
+    AudioLevelsPanel *m_audioLevels;
     // Fetched once in the background at construction (see
     // dmriddirectory.h) -- read-only after that fetch completes, so safe
     // to read directly from the GUI thread without locking.

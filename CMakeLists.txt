@@ -120,6 +120,7 @@ if(Qt6_FOUND)
   set(CMAKE_AUTOMOC ON)
 
   add_executable(dv3000client_gui
+    src/gui/audiolevelspanel.cpp
     src/gui/dmriddirectory.cpp
     src/gui/dmrtab.cpp
     src/gui/dstartab.cpp

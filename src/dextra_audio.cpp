@@ -1,5 +1,8 @@
 #include "dextra_audio.h"
 
+#include "audio_gain.h"
+
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -47,16 +50,33 @@ void AlsaPcm::close() {
 
 bool AlsaPcm::read(short *pcm) {
     snd_pcm_sframes_t n = snd_pcm_readi(m_handle, pcm, SerialDV::MBE_AUDIO_BLOCK_SIZE);
-    if (n == static_cast<snd_pcm_sframes_t>(SerialDV::MBE_AUDIO_BLOCK_SIZE)) return true;
+    if (n == static_cast<snd_pcm_sframes_t>(SerialDV::MBE_AUDIO_BLOCK_SIZE)) {
+        applyGain(pcm, SerialDV::MBE_AUDIO_BLOCK_SIZE, m_gain.load());
+        notePeak(pcm);
+        return true;
+    }
     if (n < 0) return recover(static_cast<int>(n));
     return false;
 }
 
 bool AlsaPcm::write(const short *pcm) {
-    snd_pcm_sframes_t n = snd_pcm_writei(m_handle, pcm, SerialDV::MBE_AUDIO_BLOCK_SIZE);
+    // Scaled into a copy -- pcm is const, and callers (the playback
+    // thread's silence backfill, a queue chunk) may reuse it.
+    short scaled[SerialDV::MBE_AUDIO_BLOCK_SIZE];
+    std::copy(pcm, pcm + SerialDV::MBE_AUDIO_BLOCK_SIZE, scaled);
+    applyGain(scaled, SerialDV::MBE_AUDIO_BLOCK_SIZE, m_gain.load());
+    notePeak(scaled);
+    snd_pcm_sframes_t n = snd_pcm_writei(m_handle, scaled, SerialDV::MBE_AUDIO_BLOCK_SIZE);
     if (n == static_cast<snd_pcm_sframes_t>(SerialDV::MBE_AUDIO_BLOCK_SIZE)) return true;
     if (n < 0) return recover(static_cast<int>(n));
     return false;
+}
+
+void AlsaPcm::notePeak(const short *pcm) {
+    int p = peakPercent(pcm, SerialDV::MBE_AUDIO_BLOCK_SIZE);
+    int cur = m_peak.load();
+    while (p > cur && !m_peak.compare_exchange_weak(cur, p)) {
+    }
 }
 
 bool AlsaPcm::recover(int err) {

@@ -26,6 +26,7 @@
 #include "protocoltab.h"
 #include "settings.h"
 
+class AudioLevelsPanel;
 class QComboBox;
 class QLabel;
 class QListWidget;
@@ -49,6 +50,7 @@ public:
         if (m_worker.joinable()) m_worker.join();
     }
     void stopSessionBlocking() override;
+    void setVolumes(int mic, int speaker) override;
 
 private:
     bool hasValidReflectorSelection() const;
@@ -88,6 +90,7 @@ private:
     QComboBox *m_reflectorCombo;
     ReflectorListModel *m_model;
     QComboBox *m_targetModule;
+    AudioLevelsPanel *m_audioLevels;
     QPushButton *m_addFavouriteButton = nullptr;
     QListWidget *m_favouritesList = nullptr;
     QPushButton *m_connectButton;

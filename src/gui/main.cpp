@@ -1,11 +1,18 @@
 #include <cstdio>
 
 #include <QApplication>
+#include <QLoggingCategory>
 
 #include "filelogging.h"
 #include "mainwindow.h"
 
 int main(int argc, char **argv) {
+    // Qt's Wayland plugin logs a debug line every time the input-method
+    // (text-input) connection moves between surfaces -- i.e. whenever a
+    // popup or dialog takes or returns focus -- which just floods the log.
+    // A QT_LOGGING_RULES set in the environment still takes precedence.
+    QLoggingCategory::setFilterRules("qt.qpa.wayland.textinput=false\n");
+
     QApplication app(argc, argv);
     QApplication::setApplicationName("DV3000Client");
 

@@ -28,6 +28,8 @@
 
 class QComboBox;
 class QLabel;
+class QListWidget;
+class QListWidgetItem;
 class QPushButton;
 class QTableWidget;
 class ReflectorListModel;
@@ -68,11 +70,26 @@ private:
     void setConnected(bool connected, const QString &status);
     void updateConnectButtonEnabled();
 
+    // Favourites are reflector+module pairs, e.g. "XLX307" module "B".
+    // Adding takes whatever's currently selected (valid reflector and a
+    // real module); picking one loads both back into the combos, same as
+    // choosing them by hand. Persisted to dstar_favourites.json, so they
+    // survive restarts; removed via right-click or the Delete key.
+    void updateAddFavouriteEnabled();
+    bool isFavourite(const QString &reflectorName, char module) const;
+    void addFavouriteItem(const QString &reflectorName, char module);
+    void removeFavouriteItem(QListWidgetItem *item);
+    void selectFavourite(const QString &reflectorName, char module);
+    void loadFavourites();
+    void saveFavourites() const;
+
     GuiSettings m_settings;
 
     QComboBox *m_reflectorCombo;
     ReflectorListModel *m_model;
     QComboBox *m_targetModule;
+    QPushButton *m_addFavouriteButton = nullptr;
+    QListWidget *m_favouritesList = nullptr;
     QPushButton *m_connectButton;
     QPushButton *m_pttButton;
     QLabel *m_statusLabel;

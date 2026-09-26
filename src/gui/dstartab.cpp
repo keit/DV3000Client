@@ -3,16 +3,25 @@
 #include <QAbstractItemView>
 #include <QComboBox>
 #include <QCompleter>
+#include <QDir>
+#include <QFile>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
+#include <QShortcut>
 #include <QSplitter>
+#include <QStandardPaths>
 #include <QTableWidget>
 #include <QTime>
 #include <QVBoxLayout>
@@ -34,6 +43,19 @@ const char *kSendingButtonStyle = "background-color: #ff9800; color: white;";
 // Lighter than plain white (easier on the eyes) but distinct from the
 // metallic window background so content areas still read as content.
 const char *kLightGrayBackground = "#e8e8e8";
+
+constexpr int kFavouriteNameRole = Qt::UserRole;
+constexpr int kFavouriteModuleRole = Qt::UserRole + 1;
+
+QString favouritesFilePath() {
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QDir().mkpath(dir);
+    return dir + "/dstar_favourites.json";
+}
+
+QString favouriteText(const QString &reflectorName, char module) {
+    return reflectorName + " \u2013 module " + QChar(module);
+}
 } // namespace
 
 DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(parent), m_settings(settings) {
@@ -157,10 +179,46 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     m_lastHeardTable->setStyleSheet(QString("QTableWidget { background-color: %1; }").arg(kLightGrayBackground));
 
+    m_addFavouriteButton = new QPushButton("Add to favourites");
+    m_addFavouriteButton->setEnabled(false);
+    connect(m_addFavouriteButton, &QPushButton::clicked, this, [this] {
+        addFavouriteItem(selectedReflectorName(), static_cast<char>('A' + m_targetModule->currentIndex() - 1));
+        saveFavourites();
+        updateAddFavouriteEnabled();
+    });
+
+    // Picking an entry loads its reflector and module into the combos, as
+    // if chosen by hand. itemClicked rather than currentItemChanged so
+    // re-clicking the already-current entry still applies it.
+    m_favouritesList = new QListWidget;
+    m_favouritesList->setStyleSheet(QString("QListWidget { background-color: %1; }").arg(kLightGrayBackground));
+    auto applyFavourite = [this](QListWidgetItem *item) {
+        selectFavourite(item->data(kFavouriteNameRole).toString(),
+                        static_cast<char>(item->data(kFavouriteModuleRole).toInt()));
+    };
+    connect(m_favouritesList, &QListWidget::itemClicked, this, applyFavourite);
+    connect(m_favouritesList, &QListWidget::itemActivated, this, applyFavourite);
+
+    // Remove via right-click menu or the Delete key.
+    m_favouritesList->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_favouritesList, &QListWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+        QListWidgetItem *item = m_favouritesList->itemAt(pos);
+        if (!item) return;
+        QMenu menu;
+        QAction *remove = menu.addAction("Remove from favourites");
+        if (menu.exec(m_favouritesList->viewport()->mapToGlobal(pos)) == remove) removeFavouriteItem(item);
+    });
+    auto *deleteShortcut = new QShortcut(QKeySequence::Delete, m_favouritesList);
+    deleteShortcut->setContext(Qt::WidgetShortcut);
+    connect(deleteShortcut, &QShortcut::activated, this, [this] {
+        if (QListWidgetItem *item = m_favouritesList->currentItem()) removeFavouriteItem(item);
+    });
+
     auto *moduleRow = new QHBoxLayout;
     moduleRow->addWidget(new QLabel("Target module:"));
     moduleRow->addWidget(m_targetModule);
     moduleRow->addStretch();
+    moduleRow->addWidget(m_addFavouriteButton);
 
     auto *bottomRow = new QHBoxLayout;
     bottomRow->addWidget(m_connectButton);
@@ -171,8 +229,9 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     layout->addWidget(m_reflectorCombo);
     layout->addLayout(moduleRow);
     layout->addLayout(bottomRow);
+    layout->addWidget(new QLabel("Favourites:"));
+    layout->addWidget(m_favouritesList, 1);
     layout->addWidget(headerBox);
-    layout->addStretch();
 
     auto *leftPanel = new QWidget;
     leftPanel->setLayout(layout);
@@ -186,6 +245,8 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->addWidget(splitter);
+
+    loadFavourites();
 
     m_model->refresh();
     updateConnectButtonEnabled();
@@ -426,4 +487,75 @@ void DStarTab::updateConnectButtonEnabled() {
     // reflector list and module combo.
     bool readyToConnect = !selectedHost().isEmpty() && m_targetModule->currentIndex() > 0;
     m_connectButton->setEnabled(!m_busy && (m_connected || readyToConnect));
+    updateAddFavouriteEnabled();
+}
+
+void DStarTab::updateAddFavouriteEnabled() {
+    if (!m_addFavouriteButton) return; // a selection signal fired mid-construction
+    bool ready = !selectedHost().isEmpty() && m_targetModule->currentIndex() > 0;
+    m_addFavouriteButton->setEnabled(
+        ready && !isFavourite(selectedReflectorName(), static_cast<char>('A' + m_targetModule->currentIndex() - 1)));
+}
+
+bool DStarTab::isFavourite(const QString &reflectorName, char module) const {
+    for (int i = 0; i < m_favouritesList->count(); i++) {
+        const QListWidgetItem *item = m_favouritesList->item(i);
+        if (item->data(kFavouriteNameRole).toString() == reflectorName &&
+            item->data(kFavouriteModuleRole).toInt() == module)
+            return true;
+    }
+    return false;
+}
+
+void DStarTab::addFavouriteItem(const QString &reflectorName, char module) {
+    if (reflectorName.isEmpty() || module < 'A' || module > 'Z' || isFavourite(reflectorName, module)) return;
+    auto *item = new QListWidgetItem(favouriteText(reflectorName, module));
+    item->setData(kFavouriteNameRole, reflectorName);
+    item->setData(kFavouriteModuleRole, static_cast<int>(module));
+    m_favouritesList->addItem(item);
+}
+
+void DStarTab::removeFavouriteItem(QListWidgetItem *item) {
+    delete m_favouritesList->takeItem(m_favouritesList->row(item));
+    saveFavourites();
+    updateAddFavouriteEnabled();
+}
+
+void DStarTab::selectFavourite(const QString &reflectorName, char module) {
+    // The combos are disabled while connecting/connected -- don't change
+    // the selection out from under a live session.
+    if (!m_reflectorCombo->isEnabled()) return;
+    for (int row = 0; row < m_model->rowCount(); row++) {
+        if (m_model->data(m_model->index(row, 0), ReflectorListModel::NameRole).toString() == reflectorName) {
+            m_reflectorCombo->setCurrentIndex(row);
+            m_targetModule->setCurrentIndex(module - 'A' + 1);
+            return;
+        }
+    }
+    // Not in the current directory (removed since, or the list hasn't
+    // loaded yet) -- say so rather than silently doing nothing.
+    m_statusLabel->setText(reflectorName + " isn't in the reflector list");
+}
+
+void DStarTab::loadFavourites() {
+    QFile f(favouritesFilePath());
+    if (!f.open(QIODevice::ReadOnly)) return;
+    for (const QJsonValue &v : QJsonDocument::fromJson(f.readAll()).array()) {
+        QJsonObject o = v.toObject();
+        QString module = o["module"].toString();
+        if (module.size() == 1) addFavouriteItem(o["reflector"].toString(), module.at(0).toLatin1());
+    }
+}
+
+void DStarTab::saveFavourites() const {
+    QJsonArray array;
+    for (int i = 0; i < m_favouritesList->count(); i++) {
+        const QListWidgetItem *item = m_favouritesList->item(i);
+        QJsonObject o;
+        o["reflector"] = item->data(kFavouriteNameRole).toString();
+        o["module"] = QString(QChar(item->data(kFavouriteModuleRole).toInt()));
+        array.append(o);
+    }
+    QFile f(favouritesFilePath());
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(QJsonDocument(array).toJson(QJsonDocument::Indented));
 }

@@ -45,7 +45,9 @@ class DmrTab : public ProtocolTab {
 public:
     explicit DmrTab(const GuiSettings &settings, QWidget *parent = nullptr);
 
-    void applySettings(const GuiSettings &settings) { m_settings = settings; }
+    // Also rebuilds the network combo, since which networks are configured
+    // may have just changed.
+    void applySettings(const GuiSettings &settings);
 
     QPushButton *pttButton() const override { return m_pttButton; }
     QPushButton *connectButton() const override { return m_connectButton; }
@@ -57,11 +59,16 @@ public:
     void stopSessionBlocking() override;
     void setVolumes(int mic, int speaker) override;
 
+signals:
+    // The user picked a different network in the combo -- MainWindow saves
+    // it as the one to start on next time.
+    void networkChanged(const QString &network);
+
 private:
     void onConnectClicked();
 
     void startConnect();
-    void connectWorker(GuiSettings settings, uint32_t initialTalkgroup, bool initialPrivate);
+    void connectWorker(GuiSettings settings, QString network, uint32_t initialTalkgroup, bool initialPrivate);
     void onConnectFinished(bool ok, QString error);
 
     void startDisconnect();
@@ -97,6 +104,18 @@ private:
     void loadFavourites();
     void saveFavourites() const;
 
+    // A network is usable once its server and password (and the shared DMR
+    // ID) are filled in. The combo lists only those, so a user can run just
+    // one network -- or none, which leaves Connect disabled.
+    bool networkConfigured(const QString &network) const;
+    void rebuildNetworkCombo();
+    // Switches everything network-specific: favourites list, whether
+    // private calls exist, the talkgroup hint text. Ids are "brandmeister",
+    // "tgif", or empty when nothing is configured.
+    void applyNetwork(const QString &network);
+    void updateConnectEnabled();
+    void updateTalkgroupPlaceholder();
+
     // Extracts the leading run of digits from the talkgroup combo's
     // current text -- unlike DStarTab's reflector combo, any positive
     // integer is a legal talkgroup whether or not it's a row in the
@@ -126,6 +145,9 @@ private:
 
     GuiSettings m_settings;
 
+    QComboBox *m_networkCombo;
+    QString m_network;          // what the combo currently selects
+    QString m_connectedNetwork; // what the live session (or the connect in flight) is on
     QComboBox *m_talkgroupCombo;
     TalkgroupListModel *m_talkgroupModel;
     // When checked, the talkgroup combo's value is sent as a DMR ID for a
@@ -164,7 +186,7 @@ private:
 
     // Live session state -- only meaningful while m_connected. m_client
     // is either a DmrClient (Homebrew) or a RewindClient (Open DMR
-    // Terminal), chosen at connect time by settings.dmrProtocol --
+    // Terminal, for BrandMeister; Homebrew for TGIF), chosen at connect time by the selected network --
     // everything below uses it through the shared DmrTransport
     // interface. m_rewindClient aliases the same object, non-owning,
     // only when it's actually a RewindClient -- Open DMR Terminal needs

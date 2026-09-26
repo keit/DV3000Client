@@ -1,20 +1,30 @@
 #include "talkgroupdirectory.h"
 
+#include <QEventLoop>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QUrl>
 
 #include "http_get.h"
 #include "localcache.h"
 
-namespace bm {
+namespace tgdir {
 
 namespace {
 constexpr const char *BM_API_HOST = "api.brandmeister.network";
 constexpr const char *BM_API_PATH = "/v2/talkgroup";
 constexpr int HTTP_PORT = 80;
-constexpr const char *CACHE_KEY = "talkgroups";
+constexpr const char *TGIF_API_URL = "https://api.tgif.network/dmr/talkgroups/json";
 
-bool parseTalkgroupList(const QByteArray &body, std::vector<TalkgroupInfo> &out, QString &error) {
+// "talkgroups" is BrandMeister's original cache name, kept so an existing
+// cache carries over.
+const char *cacheKey(const QString &network) { return network == "tgif" ? "talkgroups_tgif" : "talkgroups"; }
+
+bool parseBrandmeister(const QByteArray &body, std::vector<TalkgroupInfo> &out, QString &error) {
     QJsonParseError parseError;
     QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
     if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
@@ -33,31 +43,80 @@ bool parseTalkgroupList(const QByteArray &body, std::vector<TalkgroupInfo> &out,
     }
     return !out.empty();
 }
+
+bool parseTgif(const QByteArray &body, std::vector<TalkgroupInfo> &out, QString &error) {
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isArray()) {
+        error = QString("malformed response: ") + parseError.errorString();
+        return false;
+    }
+
+    QJsonArray array = doc.array();
+    out.clear();
+    out.reserve(static_cast<size_t>(array.size()));
+    for (const QJsonValue &v : array) {
+        QJsonObject o = v.toObject();
+        bool ok = false;
+        uint32_t id = o["id"].toString().toUInt(&ok); // the id arrives as a string
+        if (!ok) continue;
+        out.push_back({id, o["name"].toString()});
+    }
+    return !out.empty();
+}
+
+bool parse(const QString &network, const QByteArray &body, std::vector<TalkgroupInfo> &out, QString &error) {
+    return network == "tgif" ? parseTgif(body, out, error) : parseBrandmeister(body, out, error);
+}
+
+bool fetchBody(const QString &network, QByteArray &body, QString &error) {
+    if (network != "tgif") {
+        std::string raw, err;
+        if (!httpGetRaw(BM_API_HOST, BM_API_PATH, HTTP_PORT, raw, err)) {
+            error = QString::fromStdString(err);
+            return false;
+        }
+        body = QByteArray(raw.data(), static_cast<int>(raw.size()));
+        return true;
+    }
+
+    // Runs on a plain std::thread with no event loop of its own, so drive
+    // one locally until the reply finishes.
+    QNetworkAccessManager manager;
+    QNetworkRequest request{QUrl(TGIF_API_URL)};
+    request.setTransferTimeout(30000);
+    QNetworkReply *reply = manager.get(request);
+    QEventLoop loop;
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+    bool ok = reply->error() == QNetworkReply::NoError;
+    if (ok) body = reply->readAll();
+    else error = reply->errorString();
+    reply->deleteLater();
+    return ok;
+}
 } // namespace
 
-bool fetchTalkgroupList(std::vector<TalkgroupInfo> &out, QString &error) {
-    std::string body, err;
-    if (!httpGetRaw(BM_API_HOST, BM_API_PATH, HTTP_PORT, body, err)) {
-        error = QString::fromStdString(err);
+bool fetchTalkgroupList(const QString &network, std::vector<TalkgroupInfo> &out, QString &error) {
+    QByteArray body;
+    if (!fetchBody(network, body, error)) return false;
+    if (!parse(network, body, out, error)) {
+        if (error.isEmpty()) error = "no talkgroups parsed from the " + network + " directory response";
         return false;
     }
-
-    QByteArray bodyBytes(body.data(), static_cast<int>(body.size()));
-    if (!parseTalkgroupList(bodyBytes, out, error)) {
-        if (error.isEmpty()) error = "no talkgroups parsed from " + QString(BM_API_HOST) + " response";
-        return false;
-    }
-    cache::write(CACHE_KEY, bodyBytes);
+    cache::write(cacheKey(network), body);
     return true;
 }
 
-bool loadCachedTalkgroupList(std::vector<TalkgroupInfo> &out) {
+bool loadCachedTalkgroupList(const QString &network, std::vector<TalkgroupInfo> &out) {
     QByteArray body;
-    if (!cache::read(CACHE_KEY, body)) return false;
+    if (!cache::read(cacheKey(network), body)) return false;
     QString error; // discarded -- a malformed cache is just treated as "no cache"
-    return parseTalkgroupList(body, out, error);
+    return parse(network, body, out, error);
 }
 
-bool isTalkgroupCacheFresh(qint64 maxAgeSeconds) { return cache::isFresh(CACHE_KEY, maxAgeSeconds); }
+bool isTalkgroupCacheFresh(const QString &network, qint64 maxAgeSeconds) {
+    return cache::isFresh(cacheKey(network), maxAgeSeconds);
+}
 
-} // namespace bm
+} // namespace tgdir

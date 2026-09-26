@@ -15,7 +15,9 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QStackedWidget>
 #include <QTabWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -312,26 +314,27 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
                               "(e.g. BlueDV) is connected under the same DMR ID at the same time -- each simultaneous "
                               "connection must have a unique ID. Leave blank to use the plain DMR ID.");
 
-    m_dmrPassword = new QLineEdit(current.dmrPassword);
-    m_dmrPassword->setEchoMode(QLineEdit::Password);
-    m_dmrPassword->setToolTip("BrandMeister's \"Hotspot Security\" password from SelfCare -- used for both protocols "
-                               "below, not your account password.");
+    // Each DMR network has its own server and its own password, and each
+    // is reached over its own protocol (BrandMeister: Open DMR Terminal,
+    // TGIF: Homebrew) -- so choosing the network is all that's needed, and
+    // only that network's fields are shown (both sets are kept and saved,
+    // so you can configure both and pick one on the DMR tab).
+    m_dmrNetwork = new QComboBox;
+    m_dmrNetwork->addItem("BrandMeister", "brandmeister");
+    m_dmrNetwork->addItem("TGIF", "tgif");
+    m_dmrNetwork->setCurrentIndex(current.dmrNetwork == "tgif" ? 1 : 0);
 
-    // Homebrew (traditional MMDVM/RPTC) vs BrandMeister's own lighter Open
-    // DMR Terminal protocol -- see dmr_rewind.h's header comment. Toggling
-    // this enables/disables whichever fields below don't apply, rather
-    // than hiding them, so the form doesn't reflow when switching.
-    m_dmrProtocol = new QComboBox;
-    m_dmrProtocol->addItem("Homebrew (MMDVM)", "homebrew");
-    m_dmrProtocol->addItem("Open DMR Terminal", "opendmr");
-    m_dmrProtocol->setCurrentIndex(current.dmrProtocol == "opendmr" ? 1 : 0);
-    connect(m_dmrProtocol, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateDmrProtocolFieldsEnabled);
+    m_bmServer = new QLineEdit(current.bmServer);
+    m_bmServer->setPlaceholderText("e.g. 3101.master.brandmeister.network -- the port is fixed, don't add one");
+    m_bmPassword = new QLineEdit(current.bmPassword);
+    m_bmPassword->setEchoMode(QLineEdit::Password);
+    m_bmPassword->setToolTip("The \"Hotspot Security\" password you set in BrandMeister SelfCare -- not your account password.");
 
-    m_dmrServer = new QLineEdit(current.dmrServer);
-    m_dmrServer->setPlaceholderText("e.g. 3101.brandmeister.network -- port is always 62031, no need to specify it");
-
-    m_dmrOpenTerminalServer = new QLineEdit(current.dmrOpenTerminalServer);
-    m_dmrOpenTerminalServer->setPlaceholderText("e.g. 3101.brandmeister.network -- port is always 54006, no need to specify it");
+    m_tgifServer = new QLineEdit(current.tgifServer);
+    m_tgifServer->setPlaceholderText("tgif.network -- the port is fixed, don't add one");
+    m_tgifPassword = new QLineEdit(current.tgifPassword);
+    m_tgifPassword->setEchoMode(QLineEdit::Password);
+    m_tgifPassword->setToolTip("The 16-digit key generated on your TGIF account's security page.");
 
     m_dmrColorCode = new QComboBox;
     for (int cc = 0; cc <= 15; cc++) m_dmrColorCode->addItem(QString::number(cc), cc);
@@ -374,23 +377,39 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     generalForm->addRow("Suffix:", m_suffix);
     generalForm->addRow("Module suffix:", m_moduleSuffix);
     generalForm->addRow("DMR ID:", m_dmrId);
-    generalForm->addRow("DMR ID suffix:", m_dmrIdSuffix);
-    generalForm->addRow("DMR password:", m_dmrPassword);
-    generalForm->addRow("DMR protocol:", m_dmrProtocol);
-    generalForm->addRow("DMR server (Homebrew):", m_dmrServer);
-    generalForm->addRow("DMR server (Open DMR Terminal):", m_dmrOpenTerminalServer);
-    generalForm->addRow("DMR color code:", m_dmrColorCode);
-    generalForm->addRow("DMR time slot:", m_dmrTimeSlot);
-    generalForm->addRow("DMR frequency (MHz):", m_dmrFrequencyMhz);
-    generalForm->addRow("DMR latitude:", m_dmrLatitude);
-    generalForm->addRow("DMR longitude:", m_dmrLongitude);
-    generalForm->addRow("DMR location:", m_dmrLocation);
-    generalForm->addRow("DMR description:", m_dmrDescription);
-    generalForm->addRow("DMR URL:", m_dmrUrl);
+    generalForm->addRow("DMR network:", m_dmrNetwork);
+
+    // One page of fields per network, only the chosen one shown.
+    auto *bmForm = new QFormLayout;
+    bmForm->addRow("BrandMeister server:", m_bmServer);
+    bmForm->addRow("Hotspot Security password:", m_bmPassword);
+    auto *bmPage = new QWidget;
+    bmPage->setLayout(bmForm);
+
+    auto *tgifForm = new QFormLayout;
+    tgifForm->addRow("TGIF server:", m_tgifServer);
+    tgifForm->addRow("TGIF key:", m_tgifPassword);
+    tgifForm->addRow("DMR ID suffix:", m_dmrIdSuffix);
+    tgifForm->addRow("DMR color code:", m_dmrColorCode);
+    tgifForm->addRow("DMR time slot:", m_dmrTimeSlot);
+    tgifForm->addRow("DMR frequency (MHz):", m_dmrFrequencyMhz);
+    tgifForm->addRow("DMR latitude:", m_dmrLatitude);
+    tgifForm->addRow("DMR longitude:", m_dmrLongitude);
+    tgifForm->addRow("DMR location:", m_dmrLocation);
+    tgifForm->addRow("DMR description:", m_dmrDescription);
+    tgifForm->addRow("DMR URL:", m_dmrUrl);
+    auto *tgifPage = new QWidget;
+    tgifPage->setLayout(tgifForm);
+
+    m_dmrNetworkPages = new QStackedWidget;
+    m_dmrNetworkPages->addWidget(bmPage);
+    m_dmrNetworkPages->addWidget(tgifPage);
+    generalForm->addRow(m_dmrNetworkPages);
+    connect(m_dmrNetwork, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateDmrNetworkPage);
     auto *generalPage = new QWidget;
     generalPage->setLayout(generalForm);
 
-    updateDmrProtocolFieldsEnabled();
+    updateDmrNetworkPage();
 
     // Fixed, matched width for both Test buttons so the two device rows
     // -- and their dropdowns -- line up. Measured against "Stop" (not
@@ -443,22 +462,23 @@ void SettingsDialog::stopAudioInputTest() {
     m_audioInputLevel->setValue(0);
 }
 
-void SettingsDialog::updateDmrProtocolFieldsEnabled() {
-    bool homebrew = m_dmrProtocol->currentData().toString() == "homebrew";
-    m_dmrServer->setEnabled(homebrew);
-    m_dmrOpenTerminalServer->setEnabled(!homebrew);
-    // Homebrew-only: Open DMR Terminal has no repeater config to declare
-    // (no RPTC equivalent -- see dmr_rewind.h) and no separate suffix
-    // scheme for running two clients under one DMR ID.
-    m_dmrIdSuffix->setEnabled(homebrew);
-    m_dmrColorCode->setEnabled(homebrew);
-    m_dmrTimeSlot->setEnabled(homebrew);
-    m_dmrFrequencyMhz->setEnabled(homebrew);
-    m_dmrLatitude->setEnabled(homebrew);
-    m_dmrLongitude->setEnabled(homebrew);
-    m_dmrLocation->setEnabled(homebrew);
-    m_dmrDescription->setEnabled(homebrew);
-    m_dmrUrl->setEnabled(homebrew);
+void SettingsDialog::updateDmrNetworkPage() {
+    int index = m_dmrNetwork->currentIndex();
+    m_dmrNetworkPages->setCurrentIndex(index);
+    // A QStackedWidget is as big as its biggest page, which would leave the
+    // short BrandMeister page floating in the TGIF page's height -- let the
+    // hidden page stop counting toward the size.
+    for (int i = 0; i < m_dmrNetworkPages->count(); i++) {
+        m_dmrNetworkPages->widget(i)->setSizePolicy(i == index ? QSizePolicy::Preferred : QSizePolicy::Ignored,
+                                                     i == index ? QSizePolicy::Preferred : QSizePolicy::Ignored);
+    }
+    m_dmrNetworkPages->updateGeometry();
+    // Resize once the layouts have caught up -- the forms inside the pages
+    // only recompute their size hints on the next event-loop turn, so an
+    // immediate adjustSize() runs against stale (still-large) minimums and
+    // the dialog grows for the long TGIF page but never shrinks back for
+    // BrandMeister's.
+    QTimer::singleShot(0, this, &QWidget::adjustSize);
 }
 
 GuiSettings SettingsDialog::settings() const {
@@ -471,10 +491,13 @@ GuiSettings SettingsDialog::settings() const {
     s.thumbdvDevice = m_thumbdv->currentText().trimmed();
     s.dmrId = static_cast<uint32_t>(m_dmrId->text().trimmed().toULong());
     s.dmrIdSuffix = m_dmrIdSuffix->text().trimmed();
-    s.dmrPassword = m_dmrPassword->text();
-    s.dmrProtocol = m_dmrProtocol->currentData().toString();
-    s.dmrServer = m_dmrServer->text().trimmed();
-    s.dmrOpenTerminalServer = m_dmrOpenTerminalServer->text().trimmed();
+    // dmrNetwork is deliberately left as opened: the combo here only picks
+    // which network's fields to edit; the DMR tab's own network combo decides
+    // which one is used.
+    s.bmServer = m_bmServer->text().trimmed();
+    s.bmPassword = m_bmPassword->text();
+    s.tgifServer = m_tgifServer->text().trimmed();
+    s.tgifPassword = m_tgifPassword->text();
     s.dmrColorCode = static_cast<unsigned>(m_dmrColorCode->currentIndex());
     s.dmrTimeSlot = static_cast<unsigned>(m_dmrTimeSlot->currentData().toInt());
     s.dmrFrequencyMhz = m_dmrFrequencyMhz->text().toDouble();

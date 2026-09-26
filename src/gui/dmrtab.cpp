@@ -51,10 +51,13 @@ const char *kLightGrayBackground = "#e8e8e8";
 constexpr int kFavouriteIdRole = Qt::UserRole;
 constexpr int kFavouritePrivateRole = Qt::UserRole + 1;
 
-QString favouritesFilePath() {
+// Talkgroup numbers mean different things on different networks, so each
+// keeps its own list. BrandMeister's keeps the original file name, so
+// favourites saved before TGIF existed are still there.
+QString favouritesFilePath(const QString &network) {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
     QDir().mkpath(dir);
-    return dir + "/dmr_favourites.json";
+    return dir + (network == "tgif" ? "/dmr_favourites_tgif.json" : "/dmr_favourites.json");
 }
 } // namespace
 
@@ -116,17 +119,13 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
         updatePttButtonEnabled();
     });
 
-    m_talkgroupModel->refresh();
-
     // Group vs Private call -- see the header comment on m_privateCallCheck.
     // When checked, the combo above is read as a target DMR ID instead of
     // a talkgroup; the placeholder text updates to make that clear.
     m_privateCallCheck = new QCheckBox("Private call");
     connect(m_privateCallCheck, &QCheckBox::toggled, this, [this](bool privateCall) {
         m_privateCall.store(privateCall);
-        m_talkgroupCombo->lineEdit()->setPlaceholderText(
-            privateCall ? "Target DMR ID, e.g. 9990 (BrandMeister Parrot echo test)"
-                        : "Talkgroup, e.g. 91 (World-wide) or a number/name to search...");
+        updateTalkgroupPlaceholder();
         // Deliberately not resubscribing here -- see resubscribeIfOpenTerminal().
     });
 
@@ -237,6 +236,16 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     bottomRow->addWidget(m_pttButton);
 
     auto *layout = new QVBoxLayout;
+    m_networkCombo = new QComboBox;
+    connect(m_networkCombo, &QComboBox::currentIndexChanged, this, [this] {
+        applyNetwork(m_networkCombo->currentData().toString());
+        emit networkChanged(m_network);
+    });
+    auto *networkRow = new QHBoxLayout;
+    networkRow->addWidget(new QLabel("Network:"));
+    networkRow->addWidget(m_networkCombo, 1);
+
+    layout->addLayout(networkRow);
     layout->addLayout(tgRow);
     auto *subscriptionRow = new QHBoxLayout;
     subscriptionRow->addWidget(m_activeTalkgroupLabel, 1);
@@ -288,7 +297,8 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     // instead of waiting on the ~330k-line network fetch below to finish.
     dmr::loadCachedDmrIdDirectory(m_dmrIdDirectory);
 
-    loadFavourites();
+    // Picks the network and, through applyNetwork(), loads its favourites.
+    rebuildNetworkCombo();
 
     // One-shot background fetch of the live DMR ID directory (see
     // dmriddirectory.h), replacing the cached copy above once it lands
@@ -379,7 +389,7 @@ void DmrTab::selectFavourite(uint32_t id, bool privateCall) {
 }
 
 void DmrTab::loadFavourites() {
-    QFile f(favouritesFilePath());
+    QFile f(favouritesFilePath(m_network));
     if (!f.open(QIODevice::ReadOnly)) return;
     for (const QJsonValue &v : QJsonDocument::fromJson(f.readAll()).array()) {
         QJsonObject o = v.toObject();
@@ -396,8 +406,80 @@ void DmrTab::saveFavourites() const {
         o["private"] = item->data(kFavouritePrivateRole).toBool();
         array.append(o);
     }
-    QFile f(favouritesFilePath());
+    QFile f(favouritesFilePath(m_network));
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(QJsonDocument(array).toJson(QJsonDocument::Indented));
+}
+
+void DmrTab::applySettings(const GuiSettings &settings) {
+    m_settings = settings;
+    rebuildNetworkCombo();
+}
+
+bool DmrTab::networkConfigured(const QString &network) const {
+    if (m_settings.dmrId == 0) return false;
+    if (network == "brandmeister") return !m_settings.bmServer.isEmpty() && !m_settings.bmPassword.isEmpty();
+    if (network == "tgif") return !m_settings.tgifServer.isEmpty() && !m_settings.tgifPassword.isEmpty();
+    return false;
+}
+
+void DmrTab::rebuildNetworkCombo() {
+    // Keep whatever's selected if it's still configured; otherwise fall
+    // back to the one the settings last used, then to any that's left.
+    QString wanted = m_network.isEmpty() ? m_settings.dmrNetwork : m_network;
+    {
+        QSignalBlocker block(m_networkCombo);
+        m_networkCombo->clear();
+        if (networkConfigured("brandmeister")) m_networkCombo->addItem("BrandMeister", "brandmeister");
+        if (networkConfigured("tgif")) m_networkCombo->addItem("TGIF", "tgif");
+        int index = m_networkCombo->findData(wanted);
+        if (index >= 0) m_networkCombo->setCurrentIndex(index);
+    }
+    applyNetwork(m_networkCombo->currentData().toString()); // empty when none are configured
+}
+
+void DmrTab::applyNetwork(const QString &network) {
+    bool changed = network != m_network;
+    m_network = network;
+    if (changed && !network.isEmpty()) {
+        m_talkgroupModel->setNetwork(network);
+        m_talkgroupModel->refresh();
+    }
+    m_settings.dmrNetwork = network.isEmpty() ? m_settings.dmrNetwork : network;
+
+    bool tgif = network == "tgif";
+    // TGIF has no private calls (its FAQ lists them as not implemented).
+    if (tgif) m_privateCallCheck->setChecked(false);
+    m_privateCallCheck->setEnabled(!tgif);
+    updateTalkgroupPlaceholder();
+
+    if (changed) {
+        // Each network has its own favourites, and a subscription on one
+        // means nothing on the other.
+        m_favouritesList->clear();
+        loadFavourites();
+        setActiveSubscription(0, false);
+    }
+    updateConnectEnabled();
+    if (network.isEmpty() && !m_connected && !m_busy) {
+        m_statusLabel->setText("Set up a DMR network (ID, server, password) in Settings.");
+    } else if (changed && !m_connected && !m_busy) {
+        m_statusLabel->setText("Disconnected.");
+    }
+}
+
+void DmrTab::updateConnectEnabled() {
+    m_connectButton->setEnabled(!m_busy && (m_connected || !m_network.isEmpty()));
+}
+
+void DmrTab::updateTalkgroupPlaceholder() {
+    QString hint;
+    if (m_network == "tgif")
+        hint = "Talkgroup, e.g. 9990 (Parrot echo test) or a number/name to search...";
+    else if (m_privateCall.load())
+        hint = "Target DMR ID, e.g. 9990 (BrandMeister Parrot echo test)";
+    else
+        hint = "Talkgroup, e.g. 91 (World-wide) or a number/name to search...";
+    m_talkgroupCombo->lineEdit()->setPlaceholderText(hint);
 }
 
 uint32_t DmrTab::currentTalkgroupId() const {
@@ -442,14 +524,9 @@ void DmrTab::onConnectClicked() {
 }
 
 void DmrTab::startConnect() {
-    bool openTerminal = m_settings.dmrProtocol == "opendmr";
-    QString server = openTerminal ? m_settings.dmrOpenTerminalServer : m_settings.dmrServer;
-    if (server.isEmpty()) {
-        QMessageBox::information(this, "No DMR server",
-                                  QString("Set a %1 server (host:port) in Settings first.")
-                                      .arg(openTerminal ? "Open DMR Terminal" : "DMR"));
-        return;
-    }
+    if (m_network.isEmpty()) return; // Connect is disabled then; belt and braces
+    bool openTerminal = m_network == "brandmeister";
+    QString server = openTerminal ? m_settings.bmServer : m_settings.tgifServer;
     if (m_settings.dmrId == 0) {
         QMessageBox::information(this, "No DMR ID", "Set your DMR ID in Settings first.");
         return;
@@ -461,6 +538,7 @@ void DmrTab::startConnect() {
 
     m_connectButton->setStyleSheet("");
     m_statusLabel->setStyleSheet(kStatusLabelStyle);
+    m_connectedNetwork = m_network;
     setBusy(true, "Connecting to " + server + "...");
 
     // Captured here (GUI thread) rather than read from connectWorker --
@@ -471,13 +549,14 @@ void DmrTab::startConnect() {
     bool initialPrivate = m_privateCall.load();
 
     if (m_worker.joinable()) m_worker.join();
-    m_worker = std::thread(&DmrTab::connectWorker, this, m_settings, initialTalkgroup, initialPrivate);
+    m_worker = std::thread(&DmrTab::connectWorker, this, m_settings, m_network, initialTalkgroup, initialPrivate);
 }
 
-void DmrTab::connectWorker(GuiSettings settings, uint32_t initialTalkgroup, bool initialPrivate) {
+void DmrTab::connectWorker(GuiSettings settings, QString network, uint32_t initialTalkgroup, bool initialPrivate) {
     QString error;
     bool ok = true;
-    bool openTerminal = settings.dmrProtocol == "opendmr";
+    // BrandMeister is reached via Open DMR Terminal, TGIF via Homebrew.
+    bool openTerminal = network == "brandmeister";
 
     m_dv = std::make_unique<SerialDV::DVController>();
     if (!m_dv->open(settings.thumbdvDevice.toStdString())) {
@@ -495,9 +574,9 @@ void DmrTab::connectWorker(GuiSettings settings, uint32_t initialTalkgroup, bool
         ok = false;
     }
 
-    QString server = openTerminal ? settings.dmrOpenTerminalServer : settings.dmrServer;
+    QString server = openTerminal ? settings.bmServer : settings.tgifServer;
     QString host = server;
-    uint16_t port = openTerminal ? dmr::rewind::DEFAULT_PORT : dmr::DEFAULT_PORT;
+    uint16_t port = openTerminal ? dmr::rewind::DEFAULT_PORT : dmr::HOMEBREW_MASTER_PORT;
     int colonIndex = host.lastIndexOf(':');
     if (colonIndex >= 0) {
         port = static_cast<uint16_t>(host.mid(colonIndex + 1).toUInt());
@@ -522,7 +601,7 @@ void DmrTab::connectWorker(GuiSettings settings, uint32_t initialTalkgroup, bool
             error = "Failed to open network socket to " + server;
             ok = false;
         } else {
-            client->setIdentity(settings.dmrId, settings.dmrPassword.toStdString(), "DV3000Client");
+            client->setIdentity(settings.dmrId, settings.bmPassword.toStdString(), "DV3000Client");
             client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_dv.get(), &m_rxQueue));
             client->setHeaderSink(headerSink);
             result = client->link();
@@ -564,7 +643,7 @@ void DmrTab::connectWorker(GuiSettings settings, uint32_t initialTalkgroup, bool
             if (settings.dmrIdSuffix.size() == 2) repeaterId = settings.dmrId * 100 + settings.dmrIdSuffix.toUInt();
             std::fprintf(stderr, "dmrtab: repeater ID %u (DMR ID %u%s)\n", repeaterId, settings.dmrId,
                          repeaterId == settings.dmrId ? "" : " + suffix");
-            client->setIdentity(settings.dmrId, settings.dmrPassword.toStdString(), config, repeaterId);
+            client->setIdentity(settings.dmrId, settings.tgifPassword.toStdString(), config, repeaterId);
             client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_dv.get(), &m_rxQueue));
             client->setHeaderSink(headerSink);
             result = client->link();
@@ -607,9 +686,8 @@ void DmrTab::onConnectFinished(bool ok, QString error) {
     m_playbackThread = std::thread(dmr::playbackThread, &m_playback, &m_rxQueue);
     m_networkThread = std::thread([this] { m_client->run(); });
 
-    bool openTerminal = m_settings.dmrProtocol == "opendmr";
     if (m_rewindClient && m_subscribedTalkgroup != 0) setActiveSubscription(m_subscribedTalkgroup, m_subscribedPrivate);
-    setConnected(true, "Connected to " + (openTerminal ? m_settings.dmrOpenTerminalServer : m_settings.dmrServer));
+    setConnected(true, "Connected to " + (m_connectedNetwork == "brandmeister" ? m_settings.bmServer : m_settings.tgifServer));
 }
 
 void DmrTab::startDisconnect() {
@@ -685,7 +763,8 @@ void DmrTab::setBusy(bool busy, const QString &status) {
     // transmission, not at connect time -- see the class comment), so it
     // stays editable even mid-connection, and Connect never depends on it.
     m_statusLabel->setText(status);
-    m_connectButton->setEnabled(!busy);
+    m_networkCombo->setEnabled(!busy && !m_connected);
+    updateConnectEnabled();
     emit stateChanged();
 }
 

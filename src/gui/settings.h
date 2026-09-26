@@ -23,30 +23,35 @@ struct GuiSettings {
     int micVolume = 50;
     int speakerVolume = 50;
 
-    // DMR/BrandMeister identity -- separate from the D-Star callsign
-    // identity above since DMR addresses by ID, not callsign. dmrPassword
-    // is the repeater/hotspot password for dmrServer, not any kind of
-    // account password; stored in the same plain JSON file as everything
-    // else here (see settings.cpp's comment on why JSON over QSettings).
+    // DMR identity. The DMR ID is one per operator, so it's shared by every
+    // network; each network has its own server and its own password (TGIF's
+    // is a key generated in your TGIF account, not your BrandMeister
+    // Hotspot Security password). Passwords are stored in the same plain
+    // JSON file as everything else here (see settings.cpp's comment on why
+    // JSON over QSettings).
     uint32_t dmrId = 0;
-    QString dmrPassword;
+
+    // Which network the DMR tab last connected to / the Settings dialog
+    // opens on: "brandmeister" or "tgif". Each network is tied to one
+    // protocol -- BrandMeister is reached via Open DMR Terminal, TGIF via
+    // Homebrew/MMDVM -- so there's no separate protocol setting.
+    QString dmrNetwork = "brandmeister";
+
+    // BrandMeister (Open DMR Terminal).
+    QString bmServer; // hostname of one of its masters, e.g. "3101.master.brandmeister.network"
+    QString bmPassword;
+
+    // TGIF (Homebrew/MMDVM). Everything from tgifPassword down to dmrUrl is
+    // Homebrew-only: the RPTC packet declares a virtual repeater, which Open
+    // DMR Terminal has no equivalent of.
+    QString tgifServer = "tgif.network";
+    QString tgifPassword; // the 16-digit key from your TGIF account's security page
     // Optional 2-digit suffix appended to dmrId to form the 9-digit repeater
-    // ID declared to BrandMeister -- needed when more than one hotspot/client
-    // (e.g. BlueDV and this app) connect at once under the same DMR ID, since
-    // each simultaneous connection must have a unique ID. Blank = use the
-    // plain 7-digit dmrId. A QString (not a number) so "00" stays distinct
-    // from blank.
+    // ID declared to the master -- TGIF calls it the ESSID, and it's how more
+    // than one hotspot/client can connect under the same DMR ID at once.
+    // Blank = the plain 7-digit dmrId. A QString (not a number) so "00" stays
+    // distinct from blank.
     QString dmrIdSuffix;
-    // Which wire protocol to use: "homebrew" (MMDVM/RPTC-style, the
-    // traditional hotspot protocol) or "opendmr" (BrandMeister's own
-    // lighter Open DMR Terminal / Rewind protocol -- see dmr_rewind.h).
-    // Both share dmrId/dmrPassword (same DMR ID and Hotspot Security
-    // password either way); everything below dmrOpenTerminalServer is
-    // Homebrew-only (RPTC declares a virtual repeater; Open DMR Terminal
-    // has no equivalent).
-    QString dmrProtocol = "homebrew";
-    QString dmrServer;             // host:port, e.g. "3101.brandmeister.network:62031"
-    QString dmrOpenTerminalServer; // host:port, e.g. "3101.brandmeister.network:54006"
     unsigned dmrColorCode = 1;
     // 1 or 2. Slot 2 is the confirmed convention for hotspot-style
     // BrandMeister connections (verified against a real, working Pi-Star

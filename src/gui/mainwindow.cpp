@@ -75,6 +75,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         tab->setVolumes(m_settings.micVolume, m_settings.speakerVolume);
     }
 
+    // Remember which network the DMR tab was on, to start there next time.
+    connect(m_dmrTab, &DmrTab::networkChanged, this, [this](const QString &network) {
+        if (network.isEmpty()) return;
+        m_settings.dmrNetwork = network;
+        m_settings.save();
+    });
+
     m_tabs = new QTabWidget;
     m_tabs->addTab(m_dstarTab, "D-Star");
     m_tabs->addTab(m_dmrTab, "DMR");

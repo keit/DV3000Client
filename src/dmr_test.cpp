@@ -3,7 +3,15 @@
 // ThumbDV vocoder: verify the hardest new piece in isolation before wiring
 // it into a frontend.
 //
-// Usage: dmr_test <host> <port> <dmrId> <password> [callsign] [seconds] [txTalkgroup]
+// Usage: dmr_test [options] <host> <port> <dmrId> <password> [callsign] [seconds] [txTalkgroup]
+//   options (anywhere on the line):
+//     --suffix NN         2-digit ESSID: logs in as repeater ID dmrId*100+NN
+//                         (e.g. TGIF wants DMR ID + 2 digits)
+//     --software-id S     RPTC software id (default "DV3000Client")
+//     --package-id P      RPTC package id  (default "DV3000Client")
+//   password "-" reads it from the DMR_PASSWORD environment variable
+//   instead, so it never lands in shell history (and a "!" in it can't be
+//   history-expanded).
 //   txTalkgroup, if given, sends a short test transmission (a handful of
 //   voice bursts with a dummy AMBE pattern -- not real audio, just enough
 //   to exercise buildHeaderFrame/buildVoiceFrame/buildTerminatorFrame
@@ -16,15 +24,35 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 void onSignal(int) { dmr::g_running = 0; }
 } // namespace
 
-int main(int argc, char **argv) {
+int main(int rawArgc, char **rawArgv) {
+    // Pull the --options out first, leaving the positional arguments.
+    std::string suffix, softwareId = "DV3000Client", packageId = "DV3000Client";
+    std::vector<char *> positional{rawArgv[0]};
+    for (int i = 1; i < rawArgc; i++) {
+        std::string a = rawArgv[i];
+        if ((a == "--suffix" || a == "--software-id" || a == "--package-id") && i + 1 < rawArgc) {
+            std::string &target = a == "--suffix" ? suffix : a == "--software-id" ? softwareId : packageId;
+            target = rawArgv[++i];
+        } else {
+            positional.push_back(rawArgv[i]);
+        }
+    }
+    int argc = static_cast<int>(positional.size());
+    char **argv = positional.data();
+
     if (argc < 5) {
-        std::fprintf(stderr, "usage: %s <host> <port> <dmrId> <password> [callsign] [seconds]\n", argv[0]);
+        std::fprintf(stderr,
+                     "usage: %s [--suffix NN] [--software-id S] [--package-id P] <host> <port> <dmrId> <password|-> "
+                     "[callsign] [seconds] [txTalkgroup]\n",
+                     argv[0]);
         return 1;
     }
 
@@ -32,6 +60,14 @@ int main(int argc, char **argv) {
     uint16_t port = static_cast<uint16_t>(std::atoi(argv[2]));
     uint32_t dmrId = static_cast<uint32_t>(std::strtoul(argv[3], nullptr, 10));
     std::string password = argv[4];
+    if (password == "-") {
+        const char *env = std::getenv("DMR_PASSWORD");
+        if (!env || !*env) {
+            std::fprintf(stderr, "dmr_test: password \"-\" needs the DMR_PASSWORD environment variable set\n");
+            return 1;
+        }
+        password = env;
+    }
     std::string callsign = argc >= 6 ? argv[5] : "TEST";
     int runSeconds = argc >= 7 ? std::atoi(argv[6]) : 15;
     bool doTx = argc >= 8;
@@ -46,7 +82,12 @@ int main(int argc, char **argv) {
     dmr::RepeaterConfig config;
     config.callsign = callsign;
     config.description = "DV3000Client DMR test";
-    client.setIdentity(dmrId, password, config);
+    config.softwareId = softwareId;
+    config.packageId = packageId;
+    uint32_t repeaterId = suffix.size() == 2 ? dmrId * 100 + static_cast<uint32_t>(std::strtoul(suffix.c_str(), nullptr, 10)) : 0;
+    std::fprintf(stderr, "dmr_test: logging in as repeater ID %u (DMR ID %u), software id \"%s\", package id \"%s\"\n",
+                 repeaterId ? repeaterId : dmrId, dmrId, softwareId.c_str(), packageId.c_str());
+    client.setIdentity(dmrId, password, config, repeaterId);
 
     dmr::LinkResult result = client.link();
     std::fprintf(stderr, "dmr_test: link result: %s\n", dmr::ToString(result));

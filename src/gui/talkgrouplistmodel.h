@@ -1,6 +1,7 @@
 #pragma once
 
-// Flat list model over the live BrandMeister talkgroup directory (see
+// Flat list model over the live talkgroup directory of the selected DMR
+// network (BrandMeister or TGIF -- see
 // talkgroupdirectory.h), with a small hardcoded fallback (the handful of
 // universal/well-known entries verified directly against a live fetch --
 // not a guess) so the list is never empty if the fetch fails. Mirrors
@@ -25,6 +26,13 @@ public:
 
     explicit TalkgroupListModel(QObject *parent = nullptr);
 
+    // Switches to `network`'s directory ("brandmeister" or "tgif"): its
+    // cached copy (or a small built-in list when there's none yet) shows
+    // immediately, and refresh() then brings in the live one. Talkgroup
+    // numbers mean different things on different networks, so the two
+    // lists are never mixed.
+    void setNetwork(const QString &network);
+
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role) const override;
 
@@ -41,8 +49,9 @@ signals:
     void refreshFailed(const QString &error);
 
 private:
-    void applyLive(std::vector<bm::TalkgroupInfo> live);
+    void applyLive(std::vector<tgdir::TalkgroupInfo> live);
 
-    std::vector<bm::TalkgroupInfo> m_rows;
+    QString m_network = "brandmeister";
+    std::vector<tgdir::TalkgroupInfo> m_rows;
     bool m_refreshing = false;
 };

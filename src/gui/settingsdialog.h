@@ -1,8 +1,9 @@
 #pragma once
 
 // Modal settings dialog, split across two tabs: "General" (callsign,
-// MYCALL2 suffix, our own module letter, and the DMR/BrandMeister
-// identity -- DMR ID, hotspot password, server, color code -- used by the
+// MYCALL2 suffix, our own module letter, and the DMR identity -- DMR ID,
+// plus a server/password page per DMR network (BrandMeister or TGIF, only
+// the chosen one shown) -- used by the
 // DMR tab) and "Devices" (audio in/out device, ThumbDV serial device).
 // The device dropdowns are pre-populated by probing ALSA and
 // /dev/serial/by-id (see .cpp) but stay editable, since not every valid
@@ -19,6 +20,7 @@ class QComboBox;
 class QLineEdit;
 class QProgressBar;
 class QPushButton;
+class QStackedWidget;
 
 class SettingsDialog : public QDialog {
     Q_OBJECT
@@ -39,10 +41,9 @@ private:
     // if the dialog closes while a test is still running.
     void stopAudioInputTest();
 
-    // Enables/disables the Homebrew-only fields (and toggles which of
-    // m_dmrServer/m_dmrOpenTerminalServer applies) based on m_dmrProtocol
-    // -- called once at construction and again on every protocol change.
-    void updateDmrProtocolFieldsEnabled();
+    // Shows the field page for the chosen DMR network -- called once at
+    // construction and again on every change.
+    void updateDmrNetworkPage();
 
     QLineEdit *m_callsign;
     QLineEdit *m_suffix;
@@ -57,10 +58,12 @@ private:
     QComboBox *m_thumbdv;
     QLineEdit *m_dmrId;
     QLineEdit *m_dmrIdSuffix;
-    QLineEdit *m_dmrPassword;
-    QComboBox *m_dmrProtocol;
-    QLineEdit *m_dmrServer;
-    QLineEdit *m_dmrOpenTerminalServer;
+    QComboBox *m_dmrNetwork;
+    QStackedWidget *m_dmrNetworkPages;
+    QLineEdit *m_bmServer;
+    QLineEdit *m_bmPassword;
+    QLineEdit *m_tgifServer;
+    QLineEdit *m_tgifPassword;
     QComboBox *m_dmrColorCode;
     QComboBox *m_dmrTimeSlot;
     QLineEdit *m_dmrFrequencyMhz;

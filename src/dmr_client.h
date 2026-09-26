@@ -29,7 +29,9 @@
 
 namespace dmr {
 
-constexpr uint16_t DEFAULT_PORT = 62030;
+constexpr uint16_t DEFAULT_PORT = 62030; // xlxd's own Homebrew listener
+// The port real Homebrew masters (e.g. TGIF) listen on.
+constexpr uint16_t HOMEBREW_MASTER_PORT = 62031;
 constexpr int KEEPALIVE_PERIOD_SEC = 10; // matches DMRMMDVM_KEEPALIVE_PERIOD
 
 // LinkResult and ToString() live in dmr_transport.h now -- shared with
@@ -63,6 +65,14 @@ struct RepeaterConfig {
     std::string location = "Unknown";
     std::string description = "DV3000Client";
     std::string url; // optional per spec; left blank rather than a generic (non-ham-related) placeholder
+    // RPTC's software id / package id (40 bytes each) -- how this client
+    // identifies itself to the master. Defaults to an honest identity;
+    // BrandMeister's Homebrew master was found to accept only one exact
+    // recognised pair (see dmr_client.cpp), which is no longer relevant
+    // now that BrandMeister is reached via Open DMR Terminal instead --
+    // whether TGIF's master is that picky is what dmr_test is for.
+    std::string softwareId = "DV3000Client";
+    std::string packageId = "DV3000Client";
 };
 
 class DmrClient : public DmrTransport {

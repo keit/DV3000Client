@@ -4,7 +4,8 @@ A Linux desktop client for digital-voice radio reflectors and networks, built
 around a real **ThumbDV** (AMBE3000) USB dongle:
 
 - **D-Star** via the DExtra protocol (XLX / XRF-style reflectors)
-- **DMR** via the Homebrew/MMDVM protocol (BrandMeister and other masters)
+- **DMR** on two networks: **BrandMeister** via its Open DMR Terminal
+  protocol, and **TGIF** via the Homebrew/MMDVM protocol
 
 There is no software vocoder here. All AMBE encode/decode is done by the
 ThumbDV hardware over serial (through the vendored `serialDV` library), so
@@ -18,11 +19,15 @@ The repo also builds a few command-line test tools (see below).
 - **D-Star tab:** searchable reflector picker (live XLX directory), module
   selection, connect/disconnect, push-to-talk, last-received header, Last Heard
   list.
-- **DMR tab:** searchable BrandMeister talkgroup picker, group and private
-  (unit-to-unit) calls, current-subscription display, favourites list, Last
-  Heard list with callsign and talkgroup-name lookup.
-- **Settings:** callsign/DMR identity, audio input/output device with test
-  buttons (tone for output, live level meter for input), ThumbDV serial device.
+- **DMR tab:** a network picker (BrandMeister or TGIF), searchable talkgroup
+  picker for that network, group calls (plus private calls on BrandMeister),
+  current-subscription display, a favourites list per network, Last Heard
+  list with callsign and talkgroup-name lookup.
+- **Volume:** microphone and speaker sliders with level meters at the bottom
+  of both tabs, adjustable mid-QSO.
+- **Settings:** callsign/DMR identity, the server and password for each DMR
+  network, audio input/output device with test buttons (tone for output,
+  live level meter for input), ThumbDV serial device.
 - Directory data (reflectors, talkgroups, DMR IDs) is cached on disk and
   refreshed at most every 24 hours.
 
@@ -69,7 +74,8 @@ The build produces these binaries in `build/`:
 | --- | --- |
 | `dv3000client_gui` | The Qt GUI (D-Star and DMR tabs) |
 | `dextra_test` | Command-line DExtra client, incl. live audio mode |
-| `dmr_test` | Command-line DMR/Homebrew client |
+| `dmr_test` | Command-line DMR client for Homebrew/MMDVM masters (e.g. TGIF) |
+| `odt_test` | Command-line BrandMeister Open DMR Terminal client, with live audio |
 | `roundtrip_test` | PCM to AMBE to PCM round trip through the ThumbDV |
 | `xlx_directory_test` | Fetches and prints the XLX reflector directory |
 
@@ -116,15 +122,17 @@ saving also helps keep audio smooth; see `HowToStart.md`.
 
 1. Open **File > Settings...** and fill in:
    - **General:** your D-Star callsign and module letter; for DMR, your DMR
-     ID, hotspot password and server (`host:port`), plus color code and time
-     slot. Location, description and URL are optional and appear on the
-     network's dashboard.
+     ID and then, per network, that network's fields. Pick **BrandMeister** or
+     **TGIF** in the *DMR network* box to see and edit its fields. You can
+     fill in both; only networks with a server and password set appear on the
+     DMR tab. TGIF also has the ID suffix, color code, time slot and
+     location/description/URL fields.
    - **Devices:** audio input and output devices (use the Test buttons to
      confirm you picked the right ones) and the ThumbDV serial device.
 2. **D-Star tab:** pick a reflector, choose the target module, click
    **Connect**.
-3. **DMR tab:** click **Connect**, pick or type a talkgroup, then use
-   **PTT to send**.
+3. **DMR tab:** choose the **Network** (while disconnected), click
+   **Connect**, pick or type a talkgroup, then use **PTT to send**.
 4. **PTT to send** toggles transmit on and off (click it, or press the space
    bar when a text field isn't focused).
 
@@ -132,24 +140,30 @@ Settings can't be changed while a session is connected.
 
 ### DMR notes
 
-- The DMR ID is your registered ID; the hotspot password is the one set in
-  your BrandMeister account for hotspot/repeater use, not your account
-  password.
-- **DMR ID suffix:** to run this client alongside another one (e.g. BlueDV)
-  under the same DMR ID, enter a 2-digit suffix. It's appended to form a
-  unique 9-digit repeater ID. Leave it blank to use the plain 7-digit ID.
-- BrandMeister has no persistent "connected talkgroup". You're subscribed to
-  whichever talkgroup you last transmitted on, which is what the **Current
-  subscription** line shows. Transmitting to TG 4000 unsubscribes; it's shown
-  as "None" but can still be saved as a favourite.
-- For a **private call** (e.g. the BrandMeister Parrot echo test, ID 9990),
-  tick **Private call**; the talkgroup field is then treated as a target DMR
-  ID.
-- BrandMeister only accepts connections that identify as a recognised
-  hotspot type. The Software ID / Package ID strings sent during login are
-  copied from a working Pi-Star session; see the comments in
-  `src/dmr_client.cpp`. If you plan to publish this, talk to BrandMeister
-  support first.
+- The DMR ID is your registered ID. Each network has its own credential:
+  BrandMeister wants the **Hotspot Security** password you set in SelfCare
+  (not your account password); TGIF wants the **16-digit key** generated on
+  your TGIF account's security page.
+- Servers are just hostnames (`tgif.network`, or one of BrandMeister's
+  masters such as `3101.master.brandmeister.network`). The port is fixed per
+  network -- 62031 for TGIF's Homebrew, 54006 for BrandMeister's Open DMR
+  Terminal -- so don't add one.
+- **BrandMeister (Open DMR Terminal)** only delivers what you're subscribed
+  to. The client subscribes to the talkgroup in the box when you connect and
+  again whenever you press PTT; **Unsubscribe** (next to *Current
+  subscription*) drops it, and disconnecting unsubscribes automatically. For a
+  **private call** (e.g. the Parrot echo test, ID 9990), tick **Private
+  call**; the talkgroup field is then a target DMR ID.
+- **TGIF (Homebrew)** has no separate subscription step: you hear whichever
+  talkgroup you last transmitted on, which is what *Current subscription*
+  shows. TG 4000 is a "landing place" that passes no traffic (shown as
+  "None"). TGIF doesn't support private calls, so that checkbox is disabled;
+  test with a **group** call to TG 9990 or 31000 (Parrot).
+- **DMR ID suffix** (TGIF): to run this client alongside another hotspot under
+  the same DMR ID, enter a 2-digit suffix. It's appended to form a unique
+  9-digit ID (TGIF's "ESSID"). Leave it blank to use the plain 7-digit ID.
+- Talkgroup numbers mean different things on different networks, so each
+  network has its own talkgroup list and its own favourites.
 
 ### Files the GUI writes
 
@@ -158,7 +172,9 @@ Under `~/.config/DV3000Client/`:
 | File | Contents |
 | --- | --- |
 | `settings.json` | Your settings (includes the DMR hotspot password in plain text) |
-| `dmr_favourites.json` | DMR favourites list |
+| `dmr_favourites.json` | BrandMeister favourites list |
+| `dstar_favourites.json` | D-Star favourites (reflector + module) |
+| `dmr_favourites_tgif.json` | TGIF favourites list |
 | `dv3000client.log` | Log file (also reachable via **Help > Log File Location...**) |
 | `cache/` | Cached reflector, talkgroup and DMR ID directories |
 
@@ -170,8 +186,15 @@ Examples; run any tool with no arguments for its usage line.
 # D-Star: link to a reflector on module B and go live with audio devices
 ./build/dextra_test <reflector-ip> B /dev/serial/by-id/<thumbdv> live plughw:1,0 plughw:1,0
 
-# DMR: log in to a master and listen for 15 seconds
-./build/dmr_test <host> <port> <dmrId> <password> [callsign] [seconds] [txTalkgroup]
+# DMR (Homebrew, e.g. TGIF): log in and send a short test transmission to the
+# Parrot (group call to TG 9990), staying connected 20 seconds. The password
+# "-" reads it from $DMR_PASSWORD, so it never lands in shell history.
+read -s "DMR_PASSWORD?TGIF key: "; export DMR_PASSWORD
+./build/dmr_test --suffix 01 tgif.network 62031 <dmrId> - <callsign> 20 9990
+
+# DMR (BrandMeister Open DMR Terminal): connect with real audio, subscribe to
+# TG 44155 and listen; add "<capture-device> <tx-tg> <group|private>" to talk
+./build/odt_test <master-host> <dmrId> "$PASSWORD" /dev/serial/by-id/<thumbdv> plughw:1,0 44155
 ```
 
 `HowToStart.md` has more worked examples: recording received audio, converting

@@ -27,11 +27,15 @@ GuiSettings GuiSettings::load() {
     if (obj.contains("mic_volume")) s.micVolume = qBound(0, obj["mic_volume"].toInt(), 100);
     if (obj.contains("speaker_volume")) s.speakerVolume = qBound(0, obj["speaker_volume"].toInt(), 100);
     if (obj.contains("dmr_id")) s.dmrId = static_cast<uint32_t>(obj["dmr_id"].toDouble());
-    if (obj.contains("dmr_password")) s.dmrPassword = obj["dmr_password"].toString();
+    if (obj.contains("dmr_network")) s.dmrNetwork = obj["dmr_network"].toString();
+    // BrandMeister keeps the keys it had before TGIF existed, so existing
+    // files load unchanged. The old "dmr_server"/"dmr_protocol" (BrandMeister
+    // over Homebrew) are deliberately not read: that path is gone.
+    if (obj.contains("dmr_password")) s.bmPassword = obj["dmr_password"].toString();
+    if (obj.contains("dmr_open_terminal_server")) s.bmServer = obj["dmr_open_terminal_server"].toString();
+    if (obj.contains("tgif_server")) s.tgifServer = obj["tgif_server"].toString();
+    if (obj.contains("tgif_password")) s.tgifPassword = obj["tgif_password"].toString();
     if (obj.contains("dmr_id_suffix")) s.dmrIdSuffix = obj["dmr_id_suffix"].toString();
-    if (obj.contains("dmr_protocol")) s.dmrProtocol = obj["dmr_protocol"].toString();
-    if (obj.contains("dmr_server")) s.dmrServer = obj["dmr_server"].toString();
-    if (obj.contains("dmr_open_terminal_server")) s.dmrOpenTerminalServer = obj["dmr_open_terminal_server"].toString();
     if (obj.contains("dmr_color_code")) s.dmrColorCode = static_cast<unsigned>(obj["dmr_color_code"].toInt());
     if (obj.contains("dmr_time_slot")) s.dmrTimeSlot = static_cast<unsigned>(obj["dmr_time_slot"].toInt());
     if (obj.contains("dmr_frequency_mhz")) s.dmrFrequencyMhz = obj["dmr_frequency_mhz"].toDouble();
@@ -54,11 +58,12 @@ bool GuiSettings::save() const {
     obj["mic_volume"] = micVolume;
     obj["speaker_volume"] = speakerVolume;
     obj["dmr_id"] = static_cast<double>(dmrId);
-    obj["dmr_password"] = dmrPassword;
+    obj["dmr_network"] = dmrNetwork;
+    obj["dmr_password"] = bmPassword;
+    obj["dmr_open_terminal_server"] = bmServer;
+    obj["tgif_server"] = tgifServer;
+    obj["tgif_password"] = tgifPassword;
     obj["dmr_id_suffix"] = dmrIdSuffix;
-    obj["dmr_protocol"] = dmrProtocol;
-    obj["dmr_server"] = dmrServer;
-    obj["dmr_open_terminal_server"] = dmrOpenTerminalServer;
     obj["dmr_color_code"] = static_cast<int>(dmrColorCode);
     obj["dmr_time_slot"] = static_cast<int>(dmrTimeSlot);
     obj["dmr_frequency_mhz"] = dmrFrequencyMhz;

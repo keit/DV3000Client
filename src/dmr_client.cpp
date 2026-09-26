@@ -214,21 +214,15 @@ LinkResult DmrClient::link() {
     appendField(rptc, m_config.description, 19);
     rptc.push_back(static_cast<uint8_t>('4')); // slots: '4' = simplex/no duplex, matches a hotspot-style single client
     appendField(rptc, m_config.url, 124);
-    // Confirmed root cause (via a packet capture of a real, accepted
-    // Pi-Star/MMDVMHost RPTC, compared byte-for-byte against ours):
-    // BrandMeister's master gates RPTC acceptance on software id and
-    // package id together matching a recognised combination. Individually
-    // trying a bare "MMDVM" package id, an honestly-named
-    // "MMDVM_"-prefixed package id, and an honest software id paired with
-    // the working package id were all silently rejected -- only this
-    // exact pair (copied verbatim from that capture) is accepted. So
-    // this isn't spoofing a specific claim BrandMeister cares about
-    // (there's no evidence it distinguishes real MMDVM_HS_Hat hardware
-    // from this), it's satisfying an allowlist gate -- but don't change
-    // either field without retesting against a real master, not just
-    // xlxd (which never validated this at all).
-    appendField(rptc, "20250925_PS4", 40);       // software id -- part of the confirmed-working pair
-    appendField(rptc, "MMDVM_MMDVM_HS_Hat", 40); // package id -- part of the confirmed-working pair
+    // History worth keeping: BrandMeister's Homebrew master was confirmed
+    // (by capturing a real, accepted Pi-Star RPTC and comparing it
+    // byte-for-byte) to gate acceptance on software id and package id
+    // matching one recognised pair together -- honest values were silently
+    // rejected. Other masters may not care (xlxd never validated these),
+    // so they're plain config now; if a master rejects RPTC, compare
+    // against a capture of a real hotspot connecting to it, the same way.
+    appendField(rptc, m_config.softwareId, 40);
+    appendField(rptc, m_config.packageId, 40);
 
     // Same diagnostic DMRGateway.cpp's own getConfig() logs -- the 294-byte
     // config portion is fixed-width printable ASCII by construction, safe

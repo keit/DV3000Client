@@ -125,8 +125,9 @@ saving also helps keep audio smooth; see `HowToStart.md`.
      ID and then, per network, that network's fields. Pick **BrandMeister** or
      **TGIF** in the *DMR network* box to see and edit its fields. You can
      fill in both; only networks with a server and password set appear on the
-     DMR tab. TGIF also has the ID suffix, color code, time slot and
-     location/description/URL fields.
+     DMR tab. TGIF also has the ID suffix and location/description/URL
+     fields. (Frequency, color code and time slot are RF-only, so they're
+     fixed in the code rather than settings.)
    - **Devices:** audio input and output devices (use the Test buttons to
      confirm you picked the right ones) and the ThumbDV serial device.
 2. **D-Star tab:** pick a reflector, choose the target module, click

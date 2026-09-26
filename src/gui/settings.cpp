@@ -36,9 +36,6 @@ GuiSettings GuiSettings::load() {
     if (obj.contains("tgif_server")) s.tgifServer = obj["tgif_server"].toString();
     if (obj.contains("tgif_password")) s.tgifPassword = obj["tgif_password"].toString();
     if (obj.contains("dmr_id_suffix")) s.dmrIdSuffix = obj["dmr_id_suffix"].toString();
-    if (obj.contains("dmr_color_code")) s.dmrColorCode = static_cast<unsigned>(obj["dmr_color_code"].toInt());
-    if (obj.contains("dmr_time_slot")) s.dmrTimeSlot = static_cast<unsigned>(obj["dmr_time_slot"].toInt());
-    if (obj.contains("dmr_frequency_mhz")) s.dmrFrequencyMhz = obj["dmr_frequency_mhz"].toDouble();
     if (obj.contains("dmr_latitude")) s.dmrLatitude = obj["dmr_latitude"].toDouble();
     if (obj.contains("dmr_longitude")) s.dmrLongitude = obj["dmr_longitude"].toDouble();
     if (obj.contains("dmr_location")) s.dmrLocation = obj["dmr_location"].toString();
@@ -64,9 +61,6 @@ bool GuiSettings::save() const {
     obj["tgif_server"] = tgifServer;
     obj["tgif_password"] = tgifPassword;
     obj["dmr_id_suffix"] = dmrIdSuffix;
-    obj["dmr_color_code"] = static_cast<int>(dmrColorCode);
-    obj["dmr_time_slot"] = static_cast<int>(dmrTimeSlot);
-    obj["dmr_frequency_mhz"] = dmrFrequencyMhz;
     obj["dmr_latitude"] = dmrLatitude;
     obj["dmr_longitude"] = dmrLongitude;
     obj["dmr_location"] = dmrLocation;

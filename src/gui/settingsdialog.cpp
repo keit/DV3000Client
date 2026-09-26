@@ -336,27 +336,8 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     m_tgifPassword->setEchoMode(QLineEdit::Password);
     m_tgifPassword->setToolTip("The 16-digit key generated on your TGIF account's security page.");
 
-    m_dmrColorCode = new QComboBox;
-    for (int cc = 0; cc <= 15; cc++) m_dmrColorCode->addItem(QString::number(cc), cc);
-    m_dmrColorCode->setCurrentIndex(static_cast<int>(current.dmrColorCode));
-
-    // Slot 2 is the confirmed convention for hotspot-style BrandMeister
-    // connections -- see settings.h's dmrTimeSlot comment.
-    m_dmrTimeSlot = new QComboBox;
-    m_dmrTimeSlot->addItem("1", 1);
-    m_dmrTimeSlot->addItem("2", 2);
-    m_dmrTimeSlot->setCurrentIndex(current.dmrTimeSlot == 1 ? 0 : 1);
-
-    // RPTC config fields -- see settings.h's comment on why these matter
-    // for real masters (BrandMeister) even though xlxd barely checks them.
-    // Defaults are generic placeholders; fill in your actual repeater/
-    // hotspot details here (the same numbers Pi-Star or BlueDV already
-    // has, if you run those) if a real master rejects the configuration
-    // step with generic values.
-    m_dmrFrequencyMhz = new QLineEdit(QString::number(current.dmrFrequencyMhz, 'f', 6));
-    m_dmrFrequencyMhz->setValidator(new QDoubleValidator(0.0, 9999.0, 6, m_dmrFrequencyMhz));
-    m_dmrFrequencyMhz->setPlaceholderText("e.g. 438.325000 -- used as both RX and TX (simplex)");
-
+    // RPTC config fields -- see settings.h. (Frequency, color code and time
+    // slot are RF-only and hardcoded in RepeaterConfig, so not here.)
     m_dmrLatitude = new QLineEdit(QString::number(current.dmrLatitude, 'f', 4));
     m_dmrLatitude->setValidator(new QDoubleValidator(-90.0, 90.0, 4, m_dmrLatitude));
 
@@ -390,9 +371,6 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     tgifForm->addRow("TGIF server:", m_tgifServer);
     tgifForm->addRow("TGIF key:", m_tgifPassword);
     tgifForm->addRow("DMR ID suffix:", m_dmrIdSuffix);
-    tgifForm->addRow("DMR color code:", m_dmrColorCode);
-    tgifForm->addRow("DMR time slot:", m_dmrTimeSlot);
-    tgifForm->addRow("DMR frequency (MHz):", m_dmrFrequencyMhz);
     tgifForm->addRow("DMR latitude:", m_dmrLatitude);
     tgifForm->addRow("DMR longitude:", m_dmrLongitude);
     tgifForm->addRow("DMR location:", m_dmrLocation);
@@ -498,9 +476,6 @@ GuiSettings SettingsDialog::settings() const {
     s.bmPassword = m_bmPassword->text();
     s.tgifServer = m_tgifServer->text().trimmed();
     s.tgifPassword = m_tgifPassword->text();
-    s.dmrColorCode = static_cast<unsigned>(m_dmrColorCode->currentIndex());
-    s.dmrTimeSlot = static_cast<unsigned>(m_dmrTimeSlot->currentData().toInt());
-    s.dmrFrequencyMhz = m_dmrFrequencyMhz->text().toDouble();
     s.dmrLatitude = m_dmrLatitude->text().toDouble();
     s.dmrLongitude = m_dmrLongitude->text().toDouble();
     s.dmrLocation = m_dmrLocation->text().trimmed();

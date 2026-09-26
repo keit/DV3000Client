@@ -625,13 +625,10 @@ void DmrTab::connectWorker(GuiSettings settings, QString network, uint32_t initi
         } else {
             dmr::RepeaterConfig config;
             config.callsign = settings.callsign.toStdString();
-            config.colorCode = settings.dmrColorCode;
-            config.timeSlot = settings.dmrTimeSlot == 1 ? dmr::TimeSlot::Slot1 : dmr::TimeSlot::Slot2;
             config.description = settings.dmrDescription.toStdString();
             config.url = settings.dmrUrl.toStdString();
-            auto freqHz = static_cast<uint32_t>(settings.dmrFrequencyMhz * 1000000.0);
-            config.rxFrequencyHz = freqHz;
-            config.txFrequencyHz = freqHz; // simplex -- see settings.h's dmrFrequencyMhz comment
+            // Frequency, color code and time slot keep RepeaterConfig's
+            // hardcoded defaults -- see its comment.
             config.latitude = static_cast<float>(settings.dmrLatitude);
             config.longitude = static_cast<float>(settings.dmrLongitude);
             config.location = settings.dmrLocation.toStdString();

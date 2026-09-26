@@ -50,14 +50,18 @@ constexpr int KEEPALIVE_PERIOD_SEC = 10; // matches DMRMMDVM_KEEPALIVE_PERIOD
 // `url` defaults to empty rather than some placeholder link.
 struct RepeaterConfig {
     std::string callsign;
-    uint32_t rxFrequencyHz = 438800000;
-    uint32_t txFrequencyHz = 438800000;
-    unsigned power = 1;     // watts, 0-99
-    unsigned colorCode = 1; // 0-15
-    // Slot 2 is the confirmed convention for hotspot-style BrandMeister
-    // connections (verified against a real, working Pi-Star session's own
-    // config -- see dmr_voice.h's TimeSlot comment); Slot 1 exists for
-    // masters/setups that expect it instead.
+    // Frequency, color code and time slot are RF concepts (which channel a
+    // repeater or hotspot transmits on) with no meaning for a client that
+    // only talks over IP -- but the Homebrew protocol's RPTC packet has
+    // fixed fields for them and masters expect them filled in, so they're
+    // hardcoded to plausible hotspot values rather than exposed as
+    // settings. Simplex, so RX and TX are the same. The color code and
+    // slot also go into every transmitted voice burst (see dmr_voice.h),
+    // so a master sees a consistent CC2/TS2 hotspot.
+    uint32_t rxFrequencyHz = 438325000; // 438.325 MHz
+    uint32_t txFrequencyHz = 438325000;
+    unsigned power = 1; // watts, 0-99
+    unsigned colorCode = 2; // 0-15
     dmr::TimeSlot timeSlot = dmr::TimeSlot::Slot2;
     float latitude = 0.0f;
     float longitude = 0.0f;

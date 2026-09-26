@@ -64,9 +64,6 @@ private:
     QLineEdit *m_bmPassword;
     QLineEdit *m_tgifServer;
     QLineEdit *m_tgifPassword;
-    QComboBox *m_dmrColorCode;
-    QComboBox *m_dmrTimeSlot;
-    QLineEdit *m_dmrFrequencyMhz;
     QLineEdit *m_dmrLatitude;
     QLineEdit *m_dmrLongitude;
     QLineEdit *m_dmrLocation;

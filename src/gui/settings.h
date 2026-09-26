@@ -52,23 +52,13 @@ struct GuiSettings {
     // Blank = the plain 7-digit dmrId. A QString (not a number) so "00" stays
     // distinct from blank.
     QString dmrIdSuffix;
-    unsigned dmrColorCode = 1;
-    // 1 or 2. Slot 2 is the confirmed convention for hotspot-style
-    // BrandMeister connections (verified against a real, working Pi-Star
-    // session's own config), hence the default -- see dmr_voice.h's
-    // TimeSlot comment. Stored as plain 1/2 rather than dmr::TimeSlot to
-    // keep this header free of a dependency on dmr_client.h.
-    unsigned dmrTimeSlot = 2;
 
     // RPTC configuration fields -- mostly cosmetic/informational (shown on
-    // the network's dashboard), but real masters (unlike xlxd's own
-    // minimal RPTC handling) can validate them against your account's
-    // actual registration and reject RPTC outright over a mismatch, e.g.
-    // a generic placeholder frequency instead of your real one -- so
-    // these default to plausible-but-generic values and are meant to be
-    // overridden with your actual repeater/hotspot details (the same
-    // numbers Pi-Star or BlueDV already has, if you run those).
-    double dmrFrequencyMhz = 438.8;
+    // the network's dashboard), but a real master (unlike xlxd's own minimal
+    // RPTC handling) can reject RPTC outright over content it doesn't like
+    // (see dmr_client.h's RepeaterConfig comment). The RF-only fields
+    // (frequency, color code, time slot) are not settings at all -- they're
+    // hardcoded in RepeaterConfig, since they mean nothing over IP.
     double dmrLatitude = 0.0;
     double dmrLongitude = 0.0;
     QString dmrLocation = "Unknown";

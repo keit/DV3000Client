@@ -16,6 +16,8 @@
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
 #include <QStackedWidget>
+#include <QPointer>
+#include <QApplication>
 #include <QTabWidget>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -28,6 +30,7 @@
 #include <thread>
 
 #include "dextra_audio.h"
+#include "localcache.h"
 
 namespace {
 
@@ -324,8 +327,35 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     m_dmrNetwork->addItem("TGIF", "tgif");
     m_dmrNetwork->setCurrentIndex(current.dmrNetwork == "tgif" ? 1 : 0);
 
-    m_bmServer = new QLineEdit(current.bmServer);
-    m_bmServer->setPlaceholderText("e.g. 3101.master.brandmeister.network -- the port is fixed, don't add one");
+    // BrandMeister's masters as a dropdown ("AU 5051"), like BlueDV. Editable
+    // so a hostname can still be typed -- an older saved value that isn't in
+    // the list, or when the list can't be fetched (offline, first run).
+    m_bmServer = new QComboBox;
+    m_bmServer->setEditable(true);
+    m_bmServer->setInsertPolicy(QComboBox::NoInsert);
+    m_bmServer->lineEdit()->setPlaceholderText("pick a master, or type a hostname -- the port is fixed");
+    if (!current.bmServer.isEmpty()) m_bmServer->setEditText(current.bmServer);
+
+    // The last cached list shows straight away; if it's stale (or there is
+    // none yet), refresh it in the background. The dialog may be closed
+    // before that returns, so the result goes through a guarded pointer.
+    {
+        std::vector<bmmaster::MasterInfo> cached;
+        if (bmmaster::loadCachedMasterList(cached)) setBmMasters(cached);
+        if (!bmmaster::isMasterCacheFresh(cache::ONE_DAY_SECONDS)) {
+            QPointer<SettingsDialog> guard(this);
+            std::thread([guard] {
+                std::vector<bmmaster::MasterInfo> live;
+                QString error;
+                if (!bmmaster::fetchMasterList(live, error)) return; // keep whatever's showing
+                QMetaObject::invokeMethod(
+                    qApp, [guard, live = std::move(live)] {
+                        if (guard) guard->setBmMasters(live);
+                    },
+                    Qt::QueuedConnection);
+            }).detach();
+        }
+    }
     m_bmPassword = new QLineEdit(current.bmPassword);
     m_bmPassword->setEchoMode(QLineEdit::Password);
     m_bmPassword->setToolTip("The \"Hotspot Security\" password you set in BrandMeister SelfCare -- not your account password.");
@@ -440,6 +470,21 @@ void SettingsDialog::stopAudioInputTest() {
     m_audioInputLevel->setValue(0);
 }
 
+QString SettingsDialog::bmServerHost() const {
+    QString text = m_bmServer->currentText().trimmed();
+    int index = m_bmServer->findText(text);
+    return index >= 0 ? m_bmServer->itemData(index).toString() : text;
+}
+
+void SettingsDialog::setBmMasters(const std::vector<bmmaster::MasterInfo> &masters) {
+    QString host = bmServerHost(); // what's chosen now, to put back afterwards
+    m_bmServer->clear();
+    for (const bmmaster::MasterInfo &m : masters) m_bmServer->addItem(m.label(), m.host());
+    int index = m_bmServer->findData(host);
+    if (index >= 0) m_bmServer->setCurrentIndex(index);
+    else m_bmServer->setEditText(host); // not in the list: keep it as typed
+}
+
 void SettingsDialog::updateDmrNetworkPage() {
     int index = m_dmrNetwork->currentIndex();
     m_dmrNetworkPages->setCurrentIndex(index);
@@ -472,7 +517,7 @@ GuiSettings SettingsDialog::settings() const {
     // dmrNetwork is deliberately left as opened: the combo here only picks
     // which network's fields to edit; the DMR tab's own network combo decides
     // which one is used.
-    s.bmServer = m_bmServer->text().trimmed();
+    s.bmServer = bmServerHost();
     s.bmPassword = m_bmPassword->text();
     s.tgifServer = m_tgifServer->text().trimmed();
     s.tgifPassword = m_tgifPassword->text();

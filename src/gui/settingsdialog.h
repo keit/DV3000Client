@@ -14,6 +14,9 @@
 #include <atomic>
 #include <thread>
 
+#include <vector>
+
+#include "masterdirectory.h"
 #include "settings.h"
 
 class QComboBox;
@@ -45,6 +48,12 @@ private:
     // construction and again on every change.
     void updateDmrNetworkPage();
 
+    // The BrandMeister server dropdown: the master a saved hostname maps to
+    // (or the hostname itself if it isn't in the list), and refilling the
+    // list from the directory while keeping whatever's currently chosen.
+    QString bmServerHost() const;
+    void setBmMasters(const std::vector<bmmaster::MasterInfo> &masters);
+
     QLineEdit *m_callsign;
     QLineEdit *m_suffix;
     QComboBox *m_moduleSuffix;
@@ -60,7 +69,7 @@ private:
     QLineEdit *m_dmrIdSuffix;
     QComboBox *m_dmrNetwork;
     QStackedWidget *m_dmrNetworkPages;
-    QLineEdit *m_bmServer;
+    QComboBox *m_bmServer; // editable: pick a master, or type a hostname
     QLineEdit *m_bmPassword;
     QLineEdit *m_tgifServer;
     QLineEdit *m_tgifPassword;

@@ -125,6 +125,7 @@ if(Qt6_FOUND)
     src/gui/dmrtab.cpp
     src/gui/dstartab.cpp
     src/gui/localcache.cpp
+    src/gui/masterdirectory.cpp
     src/gui/filelogging.cpp
     src/gui/main.cpp
     src/gui/mainwindow.cpp

@@ -145,10 +145,11 @@ Settings can't be changed while a session is connected.
   BrandMeister wants the **Hotspot Security** password you set in SelfCare
   (not your account password); TGIF wants the **16-digit key** generated on
   your TGIF account's security page.
-- Servers are just hostnames (`tgif.network`, or one of BrandMeister's
-  masters such as `3101.master.brandmeister.network`). The port is fixed per
-  network -- 62031 for TGIF's Homebrew, 54006 for BrandMeister's Open DMR
-  Terminal -- so don't add one.
+- Servers are just hostnames, and the port is fixed per network -- 62031 for
+  TGIF's Homebrew, 54006 for BrandMeister's Open DMR Terminal -- so don't add
+  one. BrandMeister's server box is a dropdown of its masters ("AU 5051",
+  "DE 2621", ...), fetched from BrandMeister and cached for a day; you can
+  also type a hostname such as `3101.master.brandmeister.network`.
 - **BrandMeister (Open DMR Terminal)** only delivers what you're subscribed
   to. The client subscribes to the talkgroup in the box when you connect and
   again whenever you press PTT; **Unsubscribe** (next to *Current

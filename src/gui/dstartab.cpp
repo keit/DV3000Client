@@ -260,6 +260,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     leftPanel->setLayout(layout);
 
     auto *splitter = new QSplitter;
+    m_splitter = splitter;
     splitter->addWidget(leftPanel);
     splitter->addWidget(m_lastHeardTable);
     splitter->setStretchFactor(0, 0);

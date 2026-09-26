@@ -7,6 +7,7 @@
 // live session or an in-flight connect/disconnect, and stopping that
 // session cleanly on window close.
 
+#include <QSplitter>
 #include <QWidget>
 
 class QPushButton;
@@ -54,6 +55,22 @@ public:
     // volumesChanged() -- MainWindow uses it to sync the two tabs and to
     // apply the saved values at startup.
     virtual void setVolumes(int mic, int speaker) = 0;
+
+    // Width of the left pane (controls) in this tab's left/Last-Heard
+    // splitter -- MainWindow carries it from one tab to the next on a tab
+    // switch, so the dividing border sits in the same place on both. The
+    // splitter itself clamps to each tab's minimum width, so a width one
+    // tab can't fit is simply the nearest it can.
+    int leftPaneWidth() const { return m_splitter ? m_splitter->sizes().value(0) : 0; }
+    void setLeftPaneWidth(int width) {
+        if (!m_splitter) return;
+        int right = m_splitter->width() - m_splitter->handleWidth() - width;
+        m_splitter->setSizes({width, right > 0 ? right : 0});
+    }
+
+protected:
+    // Set by each tab's constructor to its left/Last-Heard splitter.
+    QSplitter *m_splitter = nullptr;
 
 signals:
     void stateChanged(); // isActiveOrBusy() may have changed

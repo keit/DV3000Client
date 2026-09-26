@@ -9,6 +9,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTabWidget>
+#include <QTimer>
 
 #include "dmrtab.h"
 #include "dstartab.h"
@@ -78,8 +79,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_tabs->addTab(m_dstarTab, "D-Star");
     m_tabs->addTab(m_dmrTab, "DMR");
 
+    // Keep the left/right border in the same place on both tabs: on a
+    // switch, the tab being shown takes the width the one being left had
+    // (which reflects wherever the user dragged it). Deferred a tick --
+    // the page being revealed hasn't been laid out at its real size yet,
+    // so its splitter can't take a width until it has.
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int index) {
+        auto *from = qobject_cast<ProtocolTab *>(m_tabs->widget(m_currentTabIndex));
+        auto *to = qobject_cast<ProtocolTab *>(m_tabs->widget(index));
+        m_currentTabIndex = index;
+        if (!from || !to || from == to) return;
+        int width = from->leftPaneWidth();
+        QTimer::singleShot(0, to, [to, width] { to->setLeftPaneWidth(width); });
+    });
+
     setCentralWidget(m_tabs);
-    resize(760, 480);
+    resize(900, 480);
 
     qApp->installEventFilter(this);
     updateSettingsActionEnabled();

@@ -34,6 +34,7 @@ private:
     GuiSettings m_settings;
 
     QTabWidget *m_tabs;
+    int m_currentTabIndex = 0; // the tab being left, as of the next currentChanged
     DStarTab *m_dstarTab;
     DmrTab *m_dmrTab;
     QAction *m_settingsAction;

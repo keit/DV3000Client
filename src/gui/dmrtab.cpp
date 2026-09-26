@@ -273,6 +273,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     // Same left-panel/Last-Heard split as DStarTab, for a consistent look
     // across the two protocol tabs.
     auto *splitter = new QSplitter;
+    m_splitter = splitter;
     splitter->addWidget(leftPanel);
     splitter->addWidget(m_lastHeardTable);
     splitter->setStretchFactor(0, 0);

@@ -45,7 +45,7 @@ struct GuiSettings {
     // Homebrew-only: the RPTC packet declares a virtual repeater, which Open
     // DMR Terminal has no equivalent of.
     QString tgifServer = "tgif.network";
-    QString tgifPassword; // the 16-digit key from your TGIF account's security page
+    QString tgifPassword; // TGIF's "Hotspot Security Key": 16 digits, from your TGIF account's security page
     // Optional 2-digit suffix appended to dmrId to form the 9-digit repeater
     // ID declared to the master -- TGIF calls it the ESSID, and it's how more
     // than one hotspot/client can connect under the same DMR ID at once.

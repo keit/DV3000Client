@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QDoubleValidator>
 #include <QFormLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QIntValidator>
 #include <QLineEdit>
@@ -364,7 +365,7 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     m_tgifServer->setPlaceholderText("tgif.network -- the port is fixed, don't add one");
     m_tgifPassword = new QLineEdit(current.tgifPassword);
     m_tgifPassword->setEchoMode(QLineEdit::Password);
-    m_tgifPassword->setToolTip("The 16-digit key generated on your TGIF account's security page.");
+    m_tgifPassword->setToolTip("The Hotspot Security Key (16 digits) generated on your TGIF account's security page.");
 
     // RPTC config fields -- see settings.h. (Frequency, color code and time
     // slot are RF-only and hardcoded in RepeaterConfig, so not here.)
@@ -383,12 +384,20 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     m_dmrUrl = new QLineEdit(current.dmrUrl);
     m_dmrUrl->setPlaceholderText("optional, e.g. a page about your station");
 
-    auto *generalForm = new QFormLayout;
-    generalForm->addRow("Callsign:", m_callsign);
-    generalForm->addRow("Suffix:", m_suffix);
-    generalForm->addRow("Module suffix:", m_moduleSuffix);
-    generalForm->addRow("DMR ID:", m_dmrId);
-    generalForm->addRow("DMR network:", m_dmrNetwork);
+    // Callsign is shared (D-Star identity, and what the DMR RPTC declares),
+    // so it sits above the two protocol groups.
+    auto *callsignForm = new QFormLayout;
+    callsignForm->addRow("Callsign:", m_callsign);
+
+    auto *dstarBox = new QGroupBox("D-Star");
+    auto *dstarForm = new QFormLayout(dstarBox);
+    dstarForm->addRow("Suffix:", m_suffix);
+    dstarForm->addRow("Module suffix:", m_moduleSuffix);
+
+    auto *dmrBox = new QGroupBox("DMR");
+    auto *dmrForm = new QFormLayout(dmrBox);
+    dmrForm->addRow("DMR ID:", m_dmrId);
+    dmrForm->addRow("DMR network:", m_dmrNetwork);
 
     // One page of fields per network, only the chosen one shown.
     auto *bmForm = new QFormLayout;
@@ -396,26 +405,34 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     bmForm->addRow("Hotspot Security password:", m_bmPassword);
     auto *bmPage = new QWidget;
     bmPage->setLayout(bmForm);
+    bmForm->setContentsMargins(0, 0, 0, 0); // the DMR box already provides the margins
 
     auto *tgifForm = new QFormLayout;
     tgifForm->addRow("TGIF server:", m_tgifServer);
-    tgifForm->addRow("TGIF key:", m_tgifPassword);
+    tgifForm->addRow("Hotspot Security Key:", m_tgifPassword);
     tgifForm->addRow("DMR ID suffix:", m_dmrIdSuffix);
-    tgifForm->addRow("DMR latitude:", m_dmrLatitude);
-    tgifForm->addRow("DMR longitude:", m_dmrLongitude);
-    tgifForm->addRow("DMR location:", m_dmrLocation);
-    tgifForm->addRow("DMR description:", m_dmrDescription);
-    tgifForm->addRow("DMR URL:", m_dmrUrl);
+    tgifForm->addRow("Latitude:", m_dmrLatitude);
+    tgifForm->addRow("Longitude:", m_dmrLongitude);
+    tgifForm->addRow("Location:", m_dmrLocation);
+    tgifForm->addRow("Description:", m_dmrDescription);
+    tgifForm->addRow("URL:", m_dmrUrl);
     auto *tgifPage = new QWidget;
     tgifPage->setLayout(tgifForm);
+    tgifForm->setContentsMargins(0, 0, 0, 0);
 
     m_dmrNetworkPages = new QStackedWidget;
     m_dmrNetworkPages->addWidget(bmPage);
     m_dmrNetworkPages->addWidget(tgifPage);
-    generalForm->addRow(m_dmrNetworkPages);
+    dmrForm->addRow(m_dmrNetworkPages);
     connect(m_dmrNetwork, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateDmrNetworkPage);
+
+    auto *generalLayout = new QVBoxLayout;
+    generalLayout->addLayout(callsignForm);
+    generalLayout->addWidget(dstarBox);
+    generalLayout->addWidget(dmrBox);
+    generalLayout->addStretch();
     auto *generalPage = new QWidget;
-    generalPage->setLayout(generalForm);
+    generalPage->setLayout(generalLayout);
 
     updateDmrNetworkPage();
 

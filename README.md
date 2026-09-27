@@ -143,7 +143,7 @@ Settings can't be changed while a session is connected.
 
 - The DMR ID is your registered ID. Each network has its own credential:
   BrandMeister wants the **Hotspot Security** password you set in SelfCare
-  (not your account password); TGIF wants the **16-digit key** generated on
+  (not your account password); TGIF wants the **Hotspot Security Key** (16 digits) generated on
   your TGIF account's security page.
 - Servers are just hostnames, and the port is fixed per network -- 62031 for
   TGIF's Homebrew, 54006 for BrandMeister's Open DMR Terminal -- so don't add
@@ -191,7 +191,7 @@ Examples; run any tool with no arguments for its usage line.
 # DMR (Homebrew, e.g. TGIF): log in and send a short test transmission to the
 # Parrot (group call to TG 9990), staying connected 20 seconds. The password
 # "-" reads it from $DMR_PASSWORD, so it never lands in shell history.
-read -s "DMR_PASSWORD?TGIF key: "; export DMR_PASSWORD
+read -s "DMR_PASSWORD?Hotspot Security Key: "; export DMR_PASSWORD
 ./build/dmr_test --suffix 01 tgif.network 62031 <dmrId> - <callsign> 20 9990
 
 # DMR (BrandMeister Open DMR Terminal): connect with real audio, subscribe to

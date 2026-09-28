@@ -53,8 +53,7 @@ If Qt6 isn't found, CMake skips the GUI and builds only the command-line tools.
 ## Build
 
 This repository uses git submodules (`serialDV` and `xlxd`), so clone with
-`--recurse-submodules`. The repo is currently private, so you need access to it
-and a configured SSH key (or a GitHub token if you clone over HTTPS).
+`--recurse-submodules`.
 
 ```sh
 git clone --recurse-submodules git@github.com:keit/DV3000Client.git
@@ -250,3 +249,8 @@ third_party/xlxd      xlxd reference code (submodule; DMR FEC code is reused)
   serial interface (this repo uses a fork)
 - [xlxd](https://github.com/LX3JL/xlxd) by LX3JL, whose D-Star/DMR code
   informed the protocol implementations and whose FEC routines are reused
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 (GPLv3) - see the [LICENSE](LICENSE) file for details.
+Includes code from `serialDV` and `xlxd`, both licensed under GPLv3.

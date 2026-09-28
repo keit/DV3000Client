@@ -59,19 +59,31 @@ void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrTran
         auto readStart = std::chrono::steady_clock::now();
         bool gotAudio = capture->read(pcm);
         auto readElapsed = std::chrono::steady_clock::now() - readStart;
+        // Polled here, ahead of the throttle below, so the throttle knows
+        // whether we're (about to be) transmitting this iteration.
+        bool active = pttActive();
 
         if (readElapsed < fastThreshold) {
             if (fastReadStreak < fastStreakLimit) fastReadStreak++;
         } else {
             fastReadStreak = 0;
         }
-        if (fastReadStreak >= fastStreakLimit) {
+        if (fastReadStreak >= fastStreakLimit && !active) {
+            // Only while *not* transmitting -- confirmed by a real capture
+            // xrun (missing words) against a network ThumbDV (AMBEServer
+            // 3000): a backlog builds in ALSA's own ring buffer often enough
+            // on its own that this throttle -- meant only to stop a
+            // busy-loop against the never-blocking "null" device -- fires
+            // during real transmit too, and while transmitting every ms
+            // matters against the capture buffer, especially with
+            // encode()'s own ~15-20ms network round trip already eating
+            // into the 20ms budget. So skip the sleep and let the loop
+            // drain the backlog as fast as it can instead.
             std::this_thread::sleep_for(period);
         }
 
         if (!gotAudio) continue;
 
-        bool active = pttActive();
         if (active && !transmitting) {
             streamId = client->beginVoiceTx(talkgroup(), callType());
             transmitting = true;

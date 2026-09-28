@@ -10,6 +10,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QIntValidator>
+#include <QLabel>
 #include <QLineEdit>
 #include <QMetaObject>
 #include <QProgressBar>
@@ -31,6 +32,7 @@
 #include <thread>
 
 #include "dextra_audio.h"
+#include "dvcontroller.h"
 #include "localcache.h"
 
 namespace {
@@ -306,6 +308,54 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
 
     m_thumbdv = makeEditableCombo(listSerialByIdDevices(), current.thumbdvDevice);
 
+    m_thumbdvMode = new QComboBox;
+    m_thumbdvMode->addItem("Local serial device", "serial");
+    m_thumbdvMode->addItem("Network (AMBEServer 3000)", "network");
+    m_thumbdvMode->setCurrentIndex(current.thumbdvIsNetwork() ? 1 : 0);
+
+    m_thumbdvHost = new QLineEdit(current.thumbdvHost);
+    m_thumbdvHost->setPlaceholderText("hostname or IP of the machine running AMBEServer");
+    m_thumbdvPort = new QLineEdit(QString::number(current.thumbdvPort));
+    m_thumbdvPort->setValidator(new QIntValidator(1, 65535, m_thumbdvPort));
+    m_thumbdvPort->setMaximumWidth(80);
+
+    // Opens a real DVController against the typed host:port (even if not yet
+    // saved) so a wrong address, a firewall, or a stopped server shows up here
+    // instead of as a failed Connect. The controller is created on the worker
+    // thread and the result posted back through a QPointer, the same shape as
+    // the master-list fetch: the dialog may be closed while it waits.
+    m_thumbdvTest = new QPushButton("Test");
+    m_thumbdvTestResult = new QLabel;
+    connect(m_thumbdvTest, &QPushButton::clicked, this, [this] {
+        GuiSettings probe;
+        probe.thumbdvMode = "network";
+        probe.thumbdvHost = m_thumbdvHost->text().trimmed();
+        probe.thumbdvPort = m_thumbdvPort->text().toInt();
+        const QString target = probe.thumbdvTarget();
+        if (target.isEmpty() || probe.thumbdvPort < 1) {
+            m_thumbdvTestResult->setText("Enter a host and port first.");
+            return;
+        }
+        m_thumbdvTest->setEnabled(false);
+        m_thumbdvTestResult->setText("Testing " + target + "...");
+        QPointer<SettingsDialog> self(this);
+        std::thread([self, target] {
+            SerialDV::DVController dv;
+            const bool ok = dv.open(target.toStdString());
+            if (ok) dv.close();
+            QMetaObject::invokeMethod(
+                qApp,
+                [self, target, ok] {
+                    if (!self) return;
+                    self->m_thumbdvTest->setEnabled(true);
+                    self->m_thumbdvTestResult->setText(
+                        ok ? "OK: the ThumbDV at " + target + " responded."
+                           : "No response from " + target + " (server stopped, wrong address, or firewall?).");
+                },
+                Qt::QueuedConnection);
+        }).detach();
+    });
+
     m_dmrId = new QLineEdit(current.dmrId ? QString::number(current.dmrId) : QString());
     m_dmrId->setValidator(new QIntValidator(0, 99999999, m_dmrId)); // DMR IDs are up to 8 digits
     m_dmrId->setPlaceholderText("e.g. your radioid.net-registered ID");
@@ -461,7 +511,22 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     auto *devicesForm = new QFormLayout;
     devicesForm->addRow("Audio input device:", audioInputColumn);
     devicesForm->addRow("Audio output device:", audioOutputRow);
-    devicesForm->addRow("ThumbDV device:", m_thumbdv);
+    devicesForm->addRow("ThumbDV:", m_thumbdvMode);
+
+    // The rows for both modes live in the one form (so labels line up with
+    // the audio rows above) and updateThumbdvPage() shows only the chosen
+    // mode's.
+    devicesForm->addRow("Serial device:", m_thumbdv);
+    devicesForm->addRow("Host:", m_thumbdvHost);
+    devicesForm->addRow("Port:", m_thumbdvPort);
+    auto *thumbdvTestRow = new QHBoxLayout;
+    thumbdvTestRow->addWidget(m_thumbdvTest);
+    thumbdvTestRow->addWidget(m_thumbdvTestResult, 1);
+    devicesForm->addRow(thumbdvTestRow);
+    m_thumbdvTestRow = thumbdvTestRow;
+    m_thumbdvForm = devicesForm;
+    connect(m_thumbdvMode, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateThumbdvPage);
+    updateThumbdvPage();
     auto *devicesPage = new QWidget;
     devicesPage->setLayout(devicesForm);
 
@@ -476,6 +541,16 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     auto *layout = new QVBoxLayout(this);
     layout->addWidget(tabs);
     layout->addWidget(buttons);
+}
+
+void SettingsDialog::updateThumbdvPage() {
+    const bool network = m_thumbdvMode->currentData().toString() == "network";
+    m_thumbdvForm->setRowVisible(m_thumbdv, !network);
+    m_thumbdvForm->setRowVisible(m_thumbdvHost, network);
+    m_thumbdvForm->setRowVisible(m_thumbdvPort, network);
+    m_thumbdvForm->setRowVisible(m_thumbdvTestRow, network);
+    // Resize once the form has re-laid out, so the dialog can shrink back.
+    QTimer::singleShot(0, this, &QWidget::adjustSize);
 }
 
 void SettingsDialog::stopAudioInputTest() {
@@ -528,7 +603,10 @@ GuiSettings SettingsDialog::settings() const {
     s.moduleSuffix = m_moduleSuffix->currentText();
     s.audioInputDevice = m_audioInput->currentText().trimmed();
     s.audioOutputDevice = m_audioOutput->currentText().trimmed();
+    s.thumbdvMode = m_thumbdvMode->currentData().toString();
     s.thumbdvDevice = m_thumbdv->currentText().trimmed();
+    s.thumbdvHost = m_thumbdvHost->text().trimmed();
+    s.thumbdvPort = qBound(1, m_thumbdvPort->text().toInt(), 65535);
     s.dmrId = static_cast<uint32_t>(m_dmrId->text().trimmed().toULong());
     s.dmrIdSuffix = m_dmrIdSuffix->text().trimmed();
     // dmrNetwork is deliberately left as opened: the combo here only picks

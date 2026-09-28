@@ -20,6 +20,9 @@
 #include "settings.h"
 
 class QComboBox;
+class QFormLayout;
+class QHBoxLayout;
+class QLabel;
 class QLineEdit;
 class QProgressBar;
 class QPushButton;
@@ -64,7 +67,16 @@ private:
     std::atomic<bool> m_audioInputTesting{false};
     QComboBox *m_audioOutput;
     QPushButton *m_audioOutputTest;
-    QComboBox *m_thumbdv;
+    // ThumbDV: local serial device, or a remote one over UDP (AMBEServer 3000).
+    void updateThumbdvPage();
+    QComboBox *m_thumbdvMode;
+    QFormLayout *m_thumbdvForm;
+    QHBoxLayout *m_thumbdvTestRow;
+    QComboBox *m_thumbdv; // serial page
+    QLineEdit *m_thumbdvHost; // network page
+    QLineEdit *m_thumbdvPort;
+    QPushButton *m_thumbdvTest;
+    QLabel *m_thumbdvTestResult;
     QLineEdit *m_dmrId;
     QLineEdit *m_dmrIdSuffix;
     QComboBox *m_dmrNetwork;

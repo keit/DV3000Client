@@ -318,8 +318,8 @@ void DStarTab::startConnect() {
         QMessageBox::information(this, "No module selected", "Pick a target module first.");
         return;
     }
-    if (m_settings.thumbdvDevice.isEmpty()) {
-        QMessageBox::warning(this, "No ThumbDV device", "Set your ThumbDV device in Settings first.");
+    if (m_settings.thumbdvTarget().isEmpty()) {
+        QMessageBox::warning(this, "No ThumbDV device", "Set your ThumbDV (serial device or AMBEServer host) in Settings first.");
         return;
     }
 
@@ -338,8 +338,8 @@ void DStarTab::connectWorker(QString host, QString reflectorName, char targetMod
     bool ok = true;
 
     m_dv = std::make_unique<SerialDV::DVController>();
-    if (!m_dv->open(settings.thumbdvDevice.toStdString())) {
-        error = "Failed to open ThumbDV device " + settings.thumbdvDevice;
+    if (!m_dv->open(settings.thumbdvTarget().toStdString())) {
+        error = "Failed to open ThumbDV " + settings.thumbdvTarget();
         ok = false;
     }
 

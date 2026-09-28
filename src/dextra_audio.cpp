@@ -20,17 +20,23 @@ bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
     }
 
     unsigned int rate = 8000;
-    // Buffer time in microseconds -- 20 periods of one DV frame (20ms)
-    // each, ~400ms total. Previously 4 periods (~80ms), which left almost
-    // no slack: any brief scheduling delay against the GUI event loop,
-    // network thread, and capture thread all sharing the same box -- or a
-    // slow-but-still-live decode retry (see getResponse()'s progress-based
-    // retry in the serialDV fork, which deliberately keeps going rather
-    // than truncating a slow transfer) -- could drain it and underrun
-    // (EPIPE/"Broken Pipe"). A few hundred ms of extra latency is
-    // inaudible for a half-duplex PTT voice app; audible dropouts aren't.
+    // Buffer time in microseconds -- 40 periods of one DV frame (20ms)
+    // each, ~800ms total. Previously 20 periods (~400ms, itself raised from
+    // an original 4/~80ms for the same reason below), which was enough
+    // margin for a local serial ThumbDV's occasional slow-but-live retry,
+    // but not for a ThumbDV reached over the network (see udpdatacontroller
+    // in the serialDV fork): a per-frame round trip there normally costs
+    // ~15-20ms already, so any scheduling delay against the GUI event loop,
+    // network thread, and capture/playback threads all sharing the same box
+    // eats into a much thinner margin than the same delay would against a
+    // ~1-2ms local serial exchange, and drains the buffer into an underrun
+    // (EPIPE/"Broken Pipe") within a couple of seconds -- confirmed against
+    // a real AMBEServer 3000 on a LAN, dropping whole words of audio.
+    // Doubling it covers that without the local-serial path losing anything:
+    // a few hundred ms to a second of extra latency is inaudible for a
+    // half-duplex PTT voice app; audible dropouts aren't.
     err = snd_pcm_set_params(m_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED,
-                              1, rate, 1, 20 * (1000000 / (rate / SerialDV::MBE_AUDIO_BLOCK_SIZE)));
+                              1, rate, 1, 40 * (1000000 / (rate / SerialDV::MBE_AUDIO_BLOCK_SIZE)));
     if (err < 0) {
         std::fprintf(stderr, "dextra_audio: snd_pcm_set_params(%s) failed: %s\n",
                      device.c_str(), snd_strerror(err));
@@ -137,18 +143,29 @@ void captureThread(SerialDV::DVController *dv, AlsaPcm *capture, DextraClient *c
         auto readStart = std::chrono::steady_clock::now();
         bool gotAudio = capture->read(pcm);
         auto readElapsed = std::chrono::steady_clock::now() - readStart;
+        // Polled here, ahead of the throttle below, so the throttle knows
+        // whether we're (about to be) transmitting this iteration.
+        bool active = pttActive();
 
         if (readElapsed < fastThreshold) {
             if (fastReadStreak < fastStreakLimit) fastReadStreak++;
         } else {
             fastReadStreak = 0;
         }
-        if (fastReadStreak >= fastStreakLimit) {
+        if (fastReadStreak >= fastStreakLimit && !active) {
+            // Only while *not* transmitting: this throttle's own 20ms
+            // sleep is harmless padding against a device with nothing at
+            // stake, but while transmitting every ms counts against the
+            // capture buffer, especially over a network ThumbDV where
+            // encode() already costs ~15-20ms of it -- confirmed by a real
+            // capture xrun (missing words) against AMBEServer 3000, traced
+            // to this same throttle firing during transmit and adding its
+            // own 20ms on top of that per frame. See dmr_audio.cpp's copy
+            // of this loop for the fuller writeup.
             std::this_thread::sleep_for(period);
         }
 
         if (gotAudio) {
-            bool active = pttActive();
             if (active && !transmitting) {
                 streamId = client->beginLiveTx();
                 transmitting = true;

@@ -34,7 +34,9 @@ The repo also builds a few command-line test tools (see below).
 ## Requirements
 
 - Linux (developed on Ubuntu; also used on a Raspberry Pi)
-- A ThumbDV USB dongle
+- A ThumbDV USB dongle, either plugged into this machine or on another one
+  running [AMBEServer 3000](https://www.pa7lim.nl/ambeserver-3000-for-linux/)
+  (e.g. a Raspberry Pi), reached over UDP
 - An ALSA sound device for microphone and speaker (a USB headset works well)
 - C++17 compiler, CMake 3.17+, pkg-config
 - ALSA development headers
@@ -129,7 +131,8 @@ saving also helps keep audio smooth; see `HowToStart.md`.
      fields. (Frequency, color code and time slot are RF-only, so they're
      fixed in the code rather than settings.)
    - **Devices:** audio input and output devices (use the Test buttons to
-     confirm you picked the right ones) and the ThumbDV serial device.
+     confirm you picked the right ones) and the ThumbDV: either a local
+     serial device, or a network host and port (see below).
 2. **D-Star tab:** pick a reflector, choose the target module, click
    **Connect**.
 3. **DMR tab:** choose the **Network** (while disconnected), click
@@ -138,6 +141,22 @@ saving also helps keep audio smooth; see `HowToStart.md`.
    bar when a text field isn't focused).
 
 Settings can't be changed while a session is connected.
+
+### ThumbDV on another machine (AMBEServer 3000)
+
+Instead of a local serial device, the dongle can sit on a Raspberry Pi (or any
+Linux box) running PA7LIM's AMBEServer 3000, which bridges it to UDP. In
+**Settings > Devices**, set *ThumbDV* to **Network (AMBEServer 3000)**, enter
+the host name or IPv4 address and the port (default 2460), and press **Test**
+to check that the server answers.
+
+- Only one client can use an AMBEServer at a time, so don't run the GUI and
+  a command-line tool against the same server together.
+- Every 20 ms audio frame is a UDP round trip, so a wired LAN is best; on Wi-Fi
+  turning off power saving on both ends helps. A reply that takes more than
+  100 ms is treated as lost.
+- The command-line tools accept the same thing in place of the serial device,
+  e.g. `./build/roundtrip_test 192.168.1.20:2460 in.raw out.raw`.
 
 ### DMR notes
 

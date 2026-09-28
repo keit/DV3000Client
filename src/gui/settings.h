@@ -13,7 +13,20 @@ struct GuiSettings {
     QString moduleSuffix = "B";
     QString audioInputDevice = "default";
     QString audioOutputDevice = "default";
-    QString thumbdvDevice;
+    // Where the ThumbDV is: a local serial device, or a remote one served
+    // over UDP by AMBEServer 3000 (or any DVSwitch-style AMBEserver) on
+    // another machine. Both sets of fields are kept so switching the mode
+    // in Settings doesn't lose the other one.
+    QString thumbdvMode = "serial"; // "serial" or "network"
+    QString thumbdvDevice;          // serial mode: e.g. /dev/serial/by-id/...
+    QString thumbdvHost;            // network mode: hostname or IPv4 address
+    int thumbdvPort = 2460;         // AMBEServer's default UDP port
+
+    // What SerialDV::DVController::open() takes: the serial path, or
+    // "host:port" (which it routes to the UDP transport). Empty when the
+    // chosen mode isn't filled in yet.
+    QString thumbdvTarget() const;
+    bool thumbdvIsNetwork() const { return thumbdvMode == "network"; }
 
     // Mic and speaker volume sliders on both protocol tabs (shared, so the
     // two tabs always agree), 0..100 with 50 = unity gain -- see

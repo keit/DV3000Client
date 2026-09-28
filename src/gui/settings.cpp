@@ -12,6 +12,14 @@ QString GuiSettings::filePath() {
     return dir + "/settings.json";
 }
 
+QString GuiSettings::thumbdvTarget() const {
+    if (thumbdvIsNetwork()) {
+        if (thumbdvHost.isEmpty()) return QString();
+        return QString("%1:%2").arg(thumbdvHost).arg(thumbdvPort);
+    }
+    return thumbdvDevice;
+}
+
 GuiSettings GuiSettings::load() {
     GuiSettings s;
     QFile f(filePath());
@@ -24,6 +32,9 @@ GuiSettings GuiSettings::load() {
     if (obj.contains("audio_input_device")) s.audioInputDevice = obj["audio_input_device"].toString();
     if (obj.contains("audio_output_device")) s.audioOutputDevice = obj["audio_output_device"].toString();
     if (obj.contains("thumbdv_device")) s.thumbdvDevice = obj["thumbdv_device"].toString();
+    if (obj.contains("thumbdv_mode")) s.thumbdvMode = obj["thumbdv_mode"].toString() == "network" ? "network" : "serial";
+    if (obj.contains("thumbdv_host")) s.thumbdvHost = obj["thumbdv_host"].toString();
+    if (obj.contains("thumbdv_port")) s.thumbdvPort = qBound(1, obj["thumbdv_port"].toInt(), 65535);
     if (obj.contains("mic_volume")) s.micVolume = qBound(0, obj["mic_volume"].toInt(), 100);
     if (obj.contains("speaker_volume")) s.speakerVolume = qBound(0, obj["speaker_volume"].toInt(), 100);
     if (obj.contains("dmr_id")) s.dmrId = static_cast<uint32_t>(obj["dmr_id"].toDouble());
@@ -52,6 +63,9 @@ bool GuiSettings::save() const {
     obj["audio_input_device"] = audioInputDevice;
     obj["audio_output_device"] = audioOutputDevice;
     obj["thumbdv_device"] = thumbdvDevice;
+    obj["thumbdv_mode"] = thumbdvMode;
+    obj["thumbdv_host"] = thumbdvHost;
+    obj["thumbdv_port"] = thumbdvPort;
     obj["mic_volume"] = micVolume;
     obj["speaker_volume"] = speakerVolume;
     obj["dmr_id"] = static_cast<double>(dmrId);

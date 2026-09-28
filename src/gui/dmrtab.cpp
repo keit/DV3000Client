@@ -531,8 +531,8 @@ void DmrTab::startConnect() {
         QMessageBox::information(this, "No DMR ID", "Set your DMR ID in Settings first.");
         return;
     }
-    if (m_settings.thumbdvDevice.isEmpty()) {
-        QMessageBox::warning(this, "No ThumbDV device", "Set your ThumbDV device in Settings first.");
+    if (m_settings.thumbdvTarget().isEmpty()) {
+        QMessageBox::warning(this, "No ThumbDV device", "Set your ThumbDV (serial device or AMBEServer host) in Settings first.");
         return;
     }
 
@@ -559,8 +559,8 @@ void DmrTab::connectWorker(GuiSettings settings, QString network, uint32_t initi
     bool openTerminal = network == "brandmeister";
 
     m_dv = std::make_unique<SerialDV::DVController>();
-    if (!m_dv->open(settings.thumbdvDevice.toStdString())) {
-        error = "Failed to open ThumbDV device " + settings.thumbdvDevice;
+    if (!m_dv->open(settings.thumbdvTarget().toStdString())) {
+        error = "Failed to open ThumbDV " + settings.thumbdvTarget();
         ok = false;
     }
 

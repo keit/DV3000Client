@@ -546,6 +546,31 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     devicesForm->addRow("Audio output device:", audioOutputRow);
     devicesForm->addRow("ThumbDV:", m_thumbdvMode);
     devicesForm->addRow(m_thumbdvPages);
+
+    // The label columns of devicesForm, serialForm and networkForm are
+    // three independent QFormLayouts (serialForm/networkForm are nested a
+    // level down, inside m_thumbdvPages' pages), so each would otherwise
+    // size its own label column to just its own labels -- leaving Serial
+    // device:/Host:/Port: sitting well left of Audio input device: etc.
+    // Pin every label in all three to one shared width instead, wide
+    // enough for the longest ("Audio output device:"), so they read as one
+    // column without needing them to actually share a layout (see the
+    // QStackedWidget comment above for why they don't).
+    int labelWidth = 0;
+    QList<QFormLayout *> allForms = {devicesForm, serialForm, networkForm};
+    QList<QLabel *> allLabels;
+    for (QFormLayout *form : allForms) {
+        for (int row = 0; row < form->rowCount(); row++) {
+            if (auto *item = form->itemAt(row, QFormLayout::LabelRole)) {
+                if (auto *label = qobject_cast<QLabel *>(item->widget())) {
+                    allLabels << label;
+                    labelWidth = std::max(labelWidth, label->sizeHint().width());
+                }
+            }
+        }
+    }
+    for (QLabel *label : allLabels) label->setFixedWidth(labelWidth);
+
     auto *devicesPage = new QWidget;
     devicesPage->setLayout(devicesForm);
 

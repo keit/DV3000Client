@@ -349,6 +349,15 @@ void RewindClient::handlePacket(const uint8_t *data, size_t len) {
             std::fprintf(stderr, "dmr_rewind: DMRAudio unexpected length %zu (expected %zu)\n", payloadLen,
                          3 * dmr::AMBE_FRAME_SIZE);
         }
+    } else if (type == TypeDMREmbeddedData) {
+        // DMR's embedded LC signalling, repeated across a burst's voice
+        // frames -- confirmed arriving on every real QSO (roughly one per
+        // superframe, ~360ms). We already get source/target from the
+        // VoiceHeader (TypeDMRDataBase + DMR_DATA_VOICE_HEADER, sent 3x at
+        // burst start), so this is redundant for our purposes -- an
+        // expected, frequent, silent no-op, rather than falling into the
+        // generic "unhandled" warning below (which used to fire on every
+        // one of these, drowning out genuine unexpected packet types).
     } else {
         std::fprintf(stderr, "dmr_rewind: unhandled packet type %#06x (%zu bytes)\n", type, payloadLen);
     }

@@ -119,7 +119,7 @@ find_package(Qt6 QUIET COMPONENTS Widgets Network)
 if(Qt6_FOUND)
   set(CMAKE_AUTOMOC ON)
 
-  add_executable(dv3000client_gui
+  add_executable(dv3kclient
     src/gui/audiolevelspanel.cpp
     src/gui/dmriddirectory.cpp
     src/gui/dmrtab.cpp
@@ -136,8 +136,8 @@ if(Qt6_FOUND)
     src/gui/talkgroupdirectory.cpp
     src/gui/talkgrouplistmodel.cpp
   )
-  target_link_libraries(dv3000client_gui dextra_audio dmr_audio dmr_client dmr_rewind xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
-  target_include_directories(dv3000client_gui PRIVATE src ${ALSA_INCLUDE_DIRS})
+  target_link_libraries(dv3kclient dextra_audio dmr_audio dmr_client dmr_rewind xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
+  target_include_directories(dv3kclient PRIVATE src ${ALSA_INCLUDE_DIRS})
 else()
-  message(STATUS "Qt6 Widgets not found -- skipping dv3000client_gui")
+  message(STATUS "Qt6 Widgets not found -- skipping dv3kclient")
 endif()

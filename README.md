@@ -11,7 +11,7 @@ There is no software vocoder here. All AMBE encode/decode is done by the
 ThumbDV hardware over serial (through the vendored `serialDV` library), so
 you need the dongle to transmit or hear anything.
 
-The main program is a Qt6 GUI (`dv3000client_gui`) with a tab per protocol.
+The main program is a Qt6 GUI (`dv3kclient`) with a tab per protocol.
 The repo also builds a few command-line test tools (see below).
 
 ## Features
@@ -74,7 +74,7 @@ The build produces these binaries in `build/`:
 
 | Binary | Purpose |
 | --- | --- |
-| `dv3000client_gui` | The Qt GUI (D-Star and DMR tabs) |
+| `dv3kclient` | The Qt GUI (D-Star and DMR tabs) |
 | `dextra_test` | Command-line DExtra client, incl. live audio mode |
 | `dmr_test` | Command-line DMR client for Homebrew/MMDVM masters (e.g. TGIF) |
 | `odt_test` | Command-line BrandMeister Open DMR Terminal client, with live audio |
@@ -119,7 +119,7 @@ saving also helps keep audio smooth; see `HowToStart.md`.
 ## Running the GUI
 
 ```sh
-./build/dv3000client_gui
+./build/dv3kclient
 ```
 
 1. Open **File > Settings...** and fill in:

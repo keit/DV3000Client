@@ -52,7 +52,7 @@ QString startFileLogging() {
     std::string logPathStd = logPath.toStdString();
     FILE *logFile = std::fopen(logPathStd.c_str(), "w");
     if (!logFile) {
-        std::fprintf(stderr, "dv3000client_gui: could not open log file %s: %s\n",
+        std::fprintf(stderr, "dv3kclient: could not open log file %s: %s\n",
                      logPathStd.c_str(), std::strerror(errno));
         return {};
     }

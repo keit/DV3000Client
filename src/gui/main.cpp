@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
     // application name already being set to know which subfolder to use.
     QString logPath = startFileLogging();
     if (!logPath.isEmpty()) {
-        std::fprintf(stderr, "dv3000client_gui: logging to %s\n", logPath.toUtf8().constData());
+        std::fprintf(stderr, "dv3kclient: logging to %s\n", logPath.toUtf8().constData());
     }
 
     MainWindow window;

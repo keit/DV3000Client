@@ -49,13 +49,24 @@ QString startFileLogging() {
     // Open (and fail loudly if that doesn't work) before touching stderr
     // at all -- once fd 2 is redirected below, a plain fprintf(stderr,...)
     // here would just vanish into the pipe with nothing reading it yet.
+    //
+    // Append, not truncate: this used to be "w", which discarded the
+    // previous run's log the moment the app was relaunched -- exactly the
+    // wrong behaviour for a "something went wrong, I had to restart"
+    // report, since that's the one log you actually need afterwards. A
+    // clear session-start marker (below) keeps runs easy to tell apart
+    // when scrolling through; these logs stay small (a few hundred lines
+    // even over a busy evening) so unbounded growth isn't a real concern
+    // for how this app gets used.
     std::string logPathStd = logPath.toStdString();
-    FILE *logFile = std::fopen(logPathStd.c_str(), "w");
+    FILE *logFile = std::fopen(logPathStd.c_str(), "a");
     if (!logFile) {
         std::fprintf(stderr, "dv3kclient: could not open log file %s: %s\n",
                      logPathStd.c_str(), std::strerror(errno));
         return {};
     }
+    std::fprintf(logFile, "\n===== dv3kclient started %s =====\n", currentTimestamp().c_str());
+    std::fflush(logFile);
 
     int pipeFds[2];
     if (::pipe(pipeFds) != 0) {

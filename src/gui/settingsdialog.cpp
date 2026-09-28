@@ -206,6 +206,7 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     m_audioInputLevel = new QProgressBar;
     m_audioInputLevel->setRange(0, 100);
     m_audioInputLevel->setTextVisible(false);
+    m_audioInputLevel->setFixedHeight(10); // same height as the tabs' own meters (audiolevelspanel.cpp)
     m_audioInputLevel->setStyleSheet(
         "QProgressBar { border: 1px solid gray; background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
         "  stop:0 #2e6b32, stop:0.7 #2e6b32, stop:0.85 #8a5a00, stop:1 #8a2424); }"
@@ -326,6 +327,10 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     // the master-list fetch: the dialog may be closed while it waits.
     m_thumbdvTest = new QPushButton("Test");
     m_thumbdvTestResult = new QLabel;
+    // Same amber used for the D-Star/DMR tabs' status messages (their own
+    // kStatusLabelStyle) -- mid-dark so it stays readable on both light and
+    // dark window themes.
+    m_thumbdvTestResult->setStyleSheet("color: #b36b00;");
     connect(m_thumbdvTest, &QPushButton::clicked, this, [this] {
         GuiSettings probe;
         probe.thumbdvMode = "network";

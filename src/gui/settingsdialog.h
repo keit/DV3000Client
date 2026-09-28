@@ -20,8 +20,6 @@
 #include "settings.h"
 
 class QComboBox;
-class QFormLayout;
-class QHBoxLayout;
 class QLabel;
 class QLineEdit;
 class QProgressBar;
@@ -70,8 +68,7 @@ private:
     // ThumbDV: local serial device, or a remote one over UDP (AMBEServer 3000).
     void updateThumbdvPage();
     QComboBox *m_thumbdvMode;
-    QFormLayout *m_thumbdvForm;
-    QHBoxLayout *m_thumbdvTestRow;
+    QStackedWidget *m_thumbdvPages;
     QComboBox *m_thumbdv; // serial page
     QLineEdit *m_thumbdvHost; // network page
     QLineEdit *m_thumbdvPort;

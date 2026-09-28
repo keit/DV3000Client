@@ -508,25 +508,44 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     audioOutputRow->addWidget(m_audioOutput, 1);
     audioOutputRow->addWidget(m_audioOutputTest);
 
+    auto *serialForm = new QFormLayout;
+    serialForm->setContentsMargins(0, 0, 0, 0);
+    serialForm->addRow("Serial device:", m_thumbdv);
+    auto *serialPage = new QWidget;
+    serialPage->setLayout(serialForm);
+
+    auto *thumbdvTestRow = new QHBoxLayout;
+    thumbdvTestRow->addWidget(m_thumbdvTest);
+    thumbdvTestRow->addWidget(m_thumbdvTestResult, 1);
+    auto *networkForm = new QFormLayout;
+    networkForm->setContentsMargins(0, 0, 0, 0);
+    networkForm->addRow("Host:", m_thumbdvHost);
+    networkForm->addRow("Port:", m_thumbdvPort);
+    networkForm->addRow(thumbdvTestRow);
+    auto *networkPage = new QWidget;
+    networkPage->setLayout(networkForm);
+
+    // Same QStackedWidget shape as m_dmrNetworkPages below, rather than one
+    // shared form with rows shown/hidden per mode (QFormLayout::
+    // setRowVisible(), used here previously) -- that alternative is what a
+    // git-bisect traced a real GNOME/Wayland bug to: Qt's client-side
+    // Adwaita decoration spuriously trying (and Mutter rightly refusing) to
+    // minimize this dialog the moment it opens, which manifests as a
+    // system-wide stuck busy cursor for a while. The stacked-page shape is
+    // what the DMR network fields already use safely below, so this trades
+    // the Host:/Port: labels no longer lining up with the audio labels
+    // above for staying on the known-good pattern.
+    m_thumbdvPages = new QStackedWidget;
+    m_thumbdvPages->addWidget(serialPage);
+    m_thumbdvPages->addWidget(networkPage);
+    connect(m_thumbdvMode, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateThumbdvPage);
+    updateThumbdvPage();
+
     auto *devicesForm = new QFormLayout;
     devicesForm->addRow("Audio input device:", audioInputColumn);
     devicesForm->addRow("Audio output device:", audioOutputRow);
     devicesForm->addRow("ThumbDV:", m_thumbdvMode);
-
-    // The rows for both modes live in the one form (so labels line up with
-    // the audio rows above) and updateThumbdvPage() shows only the chosen
-    // mode's.
-    devicesForm->addRow("Serial device:", m_thumbdv);
-    devicesForm->addRow("Host:", m_thumbdvHost);
-    devicesForm->addRow("Port:", m_thumbdvPort);
-    auto *thumbdvTestRow = new QHBoxLayout;
-    thumbdvTestRow->addWidget(m_thumbdvTest);
-    thumbdvTestRow->addWidget(m_thumbdvTestResult, 1);
-    devicesForm->addRow(thumbdvTestRow);
-    m_thumbdvTestRow = thumbdvTestRow;
-    m_thumbdvForm = devicesForm;
-    connect(m_thumbdvMode, &QComboBox::currentIndexChanged, this, &SettingsDialog::updateThumbdvPage);
-    updateThumbdvPage();
+    devicesForm->addRow(m_thumbdvPages);
     auto *devicesPage = new QWidget;
     devicesPage->setLayout(devicesForm);
 
@@ -544,12 +563,16 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
 }
 
 void SettingsDialog::updateThumbdvPage() {
-    const bool network = m_thumbdvMode->currentData().toString() == "network";
-    m_thumbdvForm->setRowVisible(m_thumbdv, !network);
-    m_thumbdvForm->setRowVisible(m_thumbdvHost, network);
-    m_thumbdvForm->setRowVisible(m_thumbdvPort, network);
-    m_thumbdvForm->setRowVisible(m_thumbdvTestRow, network);
-    // Resize once the form has re-laid out, so the dialog can shrink back.
+    int index = m_thumbdvMode->currentIndex();
+    m_thumbdvPages->setCurrentIndex(index);
+    // Same reasoning as updateDmrNetworkPage(): only the shown page should
+    // count toward the stack's size, so the dialog can shrink back for the
+    // shorter serial page after showing the taller network one.
+    for (int i = 0; i < m_thumbdvPages->count(); i++) {
+        m_thumbdvPages->widget(i)->setSizePolicy(i == index ? QSizePolicy::Preferred : QSizePolicy::Ignored,
+                                                  i == index ? QSizePolicy::Preferred : QSizePolicy::Ignored);
+    }
+    m_thumbdvPages->updateGeometry();
     QTimer::singleShot(0, this, &QWidget::adjustSize);
 }
 

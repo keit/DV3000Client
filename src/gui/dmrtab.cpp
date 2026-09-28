@@ -270,10 +270,15 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     // Level meters: peak of what the mic device is delivering and what's
     // going to the speaker (both after gain), polled from the AlsaPcm
     // objects. Idle when disconnected -- nothing reads or writes them, so
-    // the bars just fall to zero.
+    // the bars just fall to zero. The mic meter only shows while PTT is
+    // down (the capture thread keeps reading between overs, but that audio
+    // goes nowhere); the peak is still taken so a stale one doesn't flash
+    // up the moment PTT is pressed.
     auto *levelTimer = new QTimer(this);
-    connect(levelTimer, &QTimer::timeout, this,
-            [this] { m_audioLevels->updateLevels(m_capture.takePeak(), m_playback.takePeak()); });
+    connect(levelTimer, &QTimer::timeout, this, [this] {
+        int mic = m_capture.takePeak();
+        m_audioLevels->updateLevels(m_pttActive.load() ? mic : 0, m_playback.takePeak());
+    });
     levelTimer->start(50);
 
     auto *leftPanel = new QWidget;

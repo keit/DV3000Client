@@ -1,3 +1,5 @@
+[日本語版](README-jp.md)
+
 # DV3000Client
 
 A Linux desktop client for digital-voice radio reflectors and networks, built

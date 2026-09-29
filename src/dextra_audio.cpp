@@ -54,6 +54,10 @@ void AlsaPcm::close() {
     }
 }
 
+void AlsaPcm::drain() {
+    if (m_handle) snd_pcm_drain(m_handle);
+}
+
 bool AlsaPcm::read(short *pcm) {
     snd_pcm_sframes_t n = snd_pcm_readi(m_handle, pcm, SerialDV::MBE_AUDIO_BLOCK_SIZE);
     if (n == static_cast<snd_pcm_sframes_t>(SerialDV::MBE_AUDIO_BLOCK_SIZE)) {

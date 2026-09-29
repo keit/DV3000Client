@@ -30,7 +30,10 @@ namespace dextra {
 class AlsaPcm {
 public:
     bool open(const std::string &device, snd_pcm_stream_t stream);
+    // Discards anything still buffered -- call drain() first to play it out.
     void close();
+    // Playback only: blocks until everything written has been played.
+    void drain();
 
     // Reads/writes exactly SerialDV::MBE_AUDIO_BLOCK_SIZE samples,
     // recovering from over/underruns rather than treating them as fatal.

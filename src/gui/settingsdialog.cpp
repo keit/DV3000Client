@@ -165,6 +165,9 @@ void playTestTone(const std::string &device) {
         if (!pcm.write(chunk)) break;
         samplesWritten += SerialDV::MBE_AUDIO_BLOCK_SIZE;
     }
+    // write() only blocks once ALSA's ~800ms buffer is full, so most of the
+    // tone is still queued here -- and close() would discard it.
+    pcm.drain();
     pcm.close();
 }
 

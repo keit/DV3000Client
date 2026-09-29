@@ -114,8 +114,34 @@ Unplug and replug the dongle afterwards. Verify with:
 cat /sys/bus/usb-serial/devices/ttyUSB0/latency_timer   # should print 1
 ```
 
-On Wi-Fi-connected machines (e.g. a Raspberry Pi), turning off Wi-Fi power
-saving also helps keep audio smooth; see `HowToStart.md`.
+**Wi-Fi power saving.** On a machine that reaches the network over Wi-Fi,
+power saving can hold packets for 100 ms or more when traffic starts after a
+pause, which is exactly what pressing PTT does. With the ThumbDV behind an
+AMBEServer this breaks up transmit and receive audio, so turn it off on both
+ends. Check the current state with `iw dev <interface> get power_save` (find
+the interface name with `iw dev`).
+
+*Raspberry Pi (Raspberry Pi OS, Pi-Star):* the interface keeps the kernel
+name `wlan0` and there is no NetworkManager, so a udev rule is enough:
+
+```sh
+echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{INTERFACE} set power_save off"' \
+  | sudo tee /etc/udev/rules.d/70-wifi-powersave-off.rules
+sudo reboot
+```
+
+*Ubuntu (and other NetworkManager desktops):* the udev rule above doesn't work
+here. The interface is renamed (e.g. `wlan0` to `wlp1s0`) before the rule's
+command runs, and NetworkManager turns power saving back on when it connects
+anyway (Ubuntu ships `default-wifi-powersave-on.conf`). Override it in
+NetworkManager instead. The file name must sort after `default-...`, because
+the file read last wins:
+
+```sh
+printf '[connection]\nwifi.powersave = 2\n' \
+  | sudo tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf
+sudo systemctl restart NetworkManager
+```
 
 ## Running the GUI
 
@@ -153,9 +179,10 @@ to check that the server answers.
 
 - Only one client can use an AMBEServer at a time, so don't run the GUI and
   a command-line tool against the same server together.
-- Every 20 ms audio frame is a UDP round trip, so a wired LAN is best; on Wi-Fi
-  turning off power saving on both ends helps. A reply that takes more than
-  100 ms is treated as lost.
+- Every 20 ms audio frame is a UDP round trip, so a wired LAN is best. On
+  Wi-Fi, turn off power saving on both ends (see *Wi-Fi power saving* under
+  [One-time system setup](#one-time-system-setup)). A reply that takes more
+  than 100 ms is treated as lost.
 - The command-line tools accept the same thing in place of the serial device,
   e.g. `./build/roundtrip_test 192.168.1.20:2460 in.raw out.raw`.
 

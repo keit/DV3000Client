@@ -114,8 +114,34 @@ sudo udevadm trigger
 cat /sys/bus/usb-serial/devices/ttyUSB0/latency_timer   # 1 と表示されればOK
 ```
 
-Wi-Fi接続の機体(Raspberry Pi など)では、Wi-Fiの省電力機能をオフにすると音声がより
-安定します。詳細は `HowToStart.md` を参照してください。
+**Wi-Fi の省電力機能。** Wi-Fi でネットワークに接続している機体では、しばらく通信が
+なかった後に通信が始まると(PTT を押した瞬間がまさにこれです)、省電力機能がパケット
+を 100ms 以上保留することがあります。ThumbDV を AMBEServer 経由で使う場合、これによ
+り送信・受信の音声が途切れるため、両端で省電力機能をオフにしてください。現在の状態は
+`iw dev <インターフェース名> get power_save` で確認できます(インターフェース名は
+`iw dev` で確認)。
+
+*Raspberry Pi(Raspberry Pi OS、Pi-Star):* インターフェースはカーネル名の `wlan0`
+のままで、NetworkManager も使われていないため、udev ルールで設定できます:
+
+```sh
+echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{INTERFACE} set power_save off"' \
+  | sudo tee /etc/udev/rules.d/70-wifi-powersave-off.rules
+sudo reboot
+```
+
+*Ubuntu(および NetworkManager を使うデスクトップ):* 上記の udev ルールはここでは効
+きません。ルールのコマンドが実行される前にインターフェース名が変更され(例: `wlan0`
+→ `wlp1s0`)、さらに接続時に NetworkManager が省電力機能を再びオンにするためです
+(Ubuntu には `default-wifi-powersave-on.conf` が同梱されています)。代わりに
+NetworkManager の設定で上書きします。最後に読み込まれたファイルが優先されるため、ファ
+イル名は `default-...` より後に並ぶものにしてください:
+
+```sh
+printf '[connection]\nwifi.powersave = 2\n' \
+  | sudo tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf
+sudo systemctl restart NetworkManager
+```
 
 ## GUI の起動
 
@@ -154,8 +180,8 @@ Wi-Fi接続の機体(Raspberry Pi など)では、Wi-Fiの省電力機能をオ�
 - AMBEServer に同時に接続できるクライアントは1つだけです。GUI とコマンドラインツール
   を同じサーバーに対して同時に実行しないでください。
 - 20msごとの音声フレームはそれぞれUDPのラウンドトリップになるため、有線LANが最適で
-  す。Wi-Fiを使う場合は両端で省電力機能をオフにすると改善します。応答が100msを超えた
-  場合はロストとして扱われます。
+  す。Wi-Fiを使う場合は両端で省電力機能をオフにしてください([初回セットアップ](#初回セットアップ)
+  の *Wi-Fi の省電力機能* を参照)。応答が100msを超えた場合はロストとして扱われます。
 - コマンドラインツールもシリアルデバイスの代わりに同じ形式を指定できます。例:
   `./build/roundtrip_test 192.168.1.20:2460 in.raw out.raw`
 

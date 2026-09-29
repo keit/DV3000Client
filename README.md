@@ -73,14 +73,14 @@ git submodule update --init --recursive
 
 The build produces these binaries in `build/`:
 
-| Binary | Purpose |
-| --- | --- |
-| `dv3kclient` | The Qt GUI (D-Star and DMR tabs) |
-| `dextra_test` | Command-line DExtra client, incl. live audio mode |
-| `dmr_test` | Command-line DMR client for Homebrew/MMDVM masters (e.g. TGIF) |
-| `odt_test` | Command-line BrandMeister Open DMR Terminal client, with live audio |
-| `roundtrip_test` | PCM to AMBE to PCM round trip through the ThumbDV |
-| `xlx_directory_test` | Fetches and prints the XLX reflector directory |
+| Binary               | Purpose                                                             |
+| -------------------- | ------------------------------------------------------------------- |
+| `dv3kclient`         | The Qt GUI (D-Star and DMR tabs)                                    |
+| `dextra_test`        | Command-line DExtra client, incl. live audio mode                   |
+| `dmr_test`           | Command-line DMR client for Homebrew/MMDVM masters (e.g. TGIF)      |
+| `odt_test`           | Command-line BrandMeister Open DMR Terminal client, with live audio |
+| `roundtrip_test`     | PCM to AMBE to PCM round trip through the ThumbDV                   |
+| `xlx_directory_test` | Fetches and prints the XLX reflector directory                      |
 
 ## One-time system setup
 
@@ -121,7 +121,7 @@ AMBEServer this breaks up transmit and receive audio, so turn it off on both
 ends. Check the current state with `iw dev <interface> get power_save` (find
 the interface name with `iw dev`).
 
-*Raspberry Pi (Raspberry Pi OS, Pi-Star):* the interface keeps the kernel
+_Raspberry Pi (Raspberry Pi OS, Pi-Star):_ the interface keeps the kernel
 name `wlan0` and there is no NetworkManager, so a udev rule is enough:
 
 ```sh
@@ -130,7 +130,7 @@ echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{
 sudo reboot
 ```
 
-*Ubuntu (and other NetworkManager desktops):* the udev rule above doesn't work
+_Ubuntu (and other NetworkManager desktops):_ the udev rule above doesn't work
 here. The interface is renamed (e.g. `wlan0` to `wlp1s0`) before the rule's
 command runs, and NetworkManager turns power saving back on when it connects
 anyway (Ubuntu ships `default-wifi-powersave-on.conf`). Override it in
@@ -152,7 +152,7 @@ sudo systemctl restart NetworkManager
 1. Open **File > Settings...** and fill in:
    - **General:** your D-Star callsign and module letter; for DMR, your DMR
      ID and then, per network, that network's fields. Pick **BrandMeister** or
-     **TGIF** in the *DMR network* box to see and edit its fields. You can
+     **TGIF** in the _DMR network_ box to see and edit its fields. You can
      fill in both; only networks with a server and password set appear on the
      DMR tab. TGIF also has the ID suffix and location/description/URL
      fields. (Frequency, color code and time slot are RF-only, so they're
@@ -173,14 +173,14 @@ Settings can't be changed while a session is connected.
 
 Instead of a local serial device, the dongle can sit on a Raspberry Pi (or any
 Linux box) running PA7LIM's AMBEServer 3000, which bridges it to UDP. In
-**Settings > Devices**, set *ThumbDV* to **Network (AMBEServer 3000)**, enter
+**Settings > Devices**, set _ThumbDV_ to **Network (AMBEServer 3000)**, enter
 the host name or IPv4 address and the port (default 2460), and press **Test**
 to check that the server answers.
 
 - Only one client can use an AMBEServer at a time, so don't run the GUI and
   a command-line tool against the same server together.
 - Every 20 ms audio frame is a UDP round trip, so a wired LAN is best. On
-  Wi-Fi, turn off power saving on both ends (see *Wi-Fi power saving* under
+  Wi-Fi, turn off power saving on both ends (see _Wi-Fi power saving_ under
   [One-time system setup](#one-time-system-setup)). A reply that takes more
   than 100 ms is treated as lost.
 - The command-line tools accept the same thing in place of the serial device,
@@ -199,12 +199,12 @@ to check that the server answers.
   also type a hostname such as `3101.master.brandmeister.network`.
 - **BrandMeister (Open DMR Terminal)** only delivers what you're subscribed
   to. The client subscribes to the talkgroup in the box when you connect and
-  again whenever you press PTT; **Unsubscribe** (next to *Current
-  subscription*) drops it, and disconnecting unsubscribes automatically. For a
+  again whenever you press PTT; **Unsubscribe** (next to _Current
+  subscription_) drops it, and disconnecting unsubscribes automatically. For a
   **private call** (e.g. the Parrot echo test, ID 9990), tick **Private
   call**; the talkgroup field is then a target DMR ID.
 - **TGIF (Homebrew)** has no separate subscription step: you hear whichever
-  talkgroup you last transmitted on, which is what *Current subscription*
+  talkgroup you last transmitted on, which is what _Current subscription_
   shows. TG 4000 is a "landing place" that passes no traffic (shown as
   "None"). TGIF doesn't support private calls, so that checkbox is disabled;
   test with a **group** call to TG 9990 or 31000 (Parrot).
@@ -218,14 +218,14 @@ to check that the server answers.
 
 Under `~/.config/DV3000Client/`:
 
-| File | Contents |
-| --- | --- |
-| `settings.json` | Your settings (includes the DMR hotspot password in plain text) |
-| `dmr_favourites.json` | BrandMeister favourites list |
-| `dstar_favourites.json` | D-Star favourites (reflector + module) |
-| `dmr_favourites_tgif.json` | TGIF favourites list |
-| `dv3000client.log` | Log file (also reachable via **Help > Log File Location...**) |
-| `cache/` | Cached reflector, talkgroup and DMR ID directories |
+| File                       | Contents                                                        |
+| -------------------------- | --------------------------------------------------------------- |
+| `settings.json`            | Your settings (includes the DMR hotspot password in plain text) |
+| `dmr_favourites.json`      | BrandMeister favourites list                                    |
+| `dstar_favourites.json`    | D-Star favourites (reflector + module)                          |
+| `dmr_favourites_tgif.json` | TGIF favourites list                                            |
+| `dv3000client.log`         | Log file (also reachable via **Help > Log File Location...**)   |
+| `cache/`                   | Cached reflector, talkgroup and DMR ID directories              |
 
 ## Command-line tools
 
@@ -238,12 +238,24 @@ Examples; run any tool with no arguments for its usage line.
 # DMR (Homebrew, e.g. TGIF): log in and send a short test transmission to the
 # Parrot (group call to TG 9990), staying connected 20 seconds. The password
 # "-" reads it from $DMR_PASSWORD, so it never lands in shell history.
-read -s "DMR_PASSWORD?Hotspot Security Key: "; export DMR_PASSWORD
+read -s "DMR_PASSWORD?TGIF Hotspot Security Key: "; export DMR_PASSWORD
 ./build/dmr_test --suffix 01 tgif.network 62031 <dmrId> - <callsign> 20 9990
 
 # DMR (BrandMeister Open DMR Terminal): connect with real audio, subscribe to
-# TG 44155 and listen; add "<capture-device> <tx-tg> <group|private>" to talk
-./build/odt_test <master-host> <dmrId> "$PASSWORD" /dev/serial/by-id/<thumbdv> plughw:1,0 44155
+# TG 9990(parrot TG) to do echo test.
+read -s "BM_PASSWORD?BM Hotspot Security Key: "; export BM_PASSWORD
+./build/odt_test <master-host> <dmrId> "$BM_PASSWORD" /dev/serial/by-id/<thumbdv> plughw:0,0 plughw:1,0 9990 private
+```
+
+```sh
+# List of BrandMeister masters, useful for picking the right hostname
+https://brandmeister.network/#/masters
+```
+
+```sh
+# aplay & arecord list devices, useful for picking the right ALSA device names
+aplay -l
+arecord -l
 ```
 
 `HowToStart.md` has more worked examples: recording received audio, converting

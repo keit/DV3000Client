@@ -72,14 +72,14 @@ git submodule update --init --recursive
 
 ビルドすると `build/` 以下に次のバイナリが生成されます:
 
-| バイナリ | 用途 |
-| --- | --- |
-| `dv3kclient` | Qt GUI 本体(D-Star タブ・DMR タブ) |
-| `dextra_test` | コマンドライン版 DExtra クライアント(ライブ音声モード対応) |
-| `dmr_test` | Homebrew/MMDVM マスター(TGIF など)向けコマンドライン版 DMR クライアント |
-| `odt_test` | コマンドライン版 BrandMeister Open DMR Terminal クライアント(ライブ音声対応) |
-| `roundtrip_test` | ThumbDV を通した PCM→AMBE→PCM のラウンドトリップテスト |
-| `xlx_directory_test` | XLX リフレクターディレクトリを取得して表示 |
+| バイナリ             | 用途                                                                         |
+| -------------------- | ---------------------------------------------------------------------------- |
+| `dv3kclient`         | Qt GUI 本体(D-Star タブ・DMR タブ)                                           |
+| `dextra_test`        | コマンドライン版 DExtra クライアント(ライブ音声モード対応)                   |
+| `dmr_test`           | Homebrew/MMDVM マスター(TGIF など)向けコマンドライン版 DMR クライアント      |
+| `odt_test`           | コマンドライン版 BrandMeister Open DMR Terminal クライアント(ライブ音声対応) |
+| `roundtrip_test`     | ThumbDV を通した PCM→AMBE→PCM のラウンドトリップテスト                       |
+| `xlx_directory_test` | XLX リフレクターディレクトリを取得して表示                                   |
 
 ## 初回セットアップ
 
@@ -121,7 +121,7 @@ cat /sys/bus/usb-serial/devices/ttyUSB0/latency_timer   # 1 と表示されれ�
 `iw dev <インターフェース名> get power_save` で確認できます(インターフェース名は
 `iw dev` で確認)。
 
-*Raspberry Pi(Raspberry Pi OS、Pi-Star):* インターフェースはカーネル名の `wlan0`
+_Raspberry Pi(Raspberry Pi OS、Pi-Star):_ インターフェースはカーネル名の `wlan0`
 のままで、NetworkManager も使われていないため、udev ルールで設定できます:
 
 ```sh
@@ -130,7 +130,7 @@ echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{
 sudo reboot
 ```
 
-*Ubuntu(および NetworkManager を使うデスクトップ):* 上記の udev ルールはここでは効
+_Ubuntu(および NetworkManager を使うデスクトップ):_ 上記の udev ルールはここでは効
 きません。ルールのコマンドが実行される前にインターフェース名が変更され(例: `wlan0`
 → `wlp1s0`)、さらに接続時に NetworkManager が省電力機能を再びオンにするためです
 (Ubuntu には `default-wifi-powersave-on.conf` が同梱されています)。代わりに
@@ -151,7 +151,7 @@ sudo systemctl restart NetworkManager
 
 1. **ファイル > 設定...** を開き、以下を入力します:
    - **General(一般):** D-Star のコールサインとモジュール文字。DMR用にはDMR ID、
-     続いてネットワークごとの項目。*DMR network* ボックスで **BrandMeister** または
+     続いてネットワークごとの項目。_DMR network_ ボックスで **BrandMeister** または
      **TGIF** を選び、それぞれの項目を表示・編集します。両方入力しても構いません —
      サーバーとパスワードが設定されているネットワークのみがDMRタブに表示されます。
      TGIF にはさらに ID サフィックスと位置情報/説明/URLの項目があります。(周波数・
@@ -181,7 +181,7 @@ sudo systemctl restart NetworkManager
   を同じサーバーに対して同時に実行しないでください。
 - 20msごとの音声フレームはそれぞれUDPのラウンドトリップになるため、有線LANが最適で
   す。Wi-Fiを使う場合は両端で省電力機能をオフにしてください([初回セットアップ](#初回セットアップ)
-  の *Wi-Fi の省電力機能* を参照)。応答が100msを超えた場合はロストとして扱われます。
+  の _Wi-Fi の省電力機能_ を参照)。応答が100msを超えた場合はロストとして扱われます。
 - コマンドラインツールもシリアルデバイスの代わりに同じ形式を指定できます。例:
   `./build/roundtrip_test 192.168.1.20:2460 in.raw out.raw`
 
@@ -198,12 +198,12 @@ sudo systemctl restart NetworkManager
   `3101.master.brandmeister.network` のようにホスト名を直接入力することもできます。
 - **BrandMeister(Open DMR Terminal)** は購読(subscribe)しているトークグループの
   音声のみを受信します。接続時、および PTT を押すたびに欄のトークグループを購読しま
-  す。**Unsubscribe**(*Current subscription* の隣)で購読を解除でき、切断時には自動
+  す。**Unsubscribe**(_Current subscription_ の隣)で購読を解除でき、切断時には自動
   的に購読解除されます。**プライベートコール**(例: Parrot エコーテスト、ID 9990)を
   行う場合は **Private call** にチェックを入れてください。この場合トークグループ欄は
   宛先のDMR IDになります。
 - **TGIF(Homebrew)** には購読という概念がなく、最後に送信したトークグループの音声
-  が聞こえます。これが *Current subscription* に表示される内容です。TG 4000 はトラ
+  が聞こえます。これが _Current subscription_ に表示される内容です。TG 4000 はトラ
   フィックを流さない「待機場所」で、「None」と表示されます。TGIF はプライベートコー
   ルに対応していないためチェックボックスは無効になっています。テストには TG 9990 ま
   たは 31000(Parrot)への **グループコール** を使用してください。
@@ -218,14 +218,14 @@ sudo systemctl restart NetworkManager
 
 `~/.config/DV3000Client/` 以下に格納されます:
 
-| ファイル | 内容 |
-| --- | --- |
-| `settings.json` | 設定内容(DMRホットスポットのパスワードを平文で含みます) |
-| `dmr_favourites.json` | BrandMeister のお気に入りリスト |
-| `dstar_favourites.json` | D-Star のお気に入り(リフレクター + モジュール) |
-| `dmr_favourites_tgif.json` | TGIF のお気に入りリスト |
-| `dv3000client.log` | ログファイル(**Help > Log File Location...** からも開けます) |
-| `cache/` | リフレクター・トークグループ・DMR ID ディレクトリのキャッシュ |
+| ファイル                   | 内容                                                          |
+| -------------------------- | ------------------------------------------------------------- |
+| `settings.json`            | 設定内容(DMRホットスポットのパスワードを平文で含みます)       |
+| `dmr_favourites.json`      | BrandMeister のお気に入りリスト                               |
+| `dstar_favourites.json`    | D-Star のお気に入り(リフレクター + モジュール)                |
+| `dmr_favourites_tgif.json` | TGIF のお気に入りリスト                                       |
+| `dv3000client.log`         | ログファイル(**Help > Log File Location...** からも開けます)  |
+| `cache/`                   | リフレクター・トークグループ・DMR ID ディレクトリのキャッシュ |
 
 ## コマンドラインツール
 
@@ -238,12 +238,22 @@ sudo systemctl restart NetworkManager
 # DMR(Homebrew、例: TGIF): ログインし Parrot(TG 9990へのグループコール)へ短い
 # テスト送信を行う。20秒間接続を維持する。パスワードに "-" を指定すると
 # $DMR_PASSWORD から読み込むため、シェル履歴には残らない。
-read -s "DMR_PASSWORD?Hotspot Security Key: "; export DMR_PASSWORD
+read -s "DMR_PASSWORD?TGIF Hotspot Security Key: "; export DMR_PASSWORD
 ./build/dmr_test --suffix 01 tgif.network 62031 <dmrId> - <callsign> 20 9990
 
-# DMR(BrandMeister Open DMR Terminal): 実際のオーディオで接続し、TG 44155 を
-# 購読して聞くだけの状態にする。送信するには "<capture-device> <tx-tg> <group|private>" を追加する
-./build/odt_test <master-host> <dmrId> "$PASSWORD" /dev/serial/by-id/<thumbdv> plughw:1,0 44155
+# DMR(BrandMeister Open DMR Terminal): 実際のオーディオで接続し、TG 9990(パロット TG)に接続、エコーテストを行う。
+./build/odt_test <master-host> <dmrId> "$PASSWORD" /dev/serial/by-id/<thumbdv> plughw:1,0 plughw:0,0 9990 private
+```
+
+```sh
+# BrandMeisterのマスターサーバーのリストは以下のURLを参照
+https://brandmeister.network/#/masters
+```
+
+```sh
+# aplay & arecordを使って、ALSAデバイス・ネームを表示できます。
+aplay -l
+arecord -l
 ```
 
 `HowToStart.md` にはさらに詳しい実例があります: 受信音声の録音、生音声のWAV変換、

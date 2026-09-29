@@ -68,7 +68,7 @@ private:
     void onConnectClicked();
 
     void startConnect();
-    void connectWorker(GuiSettings settings, QString network, uint32_t initialTalkgroup, bool initialPrivate);
+    void connectWorker(GuiSettings settings, QString network);
     void onConnectFinished(bool ok, QString error);
 
     void startDisconnect();
@@ -200,10 +200,8 @@ private:
     dmr::rewind::RewindClient *m_rewindClient = nullptr;
     // What m_rewindClient is currently subscribed to, so
     // resubscribeIfOpenTerminal() can unsubscribe it before subscribing
-    // to something new -- GUI-thread-only (set in connectWorker's Open
-    // DMR Terminal branch and in onConnectFinished/onDisconnectFinished,
-    // both of which only ever run on the GUI thread via queued
-    // connections, same as m_client itself).
+    // to something new -- GUI-thread-only (set by resubscribeIfOpenTerminal()
+    // at PTT-down, cleared by unsubscribeCurrent() and on disconnect).
     uint32_t m_subscribedTalkgroup = 0;
     bool m_subscribedPrivate = false;
     dextra::PcmQueue m_rxQueue;

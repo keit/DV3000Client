@@ -197,8 +197,8 @@ sudo systemctl restart NetworkManager
   有効)マスター一覧のドロップダウン(「AU 5051」「DE 2621」など)です。
   `3101.master.brandmeister.network` のようにホスト名を直接入力することもできます。
 - **BrandMeister(Open DMR Terminal)** は購読(subscribe)しているトークグループの
-  音声のみを受信します。接続時、および PTT を押すたびに欄のトークグループを購読しま
-  す。**Unsubscribe**(_Current subscription_ の隣)で購読を解除でき、切断時には自動
+  音声のみを受信します。欄のトークグループは接続時ではなく、PTT を押したときに購読し
+  ます。**Unsubscribe**(_Current subscription_ の隣)で購読を解除でき、切断時には自動
   的に購読解除されます。**プライベートコール**(例: Parrot エコーテスト、ID 9990)を
   行う場合は **Private call** にチェックを入れてください。この場合トークグループ欄は
   宛先のDMR IDになります。

@@ -546,18 +546,11 @@ void DmrTab::startConnect() {
     m_connectedNetwork = m_network;
     setBusy(true, "Connecting to " + server + "...");
 
-    // Captured here (GUI thread) rather than read from connectWorker --
-    // the combo box/checkbox aren't safe to touch off the GUI thread.
-    // Only used for Open DMR Terminal's initial subscribe(); Homebrew
-    // ignores these.
-    uint32_t initialTalkgroup = currentTalkgroupId();
-    bool initialPrivate = m_privateCall.load();
-
     if (m_worker.joinable()) m_worker.join();
-    m_worker = std::thread(&DmrTab::connectWorker, this, m_settings, m_network, initialTalkgroup, initialPrivate);
+    m_worker = std::thread(&DmrTab::connectWorker, this, m_settings, m_network);
 }
 
-void DmrTab::connectWorker(GuiSettings settings, QString network, uint32_t initialTalkgroup, bool initialPrivate) {
+void DmrTab::connectWorker(GuiSettings settings, QString network) {
     QString error;
     bool ok = true;
     // BrandMeister is reached via Open DMR Terminal, TGIF via Homebrew.
@@ -613,12 +606,10 @@ void DmrTab::connectWorker(GuiSettings settings, QString network, uint32_t initi
             if (result != dmr::LinkResult::Success) {
                 error = QString("Master rejected the connection: %1").arg(dmr::ToString(result));
                 ok = false;
-            } else if (initialTalkgroup != 0) {
-                client->subscribe(initialTalkgroup, initialPrivate ? dmr::rewind::SessionType::PrivateVoice
-                                                                     : dmr::rewind::SessionType::GroupVoice);
-                m_subscribedTalkgroup = initialTalkgroup;
-                m_subscribedPrivate = initialPrivate;
             }
+            // No subscribe() here, even if the talkgroup field is filled
+            // in -- the first subscription happens at PTT-down (see
+            // resubscribeIfOpenTerminal()).
             m_rewindClient = client.get();
             m_client = std::move(client);
         }
@@ -688,7 +679,6 @@ void DmrTab::onConnectFinished(bool ok, QString error) {
     m_playbackThread = std::thread(dmr::playbackThread, &m_playback, &m_rxQueue);
     m_networkThread = std::thread([this] { m_client->run(); });
 
-    if (m_rewindClient && m_subscribedTalkgroup != 0) setActiveSubscription(m_subscribedTalkgroup, m_subscribedPrivate);
     setConnected(true, "Connected to " + (m_connectedNetwork == "brandmeister" ? m_settings.bmServer : m_settings.tgifServer));
 }
 

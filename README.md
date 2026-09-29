@@ -198,8 +198,8 @@ to check that the server answers.
   "DE 2621", ...), fetched from BrandMeister and cached for a day; you can
   also type a hostname such as `3101.master.brandmeister.network`.
 - **BrandMeister (Open DMR Terminal)** only delivers what you're subscribed
-  to. The client subscribes to the talkgroup in the box when you connect and
-  again whenever you press PTT; **Unsubscribe** (next to _Current
+  to. The client subscribes to the talkgroup in the box when you press PTT,
+  not when you connect; **Unsubscribe** (next to _Current
   subscription_) drops it, and disconnecting unsubscribes automatically. For a
   **private call** (e.g. the Parrot echo test, ID 9990), tick **Private
   call**; the talkgroup field is then a target DMR ID.

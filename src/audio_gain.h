@@ -28,13 +28,21 @@ inline void applyGain(short *pcm, size_t count, float gain) {
     }
 }
 
-// Peak sample magnitude as a percentage of full scale (0..100) -- what the
-// level meters show.
+// Peak sample level on a 0..100 meter scale -- what the level meters show.
+// Logarithmic, like a real audio meter: kMeterFloorDb dBFS (and below) is
+// 0, full scale is 100. A linear scale barely moved for decoded speech,
+// which typically peaks around 5-30% of full scale (-26..-10 dBFS) yet
+// sounds fine; on this scale that's roughly 45-80.
 inline int peakPercent(const short *pcm, size_t count) {
+    constexpr float kMeterFloorDb = -48.0f;
     int peak = 0;
     for (size_t i = 0; i < count; i++) {
         int m = pcm[i] < 0 ? -static_cast<int>(pcm[i]) : pcm[i];
         if (m > peak) peak = m;
     }
-    return peak * 100 / 32767;
+    if (peak == 0) return 0;
+    float db = 20.0f * std::log10(peak / 32767.0f);
+    if (db <= kMeterFloorDb) return 0;
+    if (db >= 0.0f) return 100;
+    return static_cast<int>(100.0f * (1.0f - db / kMeterFloorDb));
 }

@@ -31,6 +31,7 @@
 #include <cstdlib>
 #include <thread>
 
+#include "audio_gain.h"
 #include "dextra_audio.h"
 #include "dvcontroller.h"
 #include "localcache.h"
@@ -171,15 +172,6 @@ void playTestTone(const std::string &device) {
     pcm.close();
 }
 
-// Peak sample magnitude in `chunk`, as a percentage of full scale (0-100)
-// -- simplest useful level measure for a "am I picking up sound" meter;
-// RMS would read steadier but peak is plenty for this.
-int peakLevelPercent(const short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE]) {
-    int peak = 0;
-    for (unsigned i = 0; i < SerialDV::MBE_AUDIO_BLOCK_SIZE; i++) peak = std::max(peak, std::abs(static_cast<int>(pcm[i])));
-    return static_cast<int>(peak * 100 / 32767);
-}
-
 } // namespace
 
 SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QDialog(parent), m_initial(current) {
@@ -255,7 +247,7 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
                 if (fastReadStreak >= fastStreakLimit) std::this_thread::sleep_for(period);
 
                 if (!gotAudio) continue;
-                int level = peakLevelPercent(chunk);
+                int level = peakPercent(chunk, SerialDV::MBE_AUDIO_BLOCK_SIZE);
                 QMetaObject::invokeMethod(
                     this,
                     [this, level] {

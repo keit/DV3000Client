@@ -227,6 +227,24 @@ iw event -t | grep scan
   われます。
 - コマンドラインツールもシリアルデバイスの代わりに同じ形式を指定できます。例:
   `./build/roundtrip_test 192.168.1.20:2460 in.raw out.raw`
+- **Raspberry Pi の USB ストール。** Pi 3B+ では ThumbDV の USB 接続がときどきストー
+  ルし、Pi に
+  `ftdi_sio ttyUSB0: usb_serial_generic_read_bulk_callback - urb stopped: -32`
+  と記録されます(`dmesg -T | grep "urb stopped"` で確認)。AMBEServer はポートを開き
+  直さないため、以後まったく応答しなくなります。GUI のログは
+  `getResponse: cannot get response` で埋まり、AMBEServer を再起動するまで何も聞こえ
+  ません。`scripts/pi-star/` にはカーネルログを監視し、このストールが出たら
+  AMBEServer を再起動する小さなウォッチドッグサービスがあります。これにより失うのは1〜
+  2秒の音声だけになります。このディレクトリを Pi にコピーして次を実行してください:
+
+  ```sh
+  sudo ./install-ambeserver-watchdog.sh
+  ```
+
+  サービス名が `ambeserver` であることを前提としています(異なる場合はユニットファイ
+  ルで `AMBESERVER_SERVICE` を設定してください)。Pi-Star の読み取り専用ルートファイル
+  システムはインストール中だけ書き込み可能にします。再起動の記録は
+  `journalctl -u ambeserver-watchdog` で確認できます。
 
 ### DMR に関する補足
 
@@ -321,6 +339,7 @@ src/                  各プロトコルのクライアント、オーディオ�
 src/gui/              Qt GUI(メインウィンドウ、D-Starタブ、DMRタブ、設定)
 data/                 リフレクター一覧のフォールバック用静的データ
 scripts/              ローカル xlxd テストリフレクター用スクリプト
+scripts/pi-star/      Pi-Star / Raspberry Pi 用の AMBEServer ウォッチドッグ
 third_party/serialDV  ThumbDV/AMBE3000用シリアルドライバー(フォーク、サブモジュール)
 third_party/xlxd      xlxd のリファレンスコード(サブモジュール。DMRのFECコードを再利用)
 ```

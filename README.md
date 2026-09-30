@@ -230,6 +230,24 @@ to check that the server answers.
   than 100 ms is treated as lost.
 - The command-line tools accept the same thing in place of the serial device,
   e.g. `./build/roundtrip_test 192.168.1.20:2460 in.raw out.raw`.
+- **Raspberry Pi USB stalls.** On a Pi 3B+, the ThumbDV's USB link
+  occasionally stalls, and the Pi logs
+  `ftdi_sio ttyUSB0: usb_serial_generic_read_bulk_callback - urb stopped: -32`
+  (`dmesg -T | grep "urb stopped"`). AMBEServer never reopens the port, so
+  from then on it doesn't answer at all: the GUI log fills with
+  `getResponse: cannot get response` and you hear nothing until AMBEServer is
+  restarted. `scripts/pi-star/` has a small watchdog service that follows the
+  kernel log and restarts AMBEServer when the stall appears, so you lose a
+  second or two of audio instead. Copy that directory to the Pi and run:
+
+  ```sh
+  sudo ./install-ambeserver-watchdog.sh
+  ```
+
+  It assumes the service is called `ambeserver` (set `AMBESERVER_SERVICE` in
+  the unit file otherwise) and remounts Pi-Star's read-only root filesystem
+  only for the install. `journalctl -u ambeserver-watchdog` shows each
+  restart.
 
 ### DMR notes
 
@@ -325,6 +343,7 @@ src/                  protocol clients, audio, DMR voice/FEC, CLI tools
 src/gui/              Qt GUI (main window, D-Star tab, DMR tab, settings)
 data/                 static fallback reflector list
 scripts/              local xlxd test-reflector helper
+scripts/pi-star/      AMBEServer watchdog for a Pi-Star / Raspberry Pi
 third_party/serialDV  ThumbDV/AMBE3000 serial driver (fork, submodule)
 third_party/xlxd      xlxd reference code (submodule; DMR FEC code is reused)
 ```

@@ -143,6 +143,50 @@ printf '[connection]\nwifi.powersave = 2\n' \
 sudo systemctl restart NetworkManager
 ```
 
+**Background Wi-Fi scans.** This applies only when the ThumbDV is on another
+machine (AMBEServer) and this PC reaches it over Wi-Fi. A local serial
+ThumbDV, or a wired connection, isn't affected. Every few minutes the Wi-Fi
+card scans all channels, which takes the radio off your network's channel
+for around 9 seconds. During that time every AMBEServer reply is delayed to
+~150 ms, well past the per-frame budget, so you get ~10–20 seconds of broken
+audio every few minutes while listening. Short tests often fall between two
+scans and look fine. On a GNOME/NetworkManager desktop two separate things
+trigger these scans, each about every 5 minutes, and both need turning off:
+
+1. *The location service (geoclue)*, which scans to work out where you are.
+   Turn Location Services off (Settings > Privacy & Security > Location
+   Services, or the command below). This is saved per user and survives
+   reboots. The trade-off is that features that use your location stop
+   working, e.g. Night Light's automatic sunset-to-sunrise schedule (switch
+   it to a manual schedule instead).
+
+   ```sh
+   gsettings set org.gnome.system.location enabled false
+   ```
+
+2. *NetworkManager's roaming scan*, which looks for a better access point.
+   It stops when the connection is locked to the access point it's using
+   (its BSSID). The trade-off is that the PC no longer moves to another
+   access point by itself. That's fine for a desktop with one router, but on
+   a mesh network or a laptop that moves around you'll have to clear the
+   lock (`802-11-wireless.bssid ""`) or set a new one when the access point
+   changes. Replace `MyWiFi` with your connection's name (`nmcli connection
+   show`):
+
+   ```sh
+   iw dev wlp1s0 link | head -1    # "Connected to xx:xx:xx:xx:xx:xx"
+   nmcli connection modify MyWiFi 802-11-wireless.bssid xx:xx:xx:xx:xx:xx
+   nmcli connection up MyWiFi
+   ```
+
+To check that nothing is still doing full scans, watch for a few minutes. A
+full scan lists many frequencies on its `scan finished` line; a quick scan
+of just your own channel (one frequency) is harmless.
+
+```sh
+iw event -t | grep scan
+```
+
 ## Running the GUI
 
 ```sh
@@ -180,7 +224,8 @@ to check that the server answers.
 - Only one client can use an AMBEServer at a time, so don't run the GUI and
   a command-line tool against the same server together.
 - Every 20 ms audio frame is a UDP round trip, so a wired LAN is best. On
-  Wi-Fi, turn off power saving on both ends (see _Wi-Fi power saving_ under
+  Wi-Fi, turn off power saving on both ends and stop background scans on
+  this PC (see _Wi-Fi power saving_ and _Background Wi-Fi scans_ under
   [One-time system setup](#one-time-system-setup)). A reply that takes more
   than 100 ms is treated as lost.
 - The command-line tools accept the same thing in place of the serial device,

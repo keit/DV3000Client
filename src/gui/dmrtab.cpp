@@ -278,6 +278,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     connect(levelTimer, &QTimer::timeout, this, [this] {
         int mic = m_capture.takePeak();
         m_audioLevels->updateLevels(m_pttActive.load() ? mic : 0, m_playback.takePeak());
+        updateVocoderStatus();
     });
     levelTimer->start(50);
 
@@ -762,6 +763,8 @@ void DmrTab::setBusy(bool busy, const QString &status) {
 
 void DmrTab::setConnected(bool connected, const QString &status) {
     m_connected = connected;
+    m_connectedStatus = connected ? status : QString();
+    m_vocoderDown = false;
     m_connectButton->setText(connected ? "Disconnect" : "Connect");
     m_connectButton->setStyleSheet(connected ? kConnectedButtonStyle : "");
     m_statusLabel->setStyleSheet(kStatusLabelStyle);
@@ -769,6 +772,18 @@ void DmrTab::setConnected(bool connected, const QString &status) {
     updatePttButtonEnabled();
     updateUnsubscribeButtonEnabled();
     setBusy(false, status);
+}
+
+void DmrTab::updateVocoderStatus() {
+    // m_dv is only created and destroyed around connect/disconnect, and
+    // m_connected is true (with m_busy false) only in between, both set
+    // on this thread -- so while that holds it's safe to read here.
+    if (!m_connected || m_busy || !m_dv) return;
+    bool down = !m_dv->isResponding();
+    if (down == m_vocoderDown) return;
+    m_vocoderDown = down;
+    m_statusLabel->setText(down ? m_connectedStatus + " — ThumbDV not responding" : m_connectedStatus);
+    m_statusLabel->setStyleSheet(down ? kErrorLabelStyle : kStatusLabelStyle);
 }
 
 void DmrTab::updatePttButtonEnabled() { m_pttButton->setEnabled(m_connected && currentTalkgroupId() != 0); }

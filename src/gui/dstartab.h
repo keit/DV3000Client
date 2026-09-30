@@ -70,6 +70,10 @@ private:
 
     void setBusy(bool busy, const QString &status);
     void setConnected(bool connected, const QString &status);
+    // Polled with the level meters: while connected, flags a ThumbDV that
+    // has stopped answering (e.g. an AMBEServer that went deaf) on the
+    // status line, and clears it once it answers again.
+    void updateVocoderStatus();
     void updateConnectButtonEnabled();
 
     // Favourites are reflector+module pairs, e.g. "XLX307" module "B".
@@ -120,4 +124,8 @@ private:
     std::atomic<bool> m_pttActive{false};
     bool m_connected = false;
     bool m_busy = false;
+    // The status text setConnected(true) showed, to restore once the
+    // ThumbDV answers again, and whether it's currently flagged as down.
+    QString m_connectedStatus;
+    bool m_vocoderDown = false;
 };

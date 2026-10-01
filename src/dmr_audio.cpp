@@ -2,8 +2,6 @@
 
 #include <chrono>
 #include <cstdio>
-#include <cstring>
-#include <thread>
 
 namespace dmr {
 
@@ -22,7 +20,7 @@ void encodeSilence(SerialDV::DVController *dv, uint8_t ambe[AMBE_FRAME_SIZE]) {
 
 } // namespace
 
-void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrTransport *client,
+void captureThread(SerialDV::DVController *dv, audio::AlsaPcm *capture, DmrTransport *client,
                     std::function<uint32_t()> talkgroup, std::function<dmr::CallType()> callType,
                     std::function<bool()> pttActive) {
     bool transmitting = false;
@@ -31,13 +29,7 @@ void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrTran
     uint8_t ambe[3][AMBE_FRAME_SIZE];
     short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
 
-    // Same fast-read throttle as dextra::captureThread -- see its comments
-    // for why this only kicks in after several consecutive near-instant
-    // reads rather than padding every iteration unconditionally.
-    constexpr auto period = std::chrono::milliseconds(20);
-    constexpr auto fastThreshold = std::chrono::milliseconds(2);
-    constexpr int fastStreakLimit = 5;
-    int fastReadStreak = 0;
+    audio::CaptureThrottle throttle; // see alsa_audio.h
 
     auto endTransmission = [&] {
         // A partial burst (PTT released mid-way through its 3 frames)
@@ -63,24 +55,7 @@ void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrTran
         // whether we're (about to be) transmitting this iteration.
         bool active = pttActive();
 
-        if (readElapsed < fastThreshold) {
-            if (fastReadStreak < fastStreakLimit) fastReadStreak++;
-        } else {
-            fastReadStreak = 0;
-        }
-        if (fastReadStreak >= fastStreakLimit && !active) {
-            // Only while *not* transmitting -- confirmed by a real capture
-            // xrun (missing words) against a network ThumbDV (AMBEServer
-            // 3000): a backlog builds in ALSA's own ring buffer often enough
-            // on its own that this throttle -- meant only to stop a
-            // busy-loop against the never-blocking "null" device -- fires
-            // during real transmit too, and while transmitting every ms
-            // matters against the capture buffer, especially with
-            // encode()'s own ~15-20ms network round trip already eating
-            // into the 20ms budget. So skip the sleep and let the loop
-            // drain the backlog as fast as it can instead.
-            std::this_thread::sleep_for(period);
-        }
+        throttle.afterRead(readElapsed, active);
 
         if (!gotAudio) continue;
 
@@ -112,7 +87,7 @@ void captureThread(SerialDV::DVController *dv, dextra::AlsaPcm *capture, DmrTran
 }
 
 std::function<void(const uint8_t *, const uint8_t *, const uint8_t *)>
-makeVoiceRxHandler(SerialDV::DVController *dv, dextra::PcmQueue *queue) {
+makeVoiceRxHandler(SerialDV::DVController *dv, audio::PcmQueue *queue) {
     return [dv, queue](const uint8_t *ambe0, const uint8_t *ambe1, const uint8_t *ambe2) {
         for (const uint8_t *ambe : {ambe0, ambe1, ambe2}) {
             short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
@@ -124,23 +99,6 @@ makeVoiceRxHandler(SerialDV::DVController *dv, dextra::PcmQueue *queue) {
             if (ok) queue->push(pcm);
         }
     };
-}
-
-void playbackThread(dextra::AlsaPcm *playback, dextra::PcmQueue *queue) {
-    short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
-    auto lastRealFrame = std::chrono::steady_clock::now() - std::chrono::seconds(10);
-
-    while (g_running) {
-        if (queue->pop(pcm, 20)) {
-            lastRealFrame = std::chrono::steady_clock::now();
-            playback->write(pcm);
-            continue;
-        }
-        if (std::chrono::steady_clock::now() - lastRealFrame < std::chrono::milliseconds(500)) {
-            std::memset(pcm, 0, sizeof(pcm));
-            playback->write(pcm);
-        }
-    }
 }
 
 } // namespace dmr

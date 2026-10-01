@@ -677,7 +677,7 @@ void DmrTab::onConnectFinished(bool ok, QString error) {
         dmr::captureThread, m_dv.get(), &m_capture, m_client.get(), [this] { return m_talkgroup.load(); },
         [this] { return m_privateCall.load() ? dmr::CallType::Private : dmr::CallType::Group; },
         [this] { return m_pttActive.load(); });
-    m_playbackThread = std::thread(dmr::playbackThread, &m_playback, &m_rxQueue);
+    m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dmr::g_running);
     m_networkThread = std::thread([this] { m_client->run(); });
 
     setConnected(true, "Connected to " + (m_connectedNetwork == "brandmeister" ? m_settings.bmServer : m_settings.tgifServer));

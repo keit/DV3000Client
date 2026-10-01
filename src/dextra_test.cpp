@@ -180,7 +180,7 @@ int main(int argc, char **argv) {
     std::signal(SIGTERM, onSignal);
 
     if (liveMode) {
-        dextra::AlsaPcm capture, playback;
+        audio::AlsaPcm capture, playback;
         if (!capture.open(captureDev, SND_PCM_STREAM_CAPTURE)) return 1;
         if (!playback.open(playbackDev, SND_PCM_STREAM_PLAYBACK)) return 1;
 
@@ -193,7 +193,7 @@ int main(int argc, char **argv) {
             }
         }
 
-        dextra::PcmQueue rxQueue;
+        audio::PcmQueue rxQueue;
         dextra::DextraClient client(&dv, [&rxQueue](const short *pcm) { rxQueue.push(pcm); }, liveRxPcmOut);
         if (!client.open(resolveReflectorHost(argv[1]), argv[2][0])) return 1;
         if (!client.link()) return 1;
@@ -205,7 +205,7 @@ int main(int argc, char **argv) {
         }
 
         std::thread capThread(dextra::captureThread, &dv, &capture, &client, [&ptt] { return ptt.active(); });
-        std::thread playThread(dextra::playbackThread, &playback, &rxQueue);
+        std::thread playThread(audio::playbackThread, &playback, &rxQueue, &dextra::g_running);
 
         client.run(); // blocks until g_running is cleared (SIGINT/SIGTERM)
 

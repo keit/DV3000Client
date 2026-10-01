@@ -25,8 +25,8 @@
 //   Parrot doesn't respond to a Group call, confirmed live (an earlier
 //   version of this tool hardcoded Group and got no echo back at all).
 
-#include "dextra_audio.h" // AlsaPcm, PcmQueue
-#include "dmr_audio.h"    // captureThread, makeVoiceRxHandler, playbackThread
+#include "alsa_audio.h"
+#include "dmr_audio.h"
 #include "dmr_rewind.h"
 #include "dmr_transport.h" // dmr::g_running
 #include "dvcontroller.h"
@@ -76,19 +76,19 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    dextra::AlsaPcm playback;
+    audio::AlsaPcm playback;
     if (!playback.open(playbackDevice, SND_PCM_STREAM_PLAYBACK)) {
         std::fprintf(stderr, "odt_test: failed to open audio output device %s\n", playbackDevice.c_str());
         return 1;
     }
 
-    dextra::AlsaPcm capture;
+    audio::AlsaPcm capture;
     if (doTx && !capture.open(captureDevice, SND_PCM_STREAM_CAPTURE)) {
         std::fprintf(stderr, "odt_test: failed to open audio input device %s\n", captureDevice.c_str());
         return 1;
     }
 
-    dextra::PcmQueue rxQueue;
+    audio::PcmQueue rxQueue;
 
     dmr::rewind::RewindClient client;
     if (!client.open(host)) {
@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
         if (tg > 0) client.subscribe(tg, dmr::rewind::SessionType::GroupVoice);
     }
 
-    std::thread playbackThread(dmr::playbackThread, &playback, &rxQueue);
+    std::thread playbackThread(audio::playbackThread, &playback, &rxQueue, &dmr::g_running);
 
     std::atomic<bool> pttActive{false};
     std::thread captureThread;

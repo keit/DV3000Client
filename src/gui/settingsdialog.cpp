@@ -32,7 +32,7 @@
 #include <thread>
 
 #include "audio_gain.h"
-#include "dextra_audio.h"
+#include "alsa_audio.h"
 #include "dvcontroller.h"
 #include "localcache.h"
 
@@ -143,7 +143,7 @@ QComboBox *makeEditableCombo(const QStringList &items, const QString &current) {
 // Blocks for the duration (AlsaPcm::write() paces itself to real time),
 // so always call this from a background thread, never the GUI thread.
 void playTestTone(const std::string &device) {
-    dextra::AlsaPcm pcm;
+    audio::AlsaPcm pcm;
     if (!pcm.open(device, SND_PCM_STREAM_PLAYBACK)) return;
 
     constexpr double kFrequencyHz = 440.0;
@@ -220,7 +220,7 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
         m_audioInputTesting.store(true);
         std::string device = m_audioInput->currentText().trimmed().toStdString();
         m_audioInputTestThread = std::thread([this, device] {
-            dextra::AlsaPcm pcm;
+            audio::AlsaPcm pcm;
             if (!pcm.open(device, SND_PCM_STREAM_CAPTURE)) {
                 m_audioInputTesting.store(false);
                 return;

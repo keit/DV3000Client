@@ -40,11 +40,18 @@ add_library(dextra_client
 target_link_libraries(dextra_client serialdv)
 target_include_directories(dextra_client PUBLIC third_party/serialDV)
 
+# Protocol-independent ALSA audio (streams, RX queue, playback thread,
+# capture pacing) shared by the D-Star and DMR live-audio modules.
+add_library(alsa_audio
+  src/alsa_audio.cpp
+)
+target_link_libraries(alsa_audio serialdv ${ALSA_LIBRARIES})
+target_include_directories(alsa_audio PUBLIC third_party/serialDV ${ALSA_INCLUDE_DIRS})
+
 add_library(dextra_audio
   src/dextra_audio.cpp
 )
-target_link_libraries(dextra_audio dextra_client ${ALSA_LIBRARIES})
-target_include_directories(dextra_audio PUBLIC ${ALSA_INCLUDE_DIRS})
+target_link_libraries(dextra_audio dextra_client alsa_audio)
 
 add_executable(dextra_test
   src/dextra_test.cpp
@@ -92,15 +99,14 @@ add_executable(dmr_test
 )
 target_link_libraries(dmr_test dmr_client)
 
-# DMR's own capture/playback threads (dmr_audio.h/cpp) reuse dextra_audio's
-# AlsaPcm/PcmQueue (protocol-agnostic ALSA glue) and only depend on the
-# generic DmrTransport interface, not any one wire protocol -- so both
-# DmrClient (Homebrew) and RewindClient (Open DMR Terminal) callers can
-# use captureThread/makeVoiceRxHandler/playbackThread as-is.
+# DMR's own capture thread and RX decode handler (dmr_audio.h/cpp) use
+# alsa_audio for the ALSA side and only depend on the generic DmrTransport
+# interface, not any one wire protocol -- so both DmrClient (Homebrew) and
+# RewindClient (Open DMR Terminal) callers can use them as-is.
 add_library(dmr_audio
   src/dmr_audio.cpp
 )
-target_link_libraries(dmr_audio dmr_transport dextra_audio)
+target_link_libraries(dmr_audio dmr_transport alsa_audio)
 
 # BrandMeister's Open DMR Terminal (Rewind) protocol -- see dmr_rewind.h's
 # header comment. Implements DmrTransport, same as dmr_client; shares
@@ -136,7 +142,7 @@ if(Qt6_FOUND)
     src/gui/talkgroupdirectory.cpp
     src/gui/talkgrouplistmodel.cpp
   )
-  target_link_libraries(dv3kclient dextra_audio dmr_audio dmr_client dmr_rewind xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
+  target_link_libraries(dv3kclient alsa_audio dextra_audio dmr_audio dmr_client dmr_rewind xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
   target_include_directories(dv3kclient PRIVATE src ${ALSA_INCLUDE_DIRS})
 else()
   message(STATUS "Qt6 Widgets not found -- skipping dv3kclient")

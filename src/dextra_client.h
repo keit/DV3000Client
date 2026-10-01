@@ -35,8 +35,9 @@ struct DStarHeader {
 };
 
 // Cleared by SIGINT/SIGTERM (installed by the frontend) to unwind every
-// blocking loop in this library -- DextraClient::run()/link(), and
-// dextra_audio's captureThread/playbackThread -- cooperatively.
+// blocking loop in this library -- DextraClient::run()/link(),
+// dextra_audio's captureThread, and the audio::playbackThread a D-Star
+// session runs with this flag -- cooperatively.
 extern volatile sig_atomic_t g_running;
 
 // The ThumbDV is one serial device running a synchronous request/response

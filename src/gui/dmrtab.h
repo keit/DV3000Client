@@ -21,7 +21,7 @@
 
 #include <QHash>
 
-#include "dextra_audio.h" // AlsaPcm, PcmQueue (protocol-agnostic, see dmr_audio.h)
+#include "alsa_audio.h"
 #include "dmr_audio.h"
 #include "dmr_client.h"
 #include "dmr_rewind.h"
@@ -199,7 +199,7 @@ private:
     // subscription step), which isn't and shouldn't be part of the
     // shared interface, so this is how the GUI reaches it when relevant.
     std::unique_ptr<SerialDV::DVController> m_dv;
-    dextra::AlsaPcm m_capture, m_playback;
+    audio::AlsaPcm m_capture, m_playback;
     std::unique_ptr<dmr::DmrTransport> m_client;
     dmr::rewind::RewindClient *m_rewindClient = nullptr;
     // What m_rewindClient is currently subscribed to, so
@@ -208,7 +208,7 @@ private:
     // at PTT-down, cleared by unsubscribeCurrent() and on disconnect).
     uint32_t m_subscribedTalkgroup = 0;
     bool m_subscribedPrivate = false;
-    dextra::PcmQueue m_rxQueue;
+    audio::PcmQueue m_rxQueue;
     std::thread m_captureThread, m_playbackThread, m_networkThread;
     std::thread m_worker; // the in-flight connect/disconnect sequence, if any
     std::atomic<bool> m_pttActive{false};

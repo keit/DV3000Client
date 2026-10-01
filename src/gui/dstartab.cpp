@@ -422,7 +422,7 @@ void DStarTab::onConnectFinished(bool ok, QString error, QString reflectorName, 
     m_pttActive.store(false);
     m_captureThread = std::thread(dextra::captureThread, m_dv.get(), &m_capture, m_client.get(),
                                    [this] { return m_pttActive.load(); });
-    m_playbackThread = std::thread(dextra::playbackThread, &m_playback, &m_rxQueue);
+    m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dextra::g_running);
     m_networkThread = std::thread([this] { m_client->run(); });
 
     setConnected(true, QString("Connected to %1, module %2")

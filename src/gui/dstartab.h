@@ -116,9 +116,9 @@ private:
 
     // Live session state -- only meaningful while m_connected.
     std::unique_ptr<SerialDV::DVController> m_dv;
-    dextra::AlsaPcm m_capture, m_playback;
+    audio::AlsaPcm m_capture, m_playback;
     std::unique_ptr<dextra::DextraClient> m_client;
-    dextra::PcmQueue m_rxQueue;
+    audio::PcmQueue m_rxQueue;
     std::thread m_captureThread, m_playbackThread, m_networkThread;
     std::thread m_worker; // the in-flight connect/disconnect sequence, if any
     std::atomic<bool> m_pttActive{false};

@@ -3,8 +3,8 @@
 // Tees the process's stderr into a log file, in addition to (not instead
 // of) wherever it was already going -- a real terminal keeps showing live
 // output exactly as before, but everything is also captured to disk. This
-// covers every existing fprintf(stderr, ...) call throughout
-// dextra_client/dextra_audio and the vendored serialDV library (ThumbDV
+// covers every existing fprintf(stderr, ...) call throughout the protocol
+// clients, the audio modules and the vendored serialDV library (ThumbDV
 // chip communication, ALSA xrun/error messages, connection/header
 // logging, ...) without needing to touch any of those call sites --
 // stderr is a single OS-level file descriptor shared by all of them.

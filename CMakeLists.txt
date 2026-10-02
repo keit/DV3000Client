@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.17.0)
-project(dv3000client CXX)
+project(dv3000client VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -124,6 +124,7 @@ target_link_libraries(odt_test dmr_rewind dmr_audio)
 find_package(Qt6 QUIET COMPONENTS Widgets Network)
 if(Qt6_FOUND)
   set(CMAKE_AUTOMOC ON)
+  set(CMAKE_AUTORCC ON)
 
   add_executable(dv3kclient
     src/gui/audiolevelspanel.cpp
@@ -141,9 +142,12 @@ if(Qt6_FOUND)
     src/gui/settingsdialog.cpp
     src/gui/talkgroupdirectory.cpp
     src/gui/talkgrouplistmodel.cpp
+    resources/dv3kclient.qrc
   )
   target_link_libraries(dv3kclient alsa_audio dextra_audio dmr_audio dmr_client dmr_rewind xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
   target_include_directories(dv3kclient PRIVATE src ${ALSA_INCLUDE_DIRS})
+  # Shown in Help > About; bump it in project() above.
+  target_compile_definitions(dv3kclient PRIVATE DV3K_VERSION="${PROJECT_VERSION}")
 else()
   message(STATUS "Qt6 Widgets not found -- skipping dv3kclient")
 endif()

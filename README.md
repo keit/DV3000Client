@@ -193,6 +193,15 @@ iw event -t | grep scan
 ./build/dv3kclient
 ```
 
+To start it from the desktop's application launcher instead (GNOME, KDE,
+...), add a launcher entry with its icon for your user. It points at
+`build/dv3kclient` in this repo, so run it again if you move the repo;
+`--uninstall` removes it.
+
+```sh
+./scripts/install-desktop-entry.sh
+```
+
 1. Open **File > Settings...** and fill in:
    - **General:** your D-Star callsign and module letter; for DMR, your DMR
      ID and then, per network, that network's fields. Pick **BrandMeister** or
@@ -342,7 +351,8 @@ To test D-Star without touching the public network, build and run a local
 src/                  protocol clients, audio, DMR voice/FEC, CLI tools
 src/gui/              Qt GUI (main window, D-Star tab, DMR tab, settings)
 data/                 static fallback reflector list
-scripts/              local xlxd test-reflector helper
+resources/            application icons (from the 1024px original) and Qt resource file
+scripts/              local xlxd test-reflector helper, desktop launcher install
 scripts/pi-star/      AMBEServer watchdog for a Pi-Star / Raspberry Pi
 third_party/serialDV  ThumbDV/AMBE3000 serial driver (fork, submodule)
 third_party/xlxd      xlxd reference code (submodule; DMR FEC code is reused)

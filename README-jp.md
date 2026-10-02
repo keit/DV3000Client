@@ -190,6 +190,15 @@ iw event -t | grep scan
 ./build/dv3kclient
 ```
 
+デスクトップのアプリケーションランチャー(GNOME、KDE など)から起動したい場合は、
+次のスクリプトで現在のユーザー用にアイコン付きのランチャー項目を追加できます。この
+リポジトリの `build/dv3kclient` を指すため、リポジトリを移動した場合は再実行してくださ
+い。`--uninstall` で削除できます。
+
+```sh
+./scripts/install-desktop-entry.sh
+```
+
 1. **ファイル > 設定...** を開き、以下を入力します:
    - **General(一般):** D-Star のコールサインとモジュール文字。DMR用にはDMR ID、
      続いてネットワークごとの項目。_DMR network_ ボックスで **BrandMeister** または
@@ -338,7 +347,8 @@ Raspberry Pi での実行方法など。
 src/                  各プロトコルのクライアント、オーディオ、DMR音声/FEC、CLIツール
 src/gui/              Qt GUI(メインウィンドウ、D-Starタブ、DMRタブ、設定)
 data/                 リフレクター一覧のフォールバック用静的データ
-scripts/              ローカル xlxd テストリフレクター用スクリプト
+resources/            アプリケーションアイコン(1024px の原画から生成)と Qt リソースファイル
+scripts/              ローカル xlxd テストリフレクター用スクリプト、ランチャー登録
 scripts/pi-star/      Pi-Star / Raspberry Pi 用の AMBEServer ウォッチドッグ
 third_party/serialDV  ThumbDV/AMBE3000用シリアルドライバー(フォーク、サブモジュール)
 third_party/xlxd      xlxd のリファレンスコード(サブモジュール。DMRのFECコードを再利用)

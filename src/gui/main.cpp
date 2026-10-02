@@ -1,6 +1,7 @@
 #include <cstdio>
 
 #include <QApplication>
+#include <QIcon>
 #include <QLoggingCategory>
 
 #include "filelogging.h"
@@ -15,6 +16,18 @@ int main(int argc, char **argv) {
 
     QApplication app(argc, argv);
     QApplication::setApplicationName("DV3000Client");
+    QApplication::setApplicationVersion(DV3K_VERSION);
+    // Window/taskbar icon, in the sizes desktops pick from (resources/
+    // icons, built in via resources/dv3kclient.qrc; generated from the
+    // 1024px original there). The desktop file name ties the running
+    // window to dv3kclient.desktop (scripts/install-desktop-entry.sh), which
+    // is where GNOME on Wayland takes the dock/Alt-Tab icon from.
+    QIcon icon;
+    for (int size : {16, 24, 32, 48, 64, 128, 256}) {
+        icon.addFile(QString(":/icons/dv3kclient-%1.png").arg(size), QSize(size, size));
+    }
+    QApplication::setWindowIcon(icon);
+    QGuiApplication::setDesktopFileName("dv3kclient");
 
     // Only safe to call after setApplicationName() above -- it determines
     // the log path via the same QStandardPaths::AppConfigLocation call

@@ -1,0 +1,12 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+  <qresource prefix="/">
+    <file>icons/dv3kclient-16.png</file>
+    <file>icons/dv3kclient-24.png</file>
+    <file>icons/dv3kclient-32.png</file>
+    <file>icons/dv3kclient-48.png</file>
+    <file>icons/dv3kclient-64.png</file>
+    <file>icons/dv3kclient-128.png</file>
+    <file>icons/dv3kclient-256.png</file>
+  </qresource>
+</RCC>

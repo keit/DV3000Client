@@ -2,7 +2,7 @@
 
 # DV3000Client
 
-実機の **ThumbDV**(AMBE3000)USBドングルを使用する、デジタル音声無線のリフレクター・
+**ThumbDV**(AMBE3000)USBドングルを使用する、デジタル音声無線のリフレクター・
 ネットワーク向け Linux デスクトップクライアントです:
 
 - **D-Star**: DExtra プロトコル経由(XLX / XRF 系リフレクター)
@@ -152,7 +152,7 @@ sudo systemctl restart NetworkManager
 すく、問題なく見えることがあります。GNOME/NetworkManager のデスクトップでは、このス
 キャンを起こすものが2つあり(それぞれ約5分ごと)、両方を止める必要があります:
 
-1. *位置情報サービス(geoclue)*。現在地を調べるためにスキャンします。位置情報サー
+1. _位置情報サービス(geoclue)_。現在地を調べるためにスキャンします。位置情報サー
    ビスをオフにしてください(設定 > プライバシーとセキュリティ > 位置情報サービス、
    または下記のコマンド)。この設定はユーザーごとに保存され、再起動後も有効です。代
    わりに位置情報を使う機能は使えなくなります(例: 夜間モードの「日没から日の出まで」
@@ -162,7 +162,7 @@ sudo systemctl restart NetworkManager
    gsettings set org.gnome.system.location enabled false
    ```
 
-2. *NetworkManager のローミング用スキャン*。より良いアクセスポイントを探すためのも
+2. _NetworkManager のローミング用スキャン_。より良いアクセスポイントを探すためのも
    のです。接続を現在使っているアクセスポイント(BSSID)に固定すると止まります。代わ
    りに PC が自動で別のアクセスポイントに移らなくなります。ルーター1台のデスクトップ
    なら問題ありませんが、メッシュネットワークや持ち歩くノート PC では、アクセスポイン
@@ -184,7 +184,7 @@ sudo systemctl restart NetworkManager
 iw event -t | grep scan
 ```
 
-## GUI の起動
+## アプリケーションの起動
 
 ```sh
 ./build/dv3kclient
@@ -219,7 +219,7 @@ iw event -t | grep scan
 
 接続中は設定を変更できません。
 
-### 別機体上の ThumbDV(AMBEServer 3000)
+### 別システム上の ThumbDV(AMBEServer 3000)
 
 ローカルのシリアルデバイスの代わりに、ドングルを Raspberry Pi(または任意の Linux
 機)に接続し、PA7LIM 氏の AMBEServer 3000 を動かして UDP にブリッジすることもできま
@@ -227,7 +227,7 @@ iw event -t | grep scan
 名または IPv4 アドレスとポート(デフォルト 2460)を入力、**Test** を押してサーバー
 から応答があるか確認してください。
 
-- AMBEServer に同時に接続できるクライアントは1つだけです。GUI とコマンドラインツール
+- AMBEServer に同時に接続できるクライアントは1つだけです。GUIクライアントとコマンドラインツール
   を同じサーバーに対して同時に実行しないでください。
 - 20msごとの音声フレームはそれぞれUDPのラウンドトリップになるため、有線LANが最適で
   す。Wi-Fiを使う場合は両端で省電力機能をオフにし、この PC のバックグラウンドスキャン
@@ -240,7 +240,7 @@ iw event -t | grep scan
   ルし、Pi に
   `ftdi_sio ttyUSB0: usb_serial_generic_read_bulk_callback - urb stopped: -32`
   と記録されます(`dmesg -T | grep "urb stopped"` で確認)。AMBEServer はポートを開き
-  直さないため、以後まったく応答しなくなります。GUI のログは
+  直さないため、以後まったく応答しなくなります。GUIクライアントのログは
   `getResponse: cannot get response` で埋まり、AMBEServer を再起動するまで何も聞こえ
   ません。`scripts/pi-star/` にはカーネルログを監視し、このストールが出たら
   AMBEServer を再起動する小さなウォッチドッグサービスがあります。これにより失うのは1〜
@@ -284,7 +284,7 @@ iw event -t | grep scan
 - トークグループ番号の意味はネットワークごとに異なるため、トークグループ一覧とお気
   に入りはネットワークごとに個別に管理されます。
 
-### GUI が書き込むファイル
+### GUIクライアント が書き込むファイル
 
 `~/.config/DV3000Client/` 以下に格納されます:
 

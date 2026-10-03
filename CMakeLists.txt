@@ -179,6 +179,33 @@ if(Qt6_FOUND)
             DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps
             RENAME dv3kclient.png)
   endforeach()
+  install(FILES packaging/copyright DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/dv3kclient)
 else()
   message(STATUS "Qt6 Widgets not found -- skipping dv3kclient")
 endif()
+
+# .deb packaging: `cpack -G DEB` in the build directory, after building.
+# Library dependencies are worked out by dpkg-shlibdeps from the binary;
+# Qt's platform plugins are loaded at runtime, so shlibdeps can't see them
+# and they're listed by hand (names as of Ubuntu 24.04, the oldest release
+# the packages are built for).
+set(CPACK_GENERATOR DEB)
+set(CPACK_PACKAGE_NAME dv3kclient)
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "D-Star and DMR client for the ThumbDV (AMBE-3000)")
+set(CPACK_PACKAGE_DESCRIPTION
+  "Connects a ThumbDV (or an AMBEServer) to D-Star DExtra reflectors and\n\
+DMR networks (BrandMeister, TGIF) from the desktop, with push-to-talk\n\
+audio through the PC's microphone and speakers.")
+set(CPACK_PACKAGE_CONTACT "Kei Takashima <takashima.kei@gmail.com>")
+set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
+set(CPACK_STRIP_FILES ON)
+# Otherwise directories get the building user's umask (e.g. 775).
+set(CPACK_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
+  OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT) # dv3kclient_<version>_<arch>.deb
+set(CPACK_DEBIAN_PACKAGE_SECTION hamradio)
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/keit/DV3000Client")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-qpa-plugins")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "qt6-wayland")
+include(CPack)

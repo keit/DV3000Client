@@ -11,6 +11,7 @@
 #include "settings.h"
 
 class QAction;
+class QLabel;
 class QTabWidget;
 class DStarTab;
 class DmrTab;
@@ -30,6 +31,7 @@ private:
     void openSettings();
     void updateSettingsActionEnabled();
     ProtocolTab *currentProtocolTab() const;
+    void onThumbdvLatencyChecked(bool ok, const QString &ttyName, int latencyMs);
 
     GuiSettings m_settings;
 
@@ -38,4 +40,8 @@ private:
     DStarTab *m_dstarTab;
     DmrTab *m_dmrTab;
     QAction *m_settingsAction;
+    // Shown above the tabs while the ThumbDV's FTDI latency timer is still
+    // above 1 ms after the app's own attempt to lower it -- i.e. exactly
+    // when the Getting Started page's udev rule is needed.
+    QLabel *m_latencyBanner;
 };

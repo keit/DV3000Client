@@ -11,6 +11,7 @@
 // traditional number.
 #pragma once
 
+#include <iosfwd>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,9 @@ std::vector<ReflectorInfo> parseReflectorList(const std::string &xml);
 // line, blank lines and '#' comments ignored) as a fallback list for
 // reflectors with no live entry. Returns false if the file can't be opened.
 bool loadStaticFallback(const std::string &path, std::vector<ReflectorInfo> &out);
+// Same, from already-open contents (e.g. the copy the GUI builds into its
+// Qt resources, so an installed binary doesn't depend on a data/ path).
+void loadStaticFallback(std::istream &in, std::vector<ReflectorInfo> &out);
 
 // Resolves a query -- "123", "XLX123", or "XRF123" (case-insensitive, any
 // leading letters ignored) -- against `live` first, then `fallback`.

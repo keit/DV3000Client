@@ -98,8 +98,12 @@ ls -la /dev/serial/by-id
 ```
 
 **FTDI latency timer.** The ThumbDV uses an FTDI chip whose default 16 ms
-latency timer causes audio glitches (playback xruns, growing backlog). Set it
-to 1 ms permanently with a udev rule:
+latency timer causes audio glitches (playback xruns, growing backlog). DV3K
+Client asks the driver for 1 ms itself each time it opens a ThumbDV plugged
+into the same machine, and shows a yellow warning above the tabs if that
+didn't work. **You only need the udev rule below if you see that warning.**
+If your ThumbDV is behind AMBEServer, the rule goes on the machine running
+AMBEServer, not the one running DV3K Client. To set it to 1 ms permanently:
 
 ```sh
 echo 'ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTR{latency_timer}="1"' \

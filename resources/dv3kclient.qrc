@@ -8,5 +8,6 @@
     <file>icons/dv3kclient-64.png</file>
     <file>icons/dv3kclient-128.png</file>
     <file>icons/dv3kclient-256.png</file>
+    <file alias="data/DExtra_Hosts.txt">../data/DExtra_Hosts.txt</file>
   </qresource>
 </RCC>

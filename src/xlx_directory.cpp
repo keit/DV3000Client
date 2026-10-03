@@ -99,6 +99,11 @@ bool loadStaticFallback(const std::string &path, std::vector<ReflectorInfo> &out
         std::fprintf(stderr, "xlx_directory: cannot open %s\n", path.c_str());
         return false;
     }
+    loadStaticFallback(in, out);
+    return true;
+}
+
+void loadStaticFallback(std::istream &in, std::vector<ReflectorInfo> &out) {
     std::string line;
     while (std::getline(in, line)) {
         std::string t = trim(line);
@@ -108,7 +113,6 @@ bool loadStaticFallback(const std::string &path, std::vector<ReflectorInfo> &out
         if (!(iss >> info.name >> info.host)) continue;
         out.push_back(std::move(info));
     }
-    return true;
 }
 
 const ReflectorInfo *findReflector(const std::vector<ReflectorInfo> &live,

@@ -8,8 +8,22 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(BUILD_TOOL OFF CACHE BOOL "" FORCE) # don't build serialDV's own dvtest binary
-add_subdirectory(third_party/serialDV)
+include(GNUInstallDirs)
+
+# serialDV (our fork, vendored as a submodule) is compiled straight in as a
+# static library rather than via its own CMakeLists -- that one builds a
+# shared libserialdv and installs it plus its headers system-wide, which a
+# packaged dv3kclient must not do (it would ship a modified fork under the
+# same name as Debian's own libserialdv).
+add_library(serialdv STATIC
+  third_party/serialDV/datacontroller.cpp
+  third_party/serialDV/dummydatacontroller.cpp
+  third_party/serialDV/dvcontroller.cpp
+  third_party/serialDV/serialdatacontroller.cpp
+  third_party/serialDV/udpdatacontroller.cpp
+)
+target_compile_definitions(serialdv PUBLIC serialdv_STATIC)
+target_include_directories(serialdv PUBLIC third_party/serialDV)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ALSA REQUIRED alsa)
@@ -57,6 +71,12 @@ add_executable(dextra_test
   src/dextra_test.cpp
 )
 target_link_libraries(dextra_test dextra_audio xlx_directory)
+
+# Asks a local FTDI ThumbDV for a 1 ms latency timer and reports what it
+# got -- see ftdi_latency.h.
+add_library(ftdi_latency
+  src/ftdi_latency.cpp
+)
 
 add_library(sha256
   src/sha256.cpp
@@ -144,10 +164,21 @@ if(Qt6_FOUND)
     src/gui/talkgrouplistmodel.cpp
     resources/dv3kclient.qrc
   )
-  target_link_libraries(dv3kclient alsa_audio dextra_audio dmr_audio dmr_client dmr_rewind xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
+  target_link_libraries(dv3kclient alsa_audio dextra_audio dmr_audio dmr_client dmr_rewind ftdi_latency xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
   target_include_directories(dv3kclient PRIVATE src ${ALSA_INCLUDE_DIRS})
   # Shown in Help > About; bump it in project() above.
   target_compile_definitions(dv3kclient PRIVATE DV3K_VERSION="${PROJECT_VERSION}")
+
+  # What the .deb and AppImage are built from (cmake --install): just the
+  # GUI, its launcher entry and icons. The command-line test tools above
+  # stay build-tree only.
+  install(TARGETS dv3kclient RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES resources/dv3kclient.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  foreach(size 16 24 32 48 64 128 256)
+    install(FILES resources/icons/dv3kclient-${size}.png
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps
+            RENAME dv3kclient.png)
+  endforeach()
 else()
   message(STATUS "Qt6 Widgets not found -- skipping dv3kclient")
 endif()

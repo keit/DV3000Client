@@ -99,7 +99,11 @@ ls -la /dev/serial/by-id
 
 **FTDI レイテンシタイマー。** ThumbDV は FTDI チップを使用しており、デフォルトの
 16msのレイテンシタイマーが音声のグリッチ(再生のアンダーラン、バックログの増大)を
-引き起こします。udev ルールで恒久的に1msに設定します:
+引き起こします。DV3K Client は同じマシンに接続された ThumbDV を開くたびに自分で
+1ms に設定しようとし、それができなかった場合はタブの上に黄色い警告を表示します。
+**下の udev ルールが必要なのは、この警告が表示された場合だけです。**
+ThumbDV を AMBEServer 経由で使っている場合は、DV3K Client を動かすマシンではなく、
+AMBEServer を動かしているマシンにルールを設定してください。恒久的に1msに設定するには:
 
 ```sh
 echo 'ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTR{latency_timer}="1"' \

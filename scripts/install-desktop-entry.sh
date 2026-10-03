@@ -1,6 +1,7 @@
 #!/bin/bash
 # Adds "DV3K Client" to the desktop's application launcher (GNOME, KDE,
-# ...) for the current user, with its icon. Points at the binary in this
+# ...) for the current user, with its icon -- for running from a source
+# build; the .deb and AppImage set up their own. Points at the binary in this
 # repo's build directory -- run it again if you move the repo. No sudo
 # needed; everything goes under ~/.local/share.
 #
@@ -34,21 +35,12 @@ for size in "${sizes[@]}"; do
 done
 
 mkdir -p "$(dirname "$desktop_file")"
-# The file name (dv3kclient.desktop) must match the app's
-# QGuiApplication::setDesktopFileName() so the running window is matched
-# to this entry and gets its icon in the dock/Alt-Tab.
-cat > "$desktop_file" <<EOF
-[Desktop Entry]
-Type=Application
-Name=DV3K Client
-Comment=D-Star and DMR client for the ThumbDV (AMBE-3000)
-Exec="$binary"
-Path=$repo/build
-Icon=dv3kclient
-Terminal=false
-Categories=Network;HamRadio;
-StartupWMClass=dv3kclient
-EOF
+# Same entry the packages install (resources/dv3kclient.desktop), pointed
+# at this build instead of a dv3kclient on PATH. Its file name must match
+# the app's QGuiApplication::setDesktopFileName() so the running window is
+# matched to this entry and gets its icon in the dock/Alt-Tab.
+sed -e "s|^Exec=.*|Exec=\"$binary\"\nPath=$repo/build|" \
+    "$repo/resources/dv3kclient.desktop" > "$desktop_file"
 
 # Refresh the caches if the tools are there; desktops also pick changes up
 # on their own, just not always immediately.

@@ -5,11 +5,13 @@
 #include <QCloseEvent>
 #include <QKeyEvent>
 #include <QKeySequence>
+#include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTabWidget>
 #include <QTimer>
+#include <QVBoxLayout>
 
 #include "dmrtab.h"
 #include "dstartab.h"
@@ -18,6 +20,12 @@
 #include "filelogging.h"
 #include "protocoltab.h"
 #include "settingsdialog.h"
+
+namespace {
+// The Getting Started page's FTDI latency section, which says which
+// machine needs the udev rule for each setup.
+const char *kLatencyHelpUrl = "https://keit.github.io/DV3000Client/getting-started.html#ftdi-latency-timer";
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_settings = GuiSettings::load();
@@ -72,6 +80,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_dmrTab = new DmrTab(m_settings);
     connect(m_dstarTab, &ProtocolTab::stateChanged, this, &MainWindow::updateSettingsActionEnabled);
     connect(m_dmrTab, &ProtocolTab::stateChanged, this, &MainWindow::updateSettingsActionEnabled);
+    connect(m_dstarTab, &ProtocolTab::thumbdvLatencyChecked, this, &MainWindow::onThumbdvLatencyChecked);
+    connect(m_dmrTab, &ProtocolTab::thumbdvLatencyChecked, this, &MainWindow::onThumbdvLatencyChecked);
 
     // Volume sliders live on both tabs but are one setting: moving either
     // pair updates the other tab and the saved settings (written once the
@@ -112,7 +122,23 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         QTimer::singleShot(0, to, [to, width] { to->setLeftPaneWidth(width); });
     });
 
-    setCentralWidget(m_tabs);
+    // Deliberately loud (unlike the per-tab status lines): a slow latency
+    // timer doesn't stop anything working, it just makes the audio choppy,
+    // which is easy to blame on the network or the reflector instead.
+    m_latencyBanner = new QLabel;
+    m_latencyBanner->setWordWrap(true);
+    m_latencyBanner->setTextFormat(Qt::RichText);
+    m_latencyBanner->setOpenExternalLinks(true);
+    m_latencyBanner->setStyleSheet("QLabel { background-color: #ffd54f; color: #3e2700;"
+                                   "  border: 2px solid #f57c00; border-radius: 4px; padding: 8px; }");
+    m_latencyBanner->hide();
+
+    auto *central = new QWidget;
+    auto *layout = new QVBoxLayout(central);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(m_latencyBanner);
+    layout->addWidget(m_tabs);
+    setCentralWidget(central);
     resize(900, 480);
 
     qApp->installEventFilter(this);
@@ -175,6 +201,21 @@ void MainWindow::openSettings() {
         m_dstarTab->applySettings(m_settings);
         m_dmrTab->applySettings(m_settings);
     }
+}
+
+void MainWindow::onThumbdvLatencyChecked(bool ok, const QString &ttyName, int latencyMs) {
+    if (ok) {
+        m_latencyBanner->hide();
+        return;
+    }
+    m_latencyBanner->setText(QString("<b>&#9888; ThumbDV latency timer is %1 ms (%2), it should be 1 ms.</b> "
+                                     "Expect choppy or delayed audio until it's fixed. "
+                                     "A one-time udev rule fixes it: "
+                                     "<a href=\"%3\">see Getting Started</a>.")
+                                 .arg(latencyMs)
+                                 .arg(ttyName.toHtmlEscaped())
+                                 .arg(kLatencyHelpUrl));
+    m_latencyBanner->show();
 }
 
 void MainWindow::updateSettingsActionEnabled() {

@@ -7,8 +7,12 @@
 // live session or an in-flight connect/disconnect, and stopping that
 // session cleanly on window close.
 
+#include <QMetaObject>
 #include <QSplitter>
 #include <QWidget>
+
+#include "ftdi_latency.h"
+#include "settings.h"
 
 class QPushButton;
 
@@ -72,10 +76,29 @@ protected:
     // Set by each tab's constructor to its left/Last-Heard splitter.
     QSplitter *m_splitter = nullptr;
 
+    // Called from a tab's connect worker thread right after its
+    // DVController opened the ThumbDV: lowers a local FTDI's latency timer
+    // to 1 ms if it can (see ftdi_latency.h) and reports the outcome on
+    // the GUI thread via thumbdvLatencyChecked(). An AMBEServer target
+    // reports ok -- its latency timer is the AMBEServer host's business.
+    void checkThumbdvLatency(const GuiSettings &settings) {
+        ftdi::LatencyStatus status;
+        if (!settings.thumbdvIsNetwork()) status = ftdi::ensureLowLatency(settings.thumbdvDevice.toStdString());
+        QMetaObject::invokeMethod(
+            this,
+            [this, status] {
+                emit thumbdvLatencyChecked(status.ok(), QString::fromStdString(status.ttyName), status.latencyMs);
+            },
+            Qt::QueuedConnection);
+    }
+
 signals:
     void stateChanged(); // isActiveOrBusy() may have changed
     // The user moved one of this tab's volume sliders.
     void volumesChanged(int mic, int speaker);
     // ...and it has settled -- time to save.
     void volumesCommitted();
+    // Outcome of checkThumbdvLatency() for the ThumbDV just opened: ok is
+    // false when it's a local FTDI device still above 1 ms (latencyMs).
+    void thumbdvLatencyChecked(bool ok, QString ttyName, int latencyMs);
 };

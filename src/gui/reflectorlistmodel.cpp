@@ -1,11 +1,10 @@
 #include "reflectorlistmodel.h"
 
 #include <algorithm>
+#include <sstream>
 #include <thread>
 
-#include <QCoreApplication>
-#include <QDir>
-#include <QFileInfo>
+#include <QFile>
 #include <QMetaObject>
 #include <QTimer>
 
@@ -14,22 +13,6 @@
 namespace {
 
 constexpr const char *CACHE_KEY = "reflectors";
-
-// data/DExtra_Hosts.txt is a repo-relative path everywhere else in this
-// project too (see dextra_test.cpp), which assumes the binary is run from
-// the repo root. Try that first, then fall back to paths relative to the
-// binary itself so running straight from build/ also works.
-QString findFallbackHostsFile() {
-    QStringList candidates{
-        "data/DExtra_Hosts.txt",
-        QCoreApplication::applicationDirPath() + "/../data/DExtra_Hosts.txt",
-        QCoreApplication::applicationDirPath() + "/data/DExtra_Hosts.txt",
-    };
-    for (const QString &c : candidates) {
-        if (QFileInfo::exists(c)) return c;
-    }
-    return candidates.first();
-}
 
 QString displayText(const xlx::ReflectorInfo &r) {
     QString text = QString::fromStdString(r.name);
@@ -41,7 +24,13 @@ QString displayText(const xlx::ReflectorInfo &r) {
 } // namespace
 
 ReflectorListModel::ReflectorListModel(QObject *parent) : QAbstractListModel(parent) {
-    xlx::loadStaticFallback(findFallbackHostsFile().toStdString(), m_fallback);
+    // data/DExtra_Hosts.txt, built in via resources/dv3kclient.qrc so an
+    // installed binary (deb, AppImage) has it wherever it's run from.
+    QFile hosts(":/data/DExtra_Hosts.txt");
+    if (hosts.open(QIODevice::ReadOnly)) {
+        std::istringstream in(hosts.readAll().toStdString());
+        xlx::loadStaticFallback(in, m_fallback);
+    }
     rebuildRows();
 
     // Loading the cached live list is deferred by one event-loop tick

@@ -347,6 +347,8 @@ void DStarTab::connectWorker(QString host, QString reflectorName, char targetMod
     if (!m_dv->open(settings.thumbdvTarget().toStdString())) {
         error = "Failed to open ThumbDV " + settings.thumbdvTarget();
         ok = false;
+    } else {
+        checkThumbdvLatency(settings);
     }
 
     if (ok && !m_capture.open(settings.audioInputDevice.toStdString(), SND_PCM_STREAM_CAPTURE)) {

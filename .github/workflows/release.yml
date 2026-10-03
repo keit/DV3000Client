@@ -1,0 +1,140 @@
+# Builds the .deb and AppImage, installs/runs them on clean Ubuntu images,
+# and -- for a pushed v* tag -- uploads them to a *draft* GitHub release
+# along with SHA256SUMS and a source tarball that includes the submodules
+# (GitHub's own "Source code" archives leave them out, and the GPL needs
+# the complete source of what's in the binaries).
+#
+# Run it by hand (Actions > Release > Run workflow) to get the packages as
+# workflow artifacts without making a release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            deb-arch: amd64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    # The oldest Ubuntu the packages support: binaries only run on a glibc
+    # and Qt at least as new as what they were built against.
+    container: ubuntu:24.04
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config git ca-certificates curl file \
+            libasound2-dev qt6-base-dev qmake6 qt6-wayland
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Check the tag matches the CMake project version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(sed -n 's/^project(dv3000client VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match project() version $version in CMakeLists.txt"
+            exit 1
+          fi
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build -j"$(nproc)"
+
+      - name: Package .deb
+        run: cd build && cpack -G DEB
+
+      - name: Package AppImage
+        run: ./scripts/build-appimage.sh build
+
+      - name: Smoke-test the AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          QT_QPA_PLATFORM: offscreen
+        run: build/DV3KClient-${{ matrix.arch }}.AppImage --version
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-${{ matrix.arch }}
+          path: |
+            build/dv3kclient_*_${{ matrix.deb-arch }}.deb
+            build/DV3KClient-${{ matrix.arch }}.AppImage
+          if-no-files-found: error
+
+  # Installs the .deb with apt on clean images of each Ubuntu release we
+  # claim to support, so a dependency that only resolves on the build
+  # image shows up here rather than on a user's machine.
+  test-deb:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['ubuntu:24.04', 'ubuntu:26.04']
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages-x86_64
+      - name: Install and run
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y ./dv3kclient_*_amd64.deb
+          dv3kclient --version
+      - name: Lintian (informational)
+        continue-on-error: true
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends lintian
+          lintian --info dv3kclient_*_amd64.deb
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, test-deb]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: packages-*
+          path: dist
+          merge-multiple: true
+
+      - name: Source tarball (with submodules)
+        run: |
+          name=dv3kclient-${GITHUB_REF_NAME#v}
+          git ls-files --recurse-submodules -z \
+            | tar --null -T - --transform "s,^,$name/," -czf "dist/$name.tar.gz"
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --title "DV3K Client ${GITHUB_REF_NAME#v}" \
+            --notes-file packaging/release-notes.md \
+            --generate-notes

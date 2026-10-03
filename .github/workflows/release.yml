@@ -1,5 +1,6 @@
 # Builds the .deb and AppImage, installs/runs them on clean Ubuntu images,
-# and -- for a pushed v* tag -- uploads them to a *draft* GitHub release
+# and -- for a pushed vX.Y.Z or vX.Y.Z-rc.N tag -- uploads them to a
+# *draft* GitHub release (a pre-release for an -rc tag)
 # along with SHA256SUMS and a source tarball that includes the submodules
 # (GitHub's own "Source code" archives leave them out, and the GPL needs
 # the complete source of what's in the binaries).
@@ -40,22 +41,37 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Check the tag matches the CMake project version
-        if: startsWith(github.ref, 'refs/tags/v')
+      # A tag must be vX.Y.Z (matching project() in CMakeLists.txt) or
+      # vX.Y.Z-rc.N, a release candidate of it.
+      - name: Check the tag and work out the version
+        if: github.ref_type == 'tag'
         run: |
           version=$(sed -n 's/^project(dv3000client VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+          if ! [[ $GITHUB_REF_NAME =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-(rc\.[0-9]+))?$ ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME isn't vX.Y.Z or vX.Y.Z-rc.N"
+            exit 1
+          fi
+          if [ "${BASH_REMATCH[1]}" != "$version" ]; then
             echo "::error::Tag $GITHUB_REF_NAME doesn't match project() version $version in CMakeLists.txt"
             exit 1
           fi
+          echo "PRERELEASE=${BASH_REMATCH[3]}" >> "$GITHUB_ENV"
+        shell: bash
 
       - name: Build
         run: |
-          cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr
+          cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr -DDV3K_PRERELEASE="${PRERELEASE:-}"
           cmake --build build -j"$(nproc)"
 
+      # An RC's Debian version has a "~" (0.1.0~rc.1), which GitHub would
+      # rewrite in an asset's file name -- breaking SHA256SUMS -- so name
+      # the file with a "-" instead; apt goes by the version inside.
       - name: Package .deb
-        run: cd build && cpack -G DEB
+        run: |
+          cd build && cpack -G DEB
+          for f in dv3kclient_*~*.deb; do [ -e "$f" ] && mv "$f" "${f//\~/-}"; done
+          ls dv3kclient_*.deb
+        shell: bash
 
       - name: Package AppImage
         run: ./scripts/build-appimage.sh build
@@ -137,4 +153,6 @@ jobs:
             --draft \
             --title "DV3K Client ${GITHUB_REF_NAME#v}" \
             --notes-file packaging/release-notes.md \
-            --generate-notes
+            --generate-notes \
+            $([[ $GITHUB_REF_NAME == *-rc.* ]] && echo --prerelease)
+        shell: bash

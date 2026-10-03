@@ -8,6 +8,19 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Release candidates are built from the same project() version with a
+# suffix, set by the release workflow from a vX.Y.Z-rc.N tag: shown as
+# "0.1.0-rc.1", and packaged as "0.1.0~rc.1" -- Debian sorts "~" before
+# anything, so the final 0.1.0 .deb still upgrades an installed RC.
+set(DV3K_PRERELEASE "" CACHE STRING "Pre-release suffix, e.g. rc.1 (empty for a release)")
+if(DV3K_PRERELEASE)
+  set(DV3K_VERSION "${PROJECT_VERSION}-${DV3K_PRERELEASE}")
+  set(DV3K_DEB_VERSION "${PROJECT_VERSION}~${DV3K_PRERELEASE}")
+else()
+  set(DV3K_VERSION "${PROJECT_VERSION}")
+  set(DV3K_DEB_VERSION "${PROJECT_VERSION}")
+endif()
+
 include(GNUInstallDirs)
 
 # serialDV (our fork, vendored as a submodule) is compiled straight in as a
@@ -174,8 +187,8 @@ if(Qt6_FOUND)
   )
   target_link_libraries(dv3kclient alsa_audio dextra_audio dmr_audio dmr_client dmr_rewind ftdi_latency xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
   target_include_directories(dv3kclient PRIVATE src ${ALSA_INCLUDE_DIRS})
-  # Shown in Help > About; bump it in project() above.
-  target_compile_definitions(dv3kclient PRIVATE DV3K_VERSION="${PROJECT_VERSION}")
+  # Shown in Help > About and --version; bump it in project() above.
+  target_compile_definitions(dv3kclient PRIVATE DV3K_VERSION="${DV3K_VERSION}")
 
   # What the .deb and AppImage are built from (cmake --install): just the
   # GUI, its launcher entry and icons. The command-line test tools above
@@ -199,6 +212,7 @@ endif()
 # the packages are built for).
 set(CPACK_GENERATOR DEB)
 set(CPACK_PACKAGE_NAME dv3kclient)
+set(CPACK_PACKAGE_VERSION ${DV3K_DEB_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "D-Star and DMR client for the ThumbDV (AMBE-3000)")
 set(CPACK_PACKAGE_DESCRIPTION
   "Connects a ThumbDV (or an AMBEServer) to D-Star DExtra reflectors and\n\

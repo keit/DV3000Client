@@ -14,11 +14,21 @@ data=${XDG_DATA_HOME:-$HOME/.local/share}
 desktop_file=$data/applications/dv3kclient.desktop
 sizes=(16 24 32 48 64 128 256)
 
+# Refresh the caches if the tools are there; desktops also pick changes up
+# on their own, just not always immediately. Needed on uninstall too: a
+# user icon cache still listing dv3kclient after its files are gone makes
+# the desktop show no icon at all rather than fall back to the packaged one.
+refresh_caches() {
+    gtk-update-icon-cache -f -q -t "$data/icons/hicolor" 2>/dev/null || true
+    update-desktop-database -q "$data/applications" 2>/dev/null || true
+}
+
 if [[ ${1:-} == --uninstall ]]; then
     rm -f "$desktop_file"
     for size in "${sizes[@]}"; do
         rm -f "$data/icons/hicolor/${size}x${size}/apps/dv3kclient.png"
     done
+    refresh_caches
     echo "Removed DV3K Client from the application launcher."
     exit 0
 fi
@@ -42,10 +52,7 @@ mkdir -p "$(dirname "$desktop_file")"
 sed -e "s|^Exec=.*|Exec=\"$binary\"\nPath=$repo/build|" \
     "$repo/resources/dv3kclient.desktop" > "$desktop_file"
 
-# Refresh the caches if the tools are there; desktops also pick changes up
-# on their own, just not always immediately.
-gtk-update-icon-cache -q -t "$data/icons/hicolor" 2>/dev/null || true
-update-desktop-database -q "$data/applications" 2>/dev/null || true
+refresh_caches
 
 echo "Installed: $desktop_file"
 echo "DV3K Client should now appear in the application launcher."

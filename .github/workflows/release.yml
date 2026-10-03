@@ -73,6 +73,21 @@ jobs:
           ls dv3kclient_*.deb
         shell: bash
 
+      # The .deb's Depends are hand-written (see CMakeLists.txt); make sure
+      # they still name every package dpkg-shlibdeps says the binary needs.
+      - name: Check the .deb Depends cover the binary's libraries
+        run: |
+          mkdir -p /tmp/shlibdeps/debian && touch /tmp/shlibdeps/debian/control
+          generated=$(cd /tmp/shlibdeps && dpkg-shlibdeps -O "$GITHUB_WORKSPACE/build/dv3kclient")
+          declared=$(dpkg-deb -f build/dv3kclient_*.deb Depends)
+          for pkg in $(echo "${generated#shlibs:Depends=}" | tr ',' '\n' | sed 's/(.*//; s/ //g'); do
+            if ! echo "$declared" | grep -qwF -- "$pkg"; then
+              echo "::error::$pkg (needed per dpkg-shlibdeps) is missing from CPACK_DEBIAN_PACKAGE_DEPENDS"
+              exit 1
+            fi
+          done
+        shell: bash
+
       - name: Package AppImage
         run: ./scripts/build-appimage.sh build
 

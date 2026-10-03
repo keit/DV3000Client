@@ -87,18 +87,26 @@ add_library(sha256
 # signaling -- reused directly from the vendored xlxd submodule (unmodified,
 # self-contained, no dependency on the rest of xlxd) rather than hand-
 # transcribed, since these are lookup-table-heavy and a single mistyped
-# table entry would silently corrupt every transmission. Same GPLv3 as
-# serialDV, already a dependency of every binary in this project.
-add_library(dmr_fec
-  third_party/xlxd/src/cbptc19696.cpp
-  third_party/xlxd/src/cgolay2087.cpp
-  third_party/xlxd/src/cqr1676.cpp
-  third_party/xlxd/src/chamming.cpp
-  third_party/xlxd/src/crs129.cpp
-  third_party/xlxd/src/ccrc.cpp
-  third_party/xlxd/src/cutils.cpp
-)
-target_include_directories(dmr_fec PUBLIC third_party/xlxd/src)
+# table entry would silently corrupt every transmission. Their GPLv2+
+# licence is compatible with the GPLv3 code here.
+#
+# Except their small cutils.h/.cpp helper, which is GPLv2-only and so
+# can't be combined with GPLv3 code: src/dmr_fec has our own replacement.
+# The FEC sources are copied next to it in the build tree, so their
+# #include "cutils.h" (a same-directory include, which no include path
+# could override) finds ours instead of xlxd's.
+set(DMR_FEC_DIR ${CMAKE_BINARY_DIR}/dmr_fec)
+set(DMR_FEC_SOURCES)
+foreach(name cbptc19696 cgolay2087 cqr1676 chamming crs129 ccrc)
+  configure_file(third_party/xlxd/src/${name}.h ${DMR_FEC_DIR}/${name}.h COPYONLY)
+  configure_file(third_party/xlxd/src/${name}.cpp ${DMR_FEC_DIR}/${name}.cpp COPYONLY)
+  list(APPEND DMR_FEC_SOURCES ${DMR_FEC_DIR}/${name}.cpp)
+endforeach()
+foreach(file cutils.h cutils.cpp)
+  configure_file(src/dmr_fec/${file} ${DMR_FEC_DIR}/${file} COPYONLY)
+endforeach()
+add_library(dmr_fec ${DMR_FEC_SOURCES} ${DMR_FEC_DIR}/cutils.cpp)
+target_include_directories(dmr_fec PUBLIC ${DMR_FEC_DIR})
 
 # The DmrTransport interface and the g_running flag every backend shares
 # (dmr_transport.h/cpp) -- deliberately its own tiny library, independent

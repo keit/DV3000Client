@@ -372,4 +372,6 @@ third_party/xlxd      xlxd reference code (submodule; DMR FEC code is reused)
 ## License
 
 This project is licensed under the GNU General Public License v3.0 (GPLv3) - see the [LICENSE](LICENSE) file for details.
-Includes code from `serialDV` and `xlxd`, both licensed under GPLv3.
+Includes code from `serialDV` (GPLv3) and DMR FEC encoders from `xlxd`
+(GPLv2 or later). xlxd's GPLv2-only `cutils` helper is not used; `src/dmr_fec`
+has our own replacement.

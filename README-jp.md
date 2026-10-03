@@ -368,5 +368,6 @@ third_party/xlxd      xlxd のリファレンスコード(サブモジュール�
 ## ライセンス
 
 本プロジェクトは GNU General Public License v3.0(GPLv3)のもとで公開されています。
-詳細は [LICENSE](LICENSE) ファイルを参照してください。`serialDV` および `xlxd` の
-コードを含んでおり、いずれもGPLv3でライセンスされています。
+詳細は [LICENSE](LICENSE) ファイルを参照してください。`serialDV`(GPLv3)のコードと、
+`xlxd` の DMR FEC エンコーダー(GPLv2 以降)を含んでいます。xlxd の GPLv2 限定の
+`cutils` ヘルパーは使用せず、`src/dmr_fec` に独自の実装を用意しています。

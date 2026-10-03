@@ -48,11 +48,26 @@ export EXTRA_PLATFORM_PLUGINS
 export LDAI_OUTPUT=$build/DV3KClient-$arch.AppImage
 
 cd "$build"
-"$tools/linuxdeploy-$arch.AppImage" \
+linuxdeploy=$tools/linuxdeploy-$arch.AppImage
+"$linuxdeploy" \
     --appdir "$appdir" \
     --desktop-file "$appdir/usr/share/applications/dv3kclient.desktop" \
     --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/dv3kclient.png" \
-    --plugin qt \
-    --output appimage
+    --plugin qt
+
+# GNOME's Wayland compositor leaves each app to draw its own title bar, and
+# Qt 6.4 (Ubuntu 24.04's, which CI builds with) only draws one when a
+# client buffer integration loads -- without this plugin, which
+# linuxdeploy-plugin-qt doesn't deploy, the window has no title bar at
+# all. Added by hand, then a second pass bundles its libraries (EGL/GL
+# themselves stay the host's, as they must, per linuxdeploy's excludelist).
+egl_plugin=$("$QMAKE" -query QT_INSTALL_PLUGINS)/wayland-graphics-integration-client/libqt-plugin-wayland-egl.so
+extra=()
+if compgen -G "$appdir/usr/plugins/platforms/libqwayland*.so" >/dev/null && [[ -f $egl_plugin ]]; then
+    dir=$appdir/usr/plugins/wayland-graphics-integration-client
+    install -D -m 755 "$egl_plugin" "$dir/$(basename "$egl_plugin")"
+    extra=(--deploy-deps-only "$dir")
+fi
+"$linuxdeploy" --appdir "$appdir" "${extra[@]}" --output appimage
 
 echo "Built: $LDAI_OUTPUT"

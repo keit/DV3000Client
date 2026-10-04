@@ -48,7 +48,7 @@ struct AlsaDeviceInfo {
 // that also pulls in every software plugin: pulse, jack, oss, samplerate
 // converters, etc., which is noise for picking a physical mic/speaker).
 // device name is built as plughw:<card>,<device>, matching the convention
-// already used in HowToStart.md's example invocations.
+// already used in README.md's command-line examples.
 QList<AlsaDeviceInfo> listAlsaHardwareDevices(snd_pcm_stream_t stream) {
     QList<AlsaDeviceInfo> out;
     out << AlsaDeviceInfo{"default", "ALSA's own default routing (PulseAudio/PipeWire if running)"};
@@ -92,8 +92,8 @@ QList<AlsaDeviceInfo> listAlsaHardwareDevices(snd_pcm_stream_t stream) {
 }
 
 // /dev/serial/by-id gives stable names for USB-serial adapters (survives
-// port renumbering across reboots/replugs) -- exactly what HowToStart.md
-// tells users to look under for the ThumbDV.
+// port renumbering across reboots/replugs) -- exactly what the README and
+// Getting Started tell users to look under for the ThumbDV.
 QStringList listSerialByIdDevices() {
     QStringList out;
     QDir dir("/dev/serial/by-id");

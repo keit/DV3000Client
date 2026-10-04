@@ -338,9 +338,6 @@ aplay -l
 arecord -l
 ```
 
-`HowToStart.md` has more worked examples: recording received audio, converting
-raw audio to WAV, and running on a Raspberry Pi.
-
 ### Local test reflector
 
 To test D-Star without touching the public network, build and run a local

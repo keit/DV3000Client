@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Getting Started · DV3K Client</title>
+  <meta name="description" content="Install DV3K Client and set up your ThumbDV, plugged into your PC or on a Raspberry Pi running AMBEServer.">
+  <link rel="icon" href="icons/dv3kclient-64.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site">
+    <div class="inner">
+      <img src="icons/dv3kclient-64.png" alt="">
+      <a class="name" href="./">DV3K Client</a>
+      <nav>
+        <a href="./">Download</a>
+        <a href="getting-started.html" aria-current="page">Getting Started</a>
+        <a href="https://github.com/keit/DV3000Client">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="inner">
+    <h1>Getting Started</h1>
+    <p class="lead">Install DV3K Client, connect your ThumbDV, then fill in your callsign and
+      network details.</p>
+
+    <h2 id="install">1. Install</h2>
+    <p>Download the <a href="./#download">.deb or the AppImage</a>. Both are for Linux on
+      x86_64, Ubuntu 24.04 or newer.</p>
+
+    <h3 id="install-deb">.deb package</h3>
+<pre><code>cd ~/Downloads
+sudo apt install ./dv3kclient_*_amd64.deb</code></pre>
+    <p>apt may print <em>"Download is performed unsandboxed as root…"</em>. That's harmless:
+      apt can't read your home folder as its own unprivileged user, so it reads the file as root
+      instead. DV3K Client then appears in your app launcher, or run <code>dv3kclient</code>
+      from a terminal.</p>
+
+    <h3 id="install-appimage">AppImage</h3>
+<pre><code>chmod +x DV3KClient-x86_64.AppImage
+./DV3KClient-x86_64.AppImage</code></pre>
+    <p>The AppImage runs from wherever you keep it and doesn't add itself to the app launcher.</p>
+
+    <p>Your settings and log live in <code>~/.config/DV3000Client</code>, shared by both, and are
+      kept if you remove the app (<code>sudo apt remove dv3kclient</code>, or delete the
+      AppImage).</p>
+
+    <h2 id="thumbdv">2. Connect your ThumbDV</h2>
+    <p>Follow the section for where your ThumbDV is plugged in:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Your ThumbDV is…</th><th>One-time setup</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="#thumbdv-usb">A. Plugged into this PC</a></td>
+            <td>Serial port access on this PC.</td>
+          </tr>
+          <tr>
+            <td><a href="#thumbdv-ambeserver">B. On a Raspberry Pi running AMBEServer</a></td>
+            <td>On the Pi: AMBEServer and the <a href="#ftdi-latency-timer">latency udev rule</a>.
+              On Wi-Fi: power saving off on both machines.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="thumbdv-usb">A. ThumbDV plugged into this PC</h3>
+    <ol>
+      <li>
+        <p>Give yourself access to serial ports, then <strong>log out and back in</strong>:</p>
+<pre><code>sudo usermod -aG dialout "$USER"</code></pre>
+      </li>
+      <li>
+        <p>In DV3K Client, open <strong>File › Settings › Devices</strong>, set
+          <em>ThumbDV</em> to <strong>Local serial device</strong> and pick the device. Its stable name looks
+          like <code>/dev/serial/by-id/usb-NW_Digital_Radio_…_ThumbDV_…-if00-port0</code>. To
+          list what's plugged in:</p>
+<pre><code>ls -l /dev/serial/by-id</code></pre>
+      </li>
+    </ol>
+    <p>DV3K Client sets the ThumbDV's latency timer to 1&nbsp;ms itself each time it connects. In
+      the rare case it can't, it shows a yellow warning above the tabs. Only then do you need the
+      <a href="#ftdi-latency-timer">udev rule below</a>.</p>
+
+    <h3 id="thumbdv-ambeserver">B. ThumbDV on a Raspberry Pi running AMBEServer</h3>
+    <p>The Pi runs PA7LIM's
+      <a href="https://www.pa7lim.nl/ambeserver-3000-for-linux/">AMBEServer 3000</a>, which makes
+      the ThumbDV available over the network.</p>
+    <p><strong>On the Pi:</strong></p>
+    <ul>
+      <li>Install and start AMBEServer 3000, following PA7LIM's instructions.</li>
+      <li>Add the <a href="#ftdi-latency-timer">latency udev rule</a>. DV3K Client can't
+        set the latency timer for you here, because the ThumbDV is opened by AMBEServer, not
+        by DV3K Client.</li>
+      <li>On a Pi 3B+, the ThumbDV's USB link occasionally stalls, and AMBEServer stops
+        answering until it's restarted. The
+        <a href="https://github.com/keit/DV3000Client/tree/master/scripts/pi-star">AMBEServer
+        watchdog</a> restarts it automatically.</li>
+    </ul>
+    <p><strong>On this PC:</strong> open <strong>File › Settings › Devices</strong>, set
+      <em>ThumbDV</em> to <strong>Network (AMBEServer 3000)</strong>, enter the Pi's host name or
+      IP address and port <code>2460</code>, and press <strong>Test</strong>.</p>
+    <p>Every 20&nbsp;ms of audio is a round trip to the Pi, so a wired network is best. Only
+      one client can use an AMBEServer at a time. On Wi-Fi, turn off power saving on both
+      machines. On an Ubuntu PC, also stop background Wi-Fi scans.</p>
+
+    <details id="wifi-powersave">
+      <summary>Turn off Wi-Fi power saving</summary>
+      <p>Power saving can hold packets for 100&nbsp;ms or more when traffic starts after a pause,
+        which is exactly what pressing PTT does.</p>
+      <p><strong>Raspberry Pi</strong> (Raspberry Pi OS, Pi-Star):</p>
+<pre><code>echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{INTERFACE} set power_save off"' \
+  | sudo tee /etc/udev/rules.d/70-wifi-powersave-off.rules
+sudo reboot</code></pre>
+      <p><strong>Ubuntu PC</strong> (NetworkManager):</p>
+<pre><code>printf '[connection]\nwifi.powersave = 2\n' \
+  | sudo tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf
+sudo systemctl restart NetworkManager</code></pre>
+      <p>Check with <code>iw dev &lt;interface&gt; get power_save</code>. <code>iw dev</code>
+        lists the interface names.</p>
+    </details>
+
+    <details id="wifi-scans">
+      <summary>Stop background Wi-Fi scans (Ubuntu PC on Wi-Fi)</summary>
+      <p>Every few minutes the Wi-Fi card scans all channels, which takes it off your
+        network for about 9 seconds and breaks up audio for 10–20 seconds. On a GNOME desktop
+        two things trigger these scans, and both need turning off:</p>
+      <ol>
+        <li>
+          <p><strong>Location Services</strong> (Settings › Privacy &amp; Security). Features that
+            use your location stop working, e.g. Night Light's automatic schedule.</p>
+<pre><code>gsettings set org.gnome.system.location enabled false</code></pre>
+        </li>
+        <li>
+          <p><strong>NetworkManager's roaming scan</strong>, which stops when the connection is
+            locked to your access point. The PC then won't switch access points by itself, so
+            skip this on a mesh network or a laptop that moves around. Replace
+            <code>MyWiFi</code> with your connection's name from
+            <code>nmcli connection show</code>:</p>
+<pre><code>iw dev | grep Interface                 # e.g. wlp1s0
+iw dev wlp1s0 link | head -1             # Connected to xx:xx:xx:xx:xx:xx
+nmcli connection modify MyWiFi 802-11-wireless.bssid xx:xx:xx:xx:xx:xx
+nmcli connection up MyWiFi</code></pre>
+        </li>
+      </ol>
+    </details>
+
+    <h2 id="ftdi-latency-timer">FTDI latency timer</h2>
+    <div class="callout">
+      <strong>ThumbDV plugged into this PC:</strong> you only need this if DV3K Client showed a
+      yellow <em>"ThumbDV latency timer is … ms"</em> warning.<br>
+      <strong>ThumbDV on an AMBEServer Pi:</strong> always do this, <strong>on the
+      Pi</strong>.
+    </div>
+    <p>The ThumbDV's FTDI USB chip buffers data for up to 16&nbsp;ms by default, which causes
+      choppy, delayed audio. This udev rule sets it to 1&nbsp;ms whenever the dongle is plugged
+      in:</p>
+<pre><code>echo 'ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTR{latency_timer}="1"' \
+  | sudo tee /etc/udev/rules.d/99-ftdi-latency.rules
+sudo udevadm control --reload-rules</code></pre>
+    <p>Unplug and replug the ThumbDV, then check. It should print <code>1</code>:</p>
+<pre><code>cat /sys/bus/usb-serial/devices/ttyUSB0/latency_timer</code></pre>
+
+    <h2 id="settings">3. Settings and your first contact</h2>
+    <p>Open <strong>File › Settings</strong>:</p>
+    <ul>
+      <li><strong>General:</strong> your callsign and D-Star module letter, and your DMR ID. For
+        each DMR network you use, pick it in <em>DMR network</em> and enter its server and
+        password:
+        <ul>
+          <li><strong>BrandMeister:</strong> the <em>Hotspot Security</em> password you set in
+            BrandMeister SelfCare, not your account password.</li>
+          <li><strong>TGIF:</strong> the 16-digit <em>Hotspot Security Key</em> from your TGIF
+            account's security page.</li>
+        </ul>
+      </li>
+      <li><strong>Devices:</strong> your microphone and speaker (use the <strong>Test</strong>
+        buttons to check them), and the ThumbDV from step 2.</li>
+    </ul>
+    <p>Then:</p>
+    <ul>
+      <li><strong>D-Star:</strong> pick a reflector and module, and click
+        <strong>Connect</strong>.</li>
+      <li><strong>DMR:</strong> pick the network, click <strong>Connect</strong>, then choose a
+        talkgroup.</li>
+      <li><strong>PTT to send</strong> (or the space bar) toggles transmit on and off.</li>
+    </ul>
+    <p>To hear yourself back, use the Parrot: on BrandMeister, tick <strong>Private
+      call</strong> and call <code>9990</code>; on TGIF, make a group call to TG
+      <code>9990</code>.</p>
+
+    <h2 id="help">Something not working?</h2>
+    <ul>
+      <li>The log is at <code>~/.config/DV3000Client/dv3000client.log</code>
+        (<strong>Help › Log File Location</strong>).</li>
+      <li>Choppy audio: check the <a href="#ftdi-latency-timer">latency timer</a>, and with
+        AMBEServer, <a href="#wifi-powersave">Wi-Fi power saving</a> and
+        <a href="#wifi-scans">background scans</a>.</li>
+      <li>Report problems on <a href="https://github.com/keit/DV3000Client/issues">GitHub
+        Issues</a>, with the log attached.</li>
+    </ul>
+  </main>
+
+  <footer>
+    <div class="inner">DV3K Client is free software under the GNU GPL v3 &middot; by ZL2MIM</div>
+  </footer>
+  <script src="site.js"></script>
+</body>
+</html>

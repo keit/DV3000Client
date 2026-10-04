@@ -1,0 +1,140 @@
+:root {
+  --bg: #fbfaf8;
+  --surface: #ffffff;
+  --text: #1d2125;
+  --muted: #5b6470;
+  --border: #e2e0db;
+  --accent: #1f6feb;
+  --accent-text: #ffffff;
+  --code-bg: #f2f1ee;
+  --warn-bg: #fff4cc;
+  --warn-border: #f57c00;
+  --warn-text: #3e2700;
+  --radius: 8px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15181c;
+    --surface: #1c2025;
+    --text: #e6e8eb;
+    --muted: #9aa3ad;
+    --border: #2d333a;
+    --accent: #4c94ff;
+    --accent-text: #0b0d10;
+    --code-bg: #22272e;
+    --warn-bg: #3a2e10;
+    --warn-border: #f5a623;
+    --warn-text: #fbe7b5;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Ubuntu, Roboto, sans-serif;
+}
+
+a { color: var(--accent); }
+
+header.site {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+header.site .inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+header.site img { width: 32px; height: 32px; }
+header.site .name { font-weight: 700; color: var(--text); text-decoration: none; font-size: 1.1rem; }
+header.site nav { margin-left: auto; display: flex; gap: 16px; }
+header.site nav a { color: var(--muted); text-decoration: none; }
+header.site nav a:hover, header.site nav a[aria-current] { color: var(--text); }
+
+.inner { max-width: 780px; margin: 0 auto; padding: 14px 16px; }
+main.inner { padding-top: 24px; padding-bottom: 48px; }
+
+h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; }
+h2 { font-size: 1.4rem; margin: 40px 0 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+h3 { font-size: 1.1rem; margin: 28px 0 6px; }
+.lead { color: var(--muted); font-size: 1.1rem; margin-top: 0; }
+
+pre, code { font-family: ui-monospace, "SFMono-Regular", "Ubuntu Mono", Menlo, monospace; font-size: 0.9em; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre {
+  position: relative;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* Room on the right so the Copy button never covers a command. */
+  padding: 12px 70px 12px 14px;
+  overflow-x: auto;
+}
+pre code { background: none; padding: 0; }
+pre .copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font: 12px system-ui, sans-serif;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.95rem; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; }
+.table-wrap { overflow-x: auto; }
+
+.downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 24px 0; }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+.card h3 { margin-top: 0; }
+.card p { margin: 6px 0 14px; color: var(--muted); }
+.button {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--accent-text);
+  text-decoration: none;
+  font-weight: 600;
+  padding: 9px 16px;
+  border-radius: 6px;
+}
+.version { color: var(--muted); font-size: 0.95rem; }
+
+.callout {
+  border-left: 4px solid var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  padding: 10px 14px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin: 16px 0;
+}
+.callout a { color: inherit; }
+
+details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  margin: 12px 0;
+  background: var(--surface);
+}
+details summary { cursor: pointer; font-weight: 600; }
+details[open] summary { margin-bottom: 8px; }
+
+ul.features { padding-left: 20px; }
+footer { color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--border); }

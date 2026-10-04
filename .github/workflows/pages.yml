@@ -1,0 +1,41 @@
+# Publishes site/ (the download and Getting Started pages) to GitHub Pages
+# whenever it changes on master. Needs Settings > Pages > Source set to
+# "GitHub Actions", and on a free plan a public repository.
+name: Pages
+
+on:
+  push:
+    branches: [master]
+    paths: ['site/**', 'resources/icons/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The app's own icons, rather than a second copy kept under site/.
+      - name: Add icons
+        run: |
+          mkdir -p site/icons
+          cp resources/icons/dv3kclient-64.png resources/icons/dv3kclient-256.png site/icons/
+
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DV3K Client</title>
+  <meta name="description" content="Linux desktop client for D-Star and DMR, using a ThumbDV (AMBE-3000) for the vocoder.">
+  <link rel="icon" href="icons/dv3kclient-64.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site">
+    <div class="inner">
+      <img src="icons/dv3kclient-64.png" alt="">
+      <a class="name" href="./">DV3K Client</a>
+      <nav>
+        <a href="./" aria-current="page">Download</a>
+        <a href="getting-started.html">Getting Started</a>
+        <a href="https://github.com/keit/DV3000Client">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="inner">
+    <h1>DV3K Client</h1>
+    <p class="lead">A Linux desktop client for D-Star reflectors and DMR networks, using a
+      ThumbDV (AMBE-3000) USB dongle for the voice codec.</p>
+
+    <ul class="features">
+      <li><strong>D-Star</strong> via DExtra: XLX and XRF reflectors, searchable from the live XLX directory.</li>
+      <li><strong>DMR</strong> on <strong>BrandMeister</strong> (Open DMR Terminal) and <strong>TGIF</strong> (Homebrew), with talkgroup search and favourites.</li>
+      <li>Push-to-talk with your PC's microphone and speaker, level meters, and a Last Heard list.</li>
+      <li>The ThumbDV can be plugged into your PC, or on a Raspberry Pi running AMBEServer.</li>
+    </ul>
+
+    <p>There's no software vocoder: you need a ThumbDV to transmit or hear anything.</p>
+
+    <h2 id="download">Download</h2>
+    <p class="version">Linux x86_64 &middot; Ubuntu 24.04 or newer<span id="latest-version"></span></p>
+
+    <div class="downloads">
+      <div class="card">
+        <h3>.deb package</h3>
+        <p>For Ubuntu and other Debian-based systems. Adds DV3K Client to your app launcher.</p>
+        <a class="button" id="deb-link" href="https://github.com/keit/DV3000Client/releases/latest">Download .deb</a>
+      </div>
+      <div class="card">
+        <h3>AppImage</h3>
+        <p>A single file that runs on most Linux distributions without installing.</p>
+        <a class="button" href="https://github.com/keit/DV3000Client/releases/latest/download/DV3KClient-x86_64.AppImage">Download AppImage</a>
+      </div>
+    </div>
+
+    <p>Then follow <a href="getting-started.html">Getting Started</a> to install it and set up
+      your ThumbDV. Checksums, the source code and older versions are on the
+      <a href="https://github.com/keit/DV3000Client/releases">Releases page</a>.</p>
+  </main>
+
+  <footer>
+    <div class="inner">DV3K Client is free software under the GNU GPL v3 &middot; by ZL2MIM</div>
+  </footer>
+  <script src="site.js"></script>
+</body>
+</html>

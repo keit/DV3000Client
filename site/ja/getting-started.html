@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>はじめに · DV3K Client</title>
+  <meta name="description" content="DV3K Client のインストールと、PC に接続した ThumbDV、または AMBEServer を動かす Raspberry Pi 上の ThumbDV のセットアップ方法。">
+  <link rel="icon" href="../icons/dv3kclient-64.png">
+  <link rel="alternate" hreflang="en" href="../getting-started.html">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site">
+    <div class="inner">
+      <img src="../icons/dv3kclient-64.png" alt="">
+      <a class="name" href="../">DV3K Client</a>
+      <nav>
+        <a href="../">ダウンロード</a>
+        <a href="getting-started.html" aria-current="page">はじめに</a>
+        <a href="https://github.com/keit/DV3000Client">GitHub</a>
+        <a href="../getting-started.html" hreflang="en" lang="en">English</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="inner">
+    <h1>はじめに</h1>
+    <p class="lead">DV3K Client をインストールし、ThumbDV を接続してから、コールサインとネットワークの情報を設定します。</p>
+
+    <h2 id="install">1. インストール</h2>
+    <p><a href="../#download">.deb または AppImage</a> をダウンロードしてください。どちらも x86_64 の Linux(Ubuntu 24.04 以降)用です。</p>
+
+    <h3 id="install-deb">.deb パッケージ</h3>
+<pre><code>cd ~/Downloads
+sudo apt install ./dv3kclient_*_amd64.deb</code></pre>
+    <p>apt が <em>「Download is performed unsandboxed as root…」</em> と表示することがありますが、問題ありません。apt は通常、権限の低い専用ユーザーでファイルを読み込みますが、そのユーザーはホームフォルダーを読めないため、代わりに root で読み込んだという意味です。インストール後はアプリケーションランチャーに DV3K Client が表示されます。ターミナルから <code>dv3kclient</code> で起動することもできます。</p>
+
+    <h3 id="install-appimage">AppImage</h3>
+<pre><code>chmod +x DV3KClient-x86_64.AppImage
+./DV3KClient-x86_64.AppImage</code></pre>
+    <p>AppImage は置いた場所からそのまま起動でき、アプリケーションランチャーには自動で追加されません。</p>
+
+    <p>設定とログは <code>~/.config/DV3000Client</code> に保存され、.deb と AppImage で共通です。アプリを削除しても(<code>sudo apt remove dv3kclient</code>、または AppImage のファイルを削除)残ります。</p>
+
+    <h2 id="thumbdv">2. ThumbDV の接続</h2>
+    <p>ThumbDV をどこに接続しているかに応じて、該当する節に従ってください:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>ThumbDV の接続先</th><th>初回のみ必要な設定</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="#thumbdv-usb">A. この PC に直接接続</a></td>
+            <td>この PC でシリアルポートへのアクセス権を設定。</td>
+          </tr>
+          <tr>
+            <td><a href="#thumbdv-ambeserver">B. AMBEServer を動かす Raspberry Pi に接続</a></td>
+            <td>Pi に AMBEServer と<a href="#ftdi-latency-timer">レイテンシの udev ルール</a>を設定。Wi-Fi の場合は両方の機器で省電力機能をオフ。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="thumbdv-usb">A. この PC に直接接続した ThumbDV</h3>
+    <ol>
+      <li>
+        <p>シリアルポートへのアクセス権を自分に追加し、<strong>一度ログアウトしてから再度ログイン</strong>してください:</p>
+<pre><code>sudo usermod -aG dialout "$USER"</code></pre>
+      </li>
+      <li>
+        <p>DV3K Client で <strong>File › Settings › Devices</strong>(ファイル › 設定 › デバイス)を開き、<em>ThumbDV</em> を <strong>Local serial device</strong> にしてデバイスを選びます。固定のデバイス名は <code>/dev/serial/by-id/usb-NW_Digital_Radio_…_ThumbDV_…-if00-port0</code> のような形です。接続中のデバイスは次のコマンドで確認できます:</p>
+<pre><code>ls -l /dev/serial/by-id</code></pre>
+      </li>
+    </ol>
+    <p>DV3K Client は接続のたびに ThumbDV のレイテンシタイマーを自分で 1&nbsp;ms に設定します。まれにそれができなかった場合は、タブの上に黄色い警告が表示されます。<a href="#ftdi-latency-timer">下の udev ルール</a>が必要なのは、その場合だけです。</p>
+
+    <h3 id="thumbdv-ambeserver">B. AMBEServer を動かす Raspberry Pi に接続した ThumbDV</h3>
+    <p>Pi では PA7LIM 氏の <a href="https://www.pa7lim.nl/ambeserver-3000-for-linux/">AMBEServer 3000</a> を動かし、ThumbDV をネットワーク経由で使えるようにします。</p>
+    <p><strong>Pi での設定:</strong></p>
+    <ul>
+      <li>PA7LIM 氏の手順に従って AMBEServer 3000 をインストールし、起動します。</li>
+      <li><a href="#ftdi-latency-timer">レイテンシの udev ルール</a>を追加します。この構成では ThumbDV を開くのは DV3K Client ではなく AMBEServer なので、DV3K Client はレイテンシタイマーを設定できません。</li>
+      <li>Pi 3B+ では ThumbDV の USB 接続がときどきストールし、AMBEServer は再起動するまで応答しなくなります。<a href="https://github.com/keit/DV3000Client/tree/master/scripts/pi-star">AMBEServer ウォッチドッグ</a>を入れておくと自動で再起動します。</li>
+    </ul>
+    <p><strong>この PC での設定:</strong> <strong>File › Settings › Devices</strong> を開き、<em>ThumbDV</em> を <strong>Network (AMBEServer 3000)</strong> にします。Pi のホスト名または IP アドレスとポート <code>2460</code> を入力し、<strong>Test</strong> を押してください。</p>
+    <p>20&nbsp;ms ごとの音声がそれぞれ Pi との往復通信になるため、有線ネットワークが最適です。AMBEServer に同時に接続できるクライアントは1つだけです。Wi-Fi の場合は両方の機器で省電力機能をオフにし、Ubuntu の PC ではバックグラウンドの Wi-Fi スキャンも止めてください。</p>
+
+    <details id="wifi-powersave">
+      <summary>Wi-Fi の省電力機能をオフにする</summary>
+      <p>しばらく通信がなかった後に通信が始まると(PTT を押した瞬間がまさにこれです)、省電力機能がパケットを 100&nbsp;ms 以上保留することがあります。</p>
+      <p><strong>Raspberry Pi</strong>(Raspberry Pi OS、Pi-Star):</p>
+<pre><code>echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{INTERFACE} set power_save off"' \
+  | sudo tee /etc/udev/rules.d/70-wifi-powersave-off.rules
+sudo reboot</code></pre>
+      <p><strong>Ubuntu の PC</strong>(NetworkManager):</p>
+<pre><code>printf '[connection]\nwifi.powersave = 2\n' \
+  | sudo tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf
+sudo systemctl restart NetworkManager</code></pre>
+      <p>状態は <code>iw dev &lt;インターフェース名&gt; get power_save</code> で確認できます(インターフェース名は <code>iw dev</code> で確認)。</p>
+    </details>
+
+    <details id="wifi-scans">
+      <summary>バックグラウンドの Wi-Fi スキャンを止める(Wi-Fi 接続の Ubuntu PC)</summary>
+      <p>Wi-Fi カードは数分おきに全チャンネルをスキャンし、その間約9秒間ネットワークから離れるため、10〜20秒ほど音声が途切れます。GNOME のデスクトップではこのスキャンを起こすものが2つあり、両方を止める必要があります:</p>
+      <ol>
+        <li>
+          <p><strong>位置情報サービス</strong>(設定 › プライバシーとセキュリティ)。位置情報を使う機能は使えなくなります(例: 夜間モードの自動スケジュール)。</p>
+<pre><code>gsettings set org.gnome.system.location enabled false</code></pre>
+        </li>
+        <li>
+          <p><strong>NetworkManager のローミング用スキャン</strong>。接続を現在のアクセスポイントに固定すると止まります。代わりに PC が自動で別のアクセスポイントに移らなくなるため、メッシュネットワークや持ち歩くノート PC では行わないでください。<code>MyWiFi</code> は <code>nmcli connection show</code> で確認した自分の接続名に置き換えてください:</p>
+<pre><code>iw dev | grep Interface                 # 例: wlp1s0
+iw dev wlp1s0 link | head -1             # Connected to xx:xx:xx:xx:xx:xx
+nmcli connection modify MyWiFi 802-11-wireless.bssid xx:xx:xx:xx:xx:xx
+nmcli connection up MyWiFi</code></pre>
+        </li>
+      </ol>
+    </details>
+
+    <h2 id="ftdi-latency-timer">FTDI レイテンシタイマー</h2>
+    <div class="callout">
+      <strong>ThumbDV をこの PC に直接接続している場合:</strong> DV3K Client が黄色い<em>「ThumbDV latency timer is … ms」</em> の警告を表示したときだけ必要です。<br>
+      <strong>ThumbDV を AMBEServer の Pi に接続している場合:</strong> 必ず <strong>Pi で</strong>設定してください。</div>
+    <p>ThumbDV の FTDI USB チップは、デフォルトでデータを最大 16&nbsp;ms バッファリングするため、音声が途切れたり遅れたりします。次の udev ルールで、ドングルを接続するたびに 1&nbsp;ms に設定されます:</p>
+<pre><code>echo 'ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTR{latency_timer}="1"' \
+  | sudo tee /etc/udev/rules.d/99-ftdi-latency.rules
+sudo udevadm control --reload-rules</code></pre>
+    <p>ThumbDV を一度抜き差ししてから確認してください。<code>1</code> と表示されれば OK です:</p>
+<pre><code>cat /sys/bus/usb-serial/devices/ttyUSB0/latency_timer</code></pre>
+
+    <h2 id="settings">3. 設定と最初の交信</h2>
+    <p><strong>File › Settings</strong>(ファイル › 設定)を開きます:</p>
+    <ul>
+      <li><strong>General(一般):</strong> コールサイン、D-Star のモジュール文字、DMR ID。使う DMR ネットワークごとに、<em>DMR network</em> でネットワークを選び、サーバーとパスワードを入力します:
+        <ul>
+          <li><strong>BrandMeister:</strong> BrandMeister の SelfCare で設定した <em>Hotspot Security</em> パスワード(アカウントのパスワードではありません)。</li>
+          <li><strong>TGIF:</strong> TGIF アカウントのセキュリティページで生成される16桁の <em>Hotspot Security Key</em>。</li>
+        </ul>
+      </li>
+      <li><strong>Devices(デバイス):</strong> マイクとスピーカー(<strong>Test</strong> ボタンで確認できます)、および手順2の ThumbDV。</li>
+    </ul>
+    <p>その後:</p>
+    <ul>
+      <li><strong>D-Star:</strong> リフレクターとモジュールを選び、<strong>Connect</strong> をクリックします。</li>
+      <li><strong>DMR:</strong> ネットワークを選んで <strong>Connect</strong> をクリックし、トークグループを選びます。</li>
+      <li><strong>PTT to send</strong>(またはスペースキー)で送信のオン・オフを切り替えます。</li>
+    </ul>
+    <p>自分の声を確認するには Parrot を使います。BrandMeister では <strong>Private call</strong> にチェックを入れて <code>9990</code> を呼び出し、TGIF では TG <code>9990</code> へグループコールします。</p>
+
+    <h2 id="help">うまく動かないときは</h2>
+    <ul>
+      <li>ログは <code>~/.config/DV3000Client/dv3000client.log</code> にあります(<strong>Help › Log File Location</strong> でも確認できます)。</li>
+      <li>音声が途切れる場合: <a href="#ftdi-latency-timer">レイテンシタイマー</a>、AMBEServer の場合は<a href="#wifi-powersave">Wi-Fi の省電力機能</a>と<a href="#wifi-scans">バックグラウンドスキャン</a>を確認してください。</li>
+      <li>問題は <a href="https://github.com/keit/DV3000Client/issues">GitHub Issues</a> に、ログを添えて報告してください。</li>
+    </ul>
+  </main>
+
+  <footer>
+    <div class="inner">DV3K Client は GNU GPL v3 のフリーソフトウェアです &middot; ZL2MIM</div>
+  </footer>
+  <script src="../site.js"></script>
+</body>
+</html>

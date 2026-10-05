@@ -1,4 +1,5 @@
-# Builds the .deb and AppImage, installs/runs them on clean Ubuntu images,
+# Builds the .deb and AppImage for x86_64 and aarch64 (Raspberry Pi),
+# installs/runs them on clean Debian and Ubuntu images,
 # and -- for a pushed vX.Y.Z or vX.Y.Z-rc.N tag -- uploads them to a
 # *draft* GitHub release (a pre-release for an -rc tag)
 # along with SHA256SUMS and a source tarball that includes the submodules
@@ -25,10 +26,14 @@ jobs:
           - arch: x86_64
             deb-arch: amd64
             runner: ubuntu-24.04
+          - arch: aarch64 # Raspberry Pi 3 and later on a 64-bit OS
+            deb-arch: arm64
+            runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    # The oldest Ubuntu the packages support: binaries only run on a glibc
-    # and Qt at least as new as what they were built against.
-    container: ubuntu:24.04
+    # Debian 12 (bookworm), the oldest release the packages support -- also
+    # what Raspberry Pi OS Bookworm is built on. Binaries only run on a
+    # glibc and Qt at least as new as what they were built against.
+    container: debian:bookworm
     steps:
       - name: Install build dependencies
         run: |
@@ -74,18 +79,29 @@ jobs:
         shell: bash
 
       # The .deb's Depends are hand-written (see CMakeLists.txt); make sure
-      # they still name every package dpkg-shlibdeps says the binary needs.
+      # they still name every package dpkg-shlibdeps says the binary needs,
+      # at a minimum version at least as high as it says.
       - name: Check the .deb Depends cover the binary's libraries
         run: |
           mkdir -p /tmp/shlibdeps/debian && touch /tmp/shlibdeps/debian/control
           generated=$(cd /tmp/shlibdeps && dpkg-shlibdeps -O "$GITHUB_WORKSPACE/build/dv3kclient")
-          declared=$(dpkg-deb -f build/dv3kclient_*.deb Depends)
-          for pkg in $(echo "${generated#shlibs:Depends=}" | tr ',' '\n' | sed 's/(.*//; s/ //g'); do
-            if ! echo "$declared" | grep -qwF -- "$pkg"; then
-              echo "::error::$pkg (needed per dpkg-shlibdeps) is missing from CPACK_DEBIAN_PACKAGE_DEPENDS"
-              exit 1
+          generated=${generated#shlibs:Depends=}
+          echo "dpkg-shlibdeps: $generated"
+          declared=$(dpkg-deb -f build/dv3kclient_*.deb Depends | tr ',|' '\n\n' | sed 's/^ *//')
+          failed=0
+          IFS=',' read -ra entries <<< "$generated"
+          for entry in "${entries[@]}"; do
+            pkg=$(sed 's/(.*//; s/ //g' <<< "$entry")
+            need=$(sed -n 's/.*(>= *\([^)]*\)).*/\1/p' <<< "$entry")
+            line=$(grep "^$pkg\( \|$\)" <<< "$declared" | head -1)
+            have=$(sed -n 's/.*(>= *\([^)]*\)).*/\1/p' <<< "$line")
+            if [ -z "$line" ]; then
+              echo "::error::$pkg is missing from CPACK_DEBIAN_PACKAGE_DEPENDS"; failed=1
+            elif [ -n "$need" ] && { [ -z "$have" ] || ! dpkg --compare-versions "$have" ge "$need"; }; then
+              echo "::error::CPACK_DEBIAN_PACKAGE_DEPENDS has $pkg (>= ${have:-any}), the binary needs >= $need"; failed=1
             fi
           done
+          exit $failed
         shell: bash
 
       - name: Package AppImage
@@ -105,33 +121,41 @@ jobs:
             build/DV3KClient-${{ matrix.arch }}.AppImage
           if-no-files-found: error
 
-  # Installs the .deb with apt on clean images of each Ubuntu release we
-  # claim to support, so a dependency that only resolves on the build
-  # image shows up here rather than on a user's machine.
+  # Installs each .deb with apt on clean images of every release it's meant
+  # to support, so a dependency that only resolves on the build image shows
+  # up here rather than on a user's machine.
   test-deb:
     needs: build
     strategy:
       fail-fast: false
       matrix:
-        image: ['ubuntu:24.04', 'ubuntu:26.04']
-    runs-on: ubuntu-24.04
+        include:
+          - { arch: x86_64, deb-arch: amd64, runner: ubuntu-24.04, image: 'debian:bookworm' }
+          - { arch: x86_64, deb-arch: amd64, runner: ubuntu-24.04, image: 'debian:trixie' }
+          - { arch: x86_64, deb-arch: amd64, runner: ubuntu-24.04, image: 'ubuntu:24.04' }
+          - { arch: x86_64, deb-arch: amd64, runner: ubuntu-24.04, image: 'ubuntu:26.04' }
+          - { arch: aarch64, deb-arch: arm64, runner: ubuntu-24.04-arm, image: 'debian:bookworm' }
+          - { arch: aarch64, deb-arch: arm64, runner: ubuntu-24.04-arm, image: 'debian:trixie' }
+          - { arch: aarch64, deb-arch: arm64, runner: ubuntu-24.04-arm, image: 'ubuntu:24.04' }
+    name: test-deb (${{ matrix.deb-arch }}, ${{ matrix.image }})
+    runs-on: ${{ matrix.runner }}
     container: ${{ matrix.image }}
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: packages-x86_64
+          name: packages-${{ matrix.arch }}
       - name: Install and run
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y ./dv3kclient_*_amd64.deb
+          DEBIAN_FRONTEND=noninteractive apt-get install -y ./dv3kclient_*_${{ matrix.deb-arch }}.deb
           dv3kclient --version
       - name: Lintian (informational)
         continue-on-error: true
         run: |
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends lintian
-          lintian --info dv3kclient_*_amd64.deb
+          lintian --info dv3kclient_*_${{ matrix.deb-arch }}.deb
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

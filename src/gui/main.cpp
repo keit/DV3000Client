@@ -15,16 +15,29 @@ int main(int argc, char **argv) {
     // A QT_LOGGING_RULES set in the environment still takes precedence.
     QLoggingCategory::setFilterRules("qt.qpa.wayland.textinput=false\n");
 
-    QApplication app(argc, argv);
     QApplication::setApplicationName("DV3000Client");
     QApplication::setApplicationVersion(DV3K_VERSION);
 
-    // --version also lets CI smoke-test a packaged binary headless
-    // (QT_QPA_PLATFORM=offscreen) without bringing up the window.
     QCommandLineParser parser;
     parser.setApplicationDescription("D-Star and DMR client for the ThumbDV (AMBE-3000)");
-    parser.addHelpOption();
-    parser.addVersionOption();
+    QCommandLineOption helpOption = parser.addHelpOption();
+    QCommandLineOption versionOption = parser.addVersionOption();
+
+    // --help and --version are answered before QApplication exists: it
+    // needs a display (Wayland or X11) just to start, and these are what
+    // people run over SSH, e.g. on a Raspberry Pi -- and what CI uses to
+    // smoke-test a packaged binary. Only those two are acted on here; Qt's
+    // own GUI options (-platform, -style, ...) aren't known until
+    // QApplication strips them, so the full check is parser.process()
+    // below.
+    {
+        QCoreApplication core(argc, argv);
+        parser.parse(QCoreApplication::arguments());
+        if (parser.isSet(helpOption)) parser.showHelp();
+        if (parser.isSet(versionOption)) parser.showVersion();
+    }
+
+    QApplication app(argc, argv);
     parser.process(app);
 
     // Window/taskbar icon, in the sizes desktops pick from (resources/

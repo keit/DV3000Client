@@ -16,8 +16,8 @@ you need the dongle to transmit or hear anything.
 The main program is a Qt6 GUI (`dv3kclient`) with a tab per protocol.
 The repo also builds a few command-line test tools (see below).
 
-**Download:** ready-made `.deb` and AppImage builds, with setup instructions,
-are at <https://keit.github.io/DV3000Client/>. The rest of this README is
+**Download:** ready-made `.deb` and AppImage builds for x86_64 PCs and 64-bit
+Raspberry Pi, with setup instructions, are at <https://keit.github.io/DV3000Client/>. The rest of this README is
 about building from source.
 
 ## Features

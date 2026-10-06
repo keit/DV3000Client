@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>はじめに · DV3K Client</title>
-  <meta name="description" content="DV3K Client のインストールと、PC に接続した ThumbDV、または AMBEServer を動かす Raspberry Pi 上の ThumbDV のセットアップ方法。">
+  <meta name="description" content="PC または Raspberry Pi への DV3K Client のインストールと、直接接続した ThumbDV、または AMBEServer を動かす Raspberry Pi 上の ThumbDV のセットアップ方法。">
   <link rel="icon" href="../icons/dv3kclient-64.png">
   <link rel="alternate" hreflang="en" href="../getting-started.html">
   <link rel="stylesheet" href="../style.css">
@@ -28,17 +28,17 @@
     <p class="lead">DV3K Client をインストールし、ThumbDV を接続してから、コールサインとネットワークの情報を設定します。</p>
 
     <h2 id="install">1. インストール</h2>
-    <p><a href="../#download">.deb または AppImage</a> をダウンロードしてください。どちらも x86_64 の Linux(Ubuntu 24.04 以降)用です。</p>
+    <p><a href="../#download">.deb または AppImage</a> をダウンロードしてください。PC(x86_64)では Debian 12、Ubuntu 24.04 以降、Raspberry Pi では Pi 3 以降と 64 ビット版の Raspberry Pi OS(<em>デスクトップ付き</em>)が対象です。</p>
 
     <h3 id="install-deb">.deb パッケージ</h3>
 <pre><code>cd ~/Downloads
-sudo apt install ./dv3kclient_*_amd64.deb</code></pre>
+sudo apt install ./dv3kclient_*.deb</code></pre>
     <p>apt が <em>「Download is performed unsandboxed as root…」</em> と表示することがありますが、問題ありません。apt は通常、権限の低い専用ユーザーでファイルを読み込みますが、そのユーザーはホームフォルダーを読めないため、代わりに root で読み込んだという意味です。インストール後はアプリケーションランチャーに DV3K Client が表示されます。ターミナルから <code>dv3kclient</code> で起動することもできます。</p>
 
     <h3 id="install-appimage">AppImage</h3>
-<pre><code>chmod +x DV3KClient-x86_64.AppImage
-./DV3KClient-x86_64.AppImage</code></pre>
-    <p>AppImage は置いた場所からそのまま起動でき、アプリケーションランチャーには自動で追加されません。</p>
+<pre><code>chmod +x DV3KClient-*.AppImage
+./DV3KClient-*.AppImage</code></pre>
+    <p>AppImage(PC は <code>x86_64</code>、Raspberry Pi は <code>aarch64</code>)は置いた場所からそのまま起動でき、アプリケーションランチャーには自動で追加されません。</p>
 
     <p>設定とログは <code>~/.config/DV3000Client</code> に保存され、.deb と AppImage で共通です。アプリを削除しても(<code>sudo apt remove dv3kclient</code>、または AppImage のファイルを削除)残ります。</p>
 
@@ -57,6 +57,10 @@ sudo apt install ./dv3kclient_*_amd64.deb</code></pre>
           <tr>
             <td><a href="#thumbdv-ambeserver">B. AMBEServer を動かす Raspberry Pi に接続</a></td>
             <td>Pi に AMBEServer と<a href="#ftdi-latency-timer">レイテンシの udev ルール</a>を設定。Wi-Fi の場合は両方の機器で省電力機能をオフ。</td>
+          </tr>
+          <tr>
+            <td><a href="#thumbdv-pi">C. DV3K Client を動かす Raspberry Pi に接続</a></td>
+            <td>A と同じく、Pi でシリアルポートへのアクセス権を設定。</td>
           </tr>
         </tbody>
       </table>
@@ -118,9 +122,16 @@ nmcli connection up MyWiFi</code></pre>
       </ol>
     </details>
 
+    <h3 id="thumbdv-pi">C. DV3K Client を動かす Raspberry Pi に接続した ThumbDV</h3>
+    <p>DV3K Client を Pi 自体で動かします。Raspberry Pi 3 以降と、64 ビット版の Raspberry Pi OS(<em>デスクトップ付き</em>)が必要です(Pi-Star や Raspberry Pi OS Lite にはデスクトップがないため動きません)。<code>arm64</code> の .deb か <code>aarch64</code> の AppImage をインストールし、ThumbDV は <a href="#thumbdv-usb">A</a> と同じ手順で設定してください。</p>
+    <ul>
+      <li>Pi にはマイク入力がないため、USB ヘッドセットか USB サウンドカードを使い、<strong>File › Settings › Devices</strong> で選んでください。</li>
+      <li>同じ Pi で AMBEServer も動かしている場合は、先に停止してください。ThumbDV を同時に使えるプログラムは1つだけです。</li>
+    </ul>
+
     <h2 id="ftdi-latency-timer">FTDI レイテンシタイマー</h2>
     <div class="callout">
-      <strong>ThumbDV をこの PC に直接接続している場合:</strong> DV3K Client が黄色い<em>「ThumbDV latency timer is … ms」</em> の警告を表示したときだけ必要です。<br>
+      <strong>ThumbDV を DV3K Client を動かす機器に直接接続している場合</strong>(A または C): DV3K Client が黄色い<em>「ThumbDV latency timer is … ms」</em> の警告を表示したときだけ必要です。<br>
       <strong>ThumbDV を AMBEServer の Pi に接続している場合:</strong> 必ず <strong>Pi で</strong>設定してください。</div>
     <p>ThumbDV の FTDI USB チップは、デフォルトでデータを最大 16&nbsp;ms バッファリングするため、音声が途切れたり遅れたりします。次の udev ルールで、ドングルを接続するたびに 1&nbsp;ms に設定されます:</p>
 <pre><code>echo 'ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTR{latency_timer}="1"' \

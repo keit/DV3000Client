@@ -16,17 +16,20 @@ document.querySelectorAll("pre > code").forEach((code) => {
   code.parentElement.appendChild(button);
 });
 
-// Download page: the AppImage has a fixed file name, so its link to
-// releases/latest/download works without this; the .deb's name carries the
-// version, so ask GitHub's API which file the latest release has. On any
-// failure the links stay pointing at the Releases page.
-const debLink = document.getElementById("deb-link");
-if (debLink) {
+// Download page: the AppImages have fixed file names, so their links to
+// releases/latest/download work without this; the .debs' names carry the
+// version, so ask GitHub's API which files the latest release has. Any
+// .deb not found, or any failure, leaves its link on the Releases page.
+const debLinks = document.querySelectorAll("[data-deb-arch]");
+if (debLinks.length) {
   fetch("https://api.github.com/repos/keit/DV3000Client/releases/latest")
     .then((response) => (response.ok ? response.json() : Promise.reject(response.status)))
     .then((release) => {
-      const deb = release.assets.find((asset) => /_amd64\.deb$/.test(asset.name));
-      if (deb) debLink.href = deb.browser_download_url;
+      debLinks.forEach((link) => {
+        const suffix = `_${link.dataset.debArch}.deb`;
+        const deb = release.assets.find((asset) => asset.name.endsWith(suffix));
+        if (deb) link.href = deb.browser_download_url;
+      });
       document.getElementById("latest-version").textContent =
         ` \u00b7 latest release ${release.tag_name.replace(/^v/, "")}`;
     })

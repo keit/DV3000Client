@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Getting Started · DV3K Client</title>
-  <meta name="description" content="Install DV3K Client and set up your ThumbDV, plugged into your PC or on a Raspberry Pi running AMBEServer.">
+  <meta name="description" content="Install DV3K Client on a PC or Raspberry Pi and set up your ThumbDV, plugged into it or on a Raspberry Pi running AMBEServer.">
   <link rel="icon" href="icons/dv3kclient-64.png">
   <link rel="alternate" hreflang="ja" href="ja/getting-started.html">
   <link rel="stylesheet" href="style.css">
@@ -29,21 +29,23 @@
       network details.</p>
 
     <h2 id="install">1. Install</h2>
-    <p>Download the <a href="./#download">.deb or the AppImage</a>. Both are for Linux on
-      x86_64, Ubuntu 24.04 or newer.</p>
+    <p>Download the <a href="./#download">.deb or the AppImage</a> for your computer: a PC
+      (x86_64) with Debian 12, Ubuntu 24.04 or newer, or a Raspberry Pi 3 or later with the 64-bit
+      Raspberry Pi OS <em>with desktop</em>.</p>
 
     <h3 id="install-deb">.deb package</h3>
 <pre><code>cd ~/Downloads
-sudo apt install ./dv3kclient_*_amd64.deb</code></pre>
+sudo apt install ./dv3kclient_*.deb</code></pre>
     <p>apt may print <em>"Download is performed unsandboxed as root…"</em>. That's harmless:
       apt can't read your home folder as its own unprivileged user, so it reads the file as root
       instead. DV3K Client then appears in your app launcher, or run <code>dv3kclient</code>
       from a terminal.</p>
 
     <h3 id="install-appimage">AppImage</h3>
-<pre><code>chmod +x DV3KClient-x86_64.AppImage
-./DV3KClient-x86_64.AppImage</code></pre>
-    <p>The AppImage runs from wherever you keep it and doesn't add itself to the app launcher.</p>
+<pre><code>chmod +x DV3KClient-*.AppImage
+./DV3KClient-*.AppImage</code></pre>
+    <p>The AppImage (<code>x86_64</code> for a PC, <code>aarch64</code> for a Raspberry Pi) runs from
+      wherever you keep it and doesn't add itself to the app launcher.</p>
 
     <p>Your settings and log live in <code>~/.config/DV3000Client</code>, shared by both, and are
       kept if you remove the app (<code>sudo apt remove dv3kclient</code>, or delete the
@@ -65,6 +67,10 @@ sudo apt install ./dv3kclient_*_amd64.deb</code></pre>
             <td><a href="#thumbdv-ambeserver">B. On a Raspberry Pi running AMBEServer</a></td>
             <td>On the Pi: AMBEServer and the <a href="#ftdi-latency-timer">latency udev rule</a>.
               On Wi-Fi: power saving off on both machines.</td>
+          </tr>
+          <tr>
+            <td><a href="#thumbdv-pi">C. Plugged into a Raspberry Pi running DV3K Client</a></td>
+            <td>Serial port access on the Pi, as in A.</td>
           </tr>
         </tbody>
       </table>
@@ -151,10 +157,23 @@ nmcli connection up MyWiFi</code></pre>
       </ol>
     </details>
 
+    <h3 id="thumbdv-pi">C. ThumbDV plugged into a Raspberry Pi running DV3K Client</h3>
+    <p>DV3K Client runs on the Pi itself, on a Raspberry Pi 3 or later with the 64-bit Raspberry Pi
+      OS <em>with desktop</em> (Pi-Star and Raspberry Pi OS Lite have no desktop to run it on).
+      Install the <code>arm64</code> .deb or the <code>aarch64</code> AppImage, then set up the
+      ThumbDV exactly as in <a href="#thumbdv-usb">A</a>.</p>
+    <ul>
+      <li>The Pi has no microphone input: use a USB headset or USB sound card, and pick it in
+        <strong>File › Settings › Devices</strong>.</li>
+      <li>If the same Pi also runs AMBEServer, stop it first. Only one program can use the
+        ThumbDV at a time.</li>
+    </ul>
+
     <h2 id="ftdi-latency-timer">FTDI latency timer</h2>
     <div class="callout">
-      <strong>ThumbDV plugged into this PC:</strong> you only need this if DV3K Client showed a
-      yellow <em>"ThumbDV latency timer is … ms"</em> warning.<br>
+      <strong>ThumbDV plugged into the computer running DV3K Client</strong> (A or C): you only
+      need this if DV3K Client showed a yellow <em>"ThumbDV latency timer is … ms"</em>
+      warning.<br>
       <strong>ThumbDV on an AMBEServer Pi:</strong> always do this, <strong>on the
       Pi</strong>.
     </div>

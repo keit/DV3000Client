@@ -16,7 +16,7 @@
 メインプログラムはプロトコルごとにタブを持つ Qt6 GUI(`dv3kclient`)です。このリポジ
 トリではほかにいくつかのコマンドラインテストツールもビルドされます(下記参照)。
 
-**ダウンロード:** ビルド済みの `.deb` と AppImage は
+**ダウンロード:** x86_64 の PC 用と 64 ビット版 Raspberry Pi 用のビルド済み `.deb` と AppImage は
 <https://keit.github.io/DV3000Client/> から、セットアップ手順は
 [はじめに](https://keit.github.io/DV3000Client/ja/getting-started.html) にあります。
 この README の以降の内容はソースからのビルドについてです。

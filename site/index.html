@@ -30,26 +30,33 @@
       <li><strong>D-Star</strong> via DExtra: XLX and XRF reflectors, searchable from the live XLX directory.</li>
       <li><strong>DMR</strong> on <strong>BrandMeister</strong> (Open DMR Terminal) and <strong>TGIF</strong> (Homebrew), with talkgroup search and favourites.</li>
       <li>Push-to-talk with your PC's microphone and speaker, level meters, and a Last Heard list.</li>
-      <li>The ThumbDV can be plugged into your PC, or on a Raspberry Pi running AMBEServer.</li>
+      <li>Runs on a PC or a Raspberry Pi. The ThumbDV can be plugged into the same computer, or into a Raspberry Pi running AMBEServer.</li>
     </ul>
 
     <p>There's no software vocoder: you need a ThumbDV to transmit or hear anything.</p>
 
     <h2 id="download">Download</h2>
-    <p class="version">Linux x86_64 &middot; Ubuntu 24.04 or newer<span id="latest-version"></span></p>
+    <p class="version">Linux &middot; PC and Raspberry Pi<span id="latest-version"></span></p>
 
     <div class="downloads">
       <div class="card">
-        <h3>.deb package</h3>
-        <p>For Ubuntu and other Debian-based systems. Adds DV3K Client to your app launcher.</p>
-        <a class="button" id="deb-link" href="https://github.com/keit/DV3000Client/releases/latest">Download .deb</a>
+        <h3>PC (x86_64)</h3>
+        <p>Debian 12, Ubuntu 24.04 or newer, and other Debian-based systems. The AppImage also runs
+          on most other Linux distributions.</p>
+        <a class="button" data-deb-arch="amd64" href="https://github.com/keit/DV3000Client/releases/latest">Download .deb</a>
+        <a class="button secondary" href="https://github.com/keit/DV3000Client/releases/latest/download/DV3KClient-x86_64.AppImage">AppImage</a>
       </div>
       <div class="card">
-        <h3>AppImage</h3>
-        <p>A single file that runs on most Linux distributions without installing.</p>
-        <a class="button" href="https://github.com/keit/DV3000Client/releases/latest/download/DV3KClient-x86_64.AppImage">Download AppImage</a>
+        <h3>Raspberry Pi (64-bit)</h3>
+        <p>Raspberry Pi 3 or later, with the 64-bit Raspberry Pi OS <em>with desktop</em>, Bookworm or
+          newer.</p>
+        <a class="button" data-deb-arch="arm64" href="https://github.com/keit/DV3000Client/releases/latest">Download .deb</a>
+        <a class="button secondary" href="https://github.com/keit/DV3000Client/releases/latest/download/DV3KClient-aarch64.AppImage">AppImage</a>
       </div>
     </div>
+
+    <p>The <strong>.deb</strong> installs DV3K Client and adds it to your app launcher; the
+      <strong>AppImage</strong> is a single file that runs without installing.</p>
 
     <p>Then follow <a href="getting-started.html">Getting Started</a>
       (<a href="ja/getting-started.html" hreflang="ja" lang="ja">日本語</a>) to install it and set up

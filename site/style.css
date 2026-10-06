@@ -114,6 +114,13 @@ th { color: var(--muted); font-weight: 600; }
   padding: 9px 16px;
   border-radius: 6px;
 }
+.button.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 8px 15px;
+  margin-left: 6px;
+}
 .version { color: var(--muted); font-size: 0.95rem; }
 
 .callout {

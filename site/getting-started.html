@@ -29,11 +29,22 @@
       network details.</p>
 
     <h2 id="install">1. Install</h2>
-    <p>Download the <a href="./#download">.deb or the AppImage</a> for your computer: a PC
-      (x86_64) with Debian 12, Ubuntu 24.04 or newer, or a Raspberry Pi 3 or later with the 64-bit
-      Raspberry Pi OS <em>with desktop</em>.</p>
+    <p>DV3K Client runs on a PC (x86_64) with Debian 12, Ubuntu 24.04 or newer, and on a
+      Raspberry Pi 3 or later with the 64-bit Raspberry Pi OS <em>with desktop</em>. Install it in
+      one of three ways:</p>
 
-    <h3 id="install-deb">.deb package</h3>
+    <h3 id="install-apt">With apt (recommended)</h3>
+    <p>Add the <a href="https://keit.github.io/apt/">keit APT repository</a> once, then install.
+      New versions arrive with your normal system updates.</p>
+<pre><code>sudo curl -fsSLo /usr/share/keyrings/keit.gpg https://keit.github.io/apt/keit.gpg
+sudo curl -fsSLo /etc/apt/sources.list.d/keit.sources https://keit.github.io/apt/keit.sources
+sudo apt update
+sudo apt install dv3kclient</code></pre>
+    <p>If you installed the .deb by hand before, adding the repository is enough: the next
+      version comes through it.</p>
+
+    <h3 id="install-deb">Or download the .deb</h3>
+    <p>Download the .deb for your computer from the <a href="./#download">download page</a>, then:</p>
 <pre><code>cd ~/Downloads
 sudo apt install ./dv3kclient_*.deb</code></pre>
     <p>apt may print <em>"Download is performed unsandboxed as root…"</em>. That's harmless:
@@ -41,7 +52,7 @@ sudo apt install ./dv3kclient_*.deb</code></pre>
       instead. DV3K Client then appears in your app launcher, or run <code>dv3kclient</code>
       from a terminal.</p>
 
-    <h3 id="install-appimage">AppImage</h3>
+    <h3 id="install-appimage">Or download the AppImage</h3>
 <pre><code>chmod +x DV3KClient-*.AppImage
 ./DV3KClient-*.AppImage</code></pre>
     <p>The AppImage (<code>x86_64</code> for a PC, <code>aarch64</code> for a Raspberry Pi) runs from

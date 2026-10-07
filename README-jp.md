@@ -19,7 +19,7 @@
 **ダウンロード:** x86_64 の PC 用と 64 ビット版 Raspberry Pi 用のビルド済み `.deb` と AppImage は
 <https://keit.github.io/DV3000Client/> から、セットアップ手順は
 [はじめに](https://keit.github.io/DV3000Client/ja/getting-started.html) にあります。
-この README の以降の内容はソースからのビルドについてです。
+Debian、Ubuntu、Raspberry Pi OS では [keit APT リポジトリ](https://keit.github.io/apt/) からインストールすることもでき、その場合はシステム更新で新しいバージョンが届きます。この README の以降の内容はソースからのビルドについてです。
 
 ## 機能
 

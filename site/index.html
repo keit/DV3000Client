@@ -38,6 +38,16 @@
     <h2 id="download">Download</h2>
     <p class="version">Linux &middot; PC and Raspberry Pi<span id="latest-version"></span></p>
 
+    <h3 id="apt">Install with apt (recommended)</h3>
+    <p>On Debian, Ubuntu and Raspberry Pi OS, add the
+      <a href="https://keit.github.io/apt/">keit APT repository</a> once, and new versions arrive
+      with your normal system updates. The same commands work on a PC and a Raspberry Pi:</p>
+<pre><code>sudo curl -fsSLo /usr/share/keyrings/keit.gpg https://keit.github.io/apt/keit.gpg
+sudo curl -fsSLo /etc/apt/sources.list.d/keit.sources https://keit.github.io/apt/keit.sources
+sudo apt update
+sudo apt install dv3kclient</code></pre>
+
+    <h3>Or download a package</h3>
     <div class="downloads">
       <div class="card">
         <h3>PC (x86_64)</h3>

@@ -1,5 +1,11 @@
 ## Install
 
+**With apt** (recommended; updates arrive with your system updates). Add the
+[keit APT repository](https://keit.github.io/apt/) once, then `sudo apt install dv3kclient`.
+If you already use it, `sudo apt update && sudo apt upgrade` gets this release.
+
+**Or download** a file below:
+
 | Computer | .deb | AppImage |
 |---|---|---|
 | PC (x86_64): Debian 12, Ubuntu 24.04 or newer | `dv3kclient_*_amd64.deb` | `DV3KClient-x86_64.AppImage` |

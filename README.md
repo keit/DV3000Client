@@ -17,7 +17,10 @@ The main program is a Qt6 GUI (`dv3kclient`) with a tab per protocol.
 The repo also builds a few command-line test tools (see below).
 
 **Download:** ready-made `.deb` and AppImage builds for x86_64 PCs and 64-bit
-Raspberry Pi, with setup instructions, are at <https://keit.github.io/DV3000Client/>. The rest of this README is
+Raspberry Pi, with setup instructions, are at <https://keit.github.io/DV3000Client/>.
+On Debian, Ubuntu and Raspberry Pi OS you can also install from the
+[keit APT repository](https://keit.github.io/apt/) and get updates with your
+system updates. The rest of this README is
 about building from source.
 
 ## Features

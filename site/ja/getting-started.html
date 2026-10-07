@@ -28,14 +28,23 @@
     <p class="lead">DV3K Client をインストールし、ThumbDV を接続してから、コールサインとネットワークの情報を設定します。</p>
 
     <h2 id="install">1. インストール</h2>
-    <p><a href="../#download">.deb または AppImage</a> をダウンロードしてください。PC(x86_64)では Debian 12、Ubuntu 24.04 以降、Raspberry Pi では Pi 3 以降と 64 ビット版の Raspberry Pi OS(<em>デスクトップ付き</em>)が対象です。</p>
+    <p>DV3K Client は PC(x86_64)では Debian 12、Ubuntu 24.04 以降、Raspberry Pi では Pi 3 以降と 64 ビット版の Raspberry Pi OS(<em>デスクトップ付き</em>)で動きます。インストール方法は次の3つです。</p>
 
-    <h3 id="install-deb">.deb パッケージ</h3>
+    <h3 id="install-apt">apt でインストール(おすすめ)</h3>
+    <p><a href="https://keit.github.io/apt/">keit APT リポジトリ</a>を一度登録してからインストールします。新しいバージョンは通常のシステム更新で届きます。</p>
+<pre><code>sudo curl -fsSLo /usr/share/keyrings/keit.gpg https://keit.github.io/apt/keit.gpg
+sudo curl -fsSLo /etc/apt/sources.list.d/keit.sources https://keit.github.io/apt/keit.sources
+sudo apt update
+sudo apt install dv3kclient</code></pre>
+    <p>以前に .deb を手動でインストールしていた場合も、リポジトリを登録するだけで次のバージョンからはリポジトリ経由で更新されます。</p>
+
+    <h3 id="install-deb">.deb をダウンロードしてインストール</h3>
+    <p><a href="../#download">ダウンロードページ</a>から自分の機器用の .deb をダウンロードして、次を実行します:</p>
 <pre><code>cd ~/Downloads
 sudo apt install ./dv3kclient_*.deb</code></pre>
     <p>apt が <em>「Download is performed unsandboxed as root…」</em> と表示することがありますが、問題ありません。apt は通常、権限の低い専用ユーザーでファイルを読み込みますが、そのユーザーはホームフォルダーを読めないため、代わりに root で読み込んだという意味です。インストール後はアプリケーションランチャーに DV3K Client が表示されます。ターミナルから <code>dv3kclient</code> で起動することもできます。</p>
 
-    <h3 id="install-appimage">AppImage</h3>
+    <h3 id="install-appimage">AppImage をダウンロードして使う</h3>
 <pre><code>chmod +x DV3KClient-*.AppImage
 ./DV3KClient-*.AppImage</code></pre>
     <p>AppImage(PC は <code>x86_64</code>、Raspberry Pi は <code>aarch64</code>)は置いた場所からそのまま起動でき、アプリケーションランチャーには自動で追加されません。</p>

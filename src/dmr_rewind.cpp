@@ -282,7 +282,23 @@ void RewindClient::notifyHeader(uint32_t srcId, uint32_t dstId) {
     m_haveHeader = true;
     m_lastHeaderSrc = srcId;
     m_lastHeaderDst = dstId;
+
+    if (m_rxInCall) endRxCall("cut off by the next call");
+    m_rxInCall = true;
+    m_rxSrc = srcId;
+    m_rxDst = dstId;
+    m_rxPackets = 0;
+    m_rxStart = now;
+    std::fprintf(stderr, "dmr_rewind: RX call %u -> %u started\n", srcId, dstId);
+
     if (m_headerSink) m_headerSink(srcId, dstId);
+}
+
+void RewindClient::endRxCall(const char *how) {
+    double seconds = std::chrono::duration<double>(m_lastActivity - m_rxStart).count();
+    std::fprintf(stderr, "dmr_rewind: RX call %u -> %u %s: %d packets (%.1f s of audio) over %.1f s\n", m_rxSrc,
+                 m_rxDst, how, m_rxPackets, m_rxPackets * 0.06, seconds);
+    m_rxInCall = false;
 }
 
 void RewindClient::handlePacket(const uint8_t *data, size_t len) {
@@ -334,6 +350,7 @@ void RewindClient::handlePacket(const uint8_t *data, size_t len) {
             notifyHeader(src, dst);
         } else if (dataType == DMR_DATA_TERMINATOR_LC) {
             m_haveHeader = false;
+            if (m_rxInCall) endRxCall("ended");
         }
         if (m_dmrDataSink) m_dmrDataSink(dataType, payload, payloadLen);
     } else if (type >= TypeDMRAudioBase && type < TypeDMREmbeddedData) {
@@ -342,6 +359,16 @@ void RewindClient::handlePacket(const uint8_t *data, size_t len) {
         // (e.g. OptionLinearFrame's different framing, not requested
         // here) -- logged, not guessed at.
         m_lastActivity = std::chrono::steady_clock::now();
+        if (!m_rxInCall) {
+            // Audio with no header first: joined mid-call, or the header
+            // was lost. Still logged, so the call's end is too.
+            std::fprintf(stderr, "dmr_rewind: RX audio with no call header\n");
+            m_rxInCall = true;
+            m_rxSrc = m_rxDst = 0;
+            m_rxPackets = 0;
+            m_rxStart = m_lastActivity;
+        }
+        m_rxPackets++;
         if (payloadLen == 3 * dmr::AMBE_FRAME_SIZE) {
             if (m_voiceRxSink)
                 m_voiceRxSink(payload, payload + dmr::AMBE_FRAME_SIZE, payload + 2 * dmr::AMBE_FRAME_SIZE);
@@ -378,6 +405,9 @@ void RewindClient::run() {
             std::fprintf(stderr, "dmr_rewind: timed out waiting for server\n");
             return;
         }
+        // Audio arrives every 60 ms during a call, so a second with nothing
+        // means it stopped without its terminator.
+        if (m_rxInCall && now - m_lastActivity > std::chrono::seconds(1)) endRxCall("stopped with no terminator");
 
         ssize_t n = recvWithTimeout(buf, sizeof(buf), 200);
         if (n <= 0) continue;

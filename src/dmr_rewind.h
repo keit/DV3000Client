@@ -217,6 +217,18 @@ private:
     uint32_t m_lastHeaderSrc = 0, m_lastHeaderDst = 0;
     std::chrono::steady_clock::time_point m_lastActivity;
 
+    // Receive logging: one line when an incoming call starts and one when
+    // it ends, saying how -- terminator, cut off by the next call, or
+    // audio just stopping. Without these, "BrandMeister stopped sending us
+    // a talkgroup" and "audio arrived but went unheard" look the same in
+    // the log (it happened: two minutes of a QSO missing, heard fine on a
+    // hotspot on the same talkgroup).
+    void endRxCall(const char *how);
+    bool m_rxInCall = false;
+    uint32_t m_rxSrc = 0, m_rxDst = 0;
+    int m_rxPackets = 0; // DMRAudio packets, 3 AMBE frames (60 ms) each
+    std::chrono::steady_clock::time_point m_rxStart;
+
     std::function<void(const SuperHeaderInfo &)> m_superHeaderSink;
     std::function<void(uint8_t, const uint8_t *, size_t)> m_dmrDataSink;
     std::function<void(uint32_t, uint32_t)> m_headerSink;

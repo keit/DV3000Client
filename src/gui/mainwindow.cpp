@@ -82,6 +82,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_dmrTab, &ProtocolTab::stateChanged, this, &MainWindow::updateSettingsActionEnabled);
     connect(m_dstarTab, &ProtocolTab::thumbdvLatencyChecked, this, &MainWindow::onThumbdvLatencyChecked);
     connect(m_dmrTab, &ProtocolTab::thumbdvLatencyChecked, this, &MainWindow::onThumbdvLatencyChecked);
+    connect(m_dstarTab, &ProtocolTab::thumbdvSlowChanged, this, &MainWindow::onThumbdvSlowChanged);
+    connect(m_dmrTab, &ProtocolTab::thumbdvSlowChanged, this, &MainWindow::onThumbdvSlowChanged);
 
     // Volume sliders live on both tabs but are one setting: moving either
     // pair updates the other tab and the saved settings (written once the
@@ -125,18 +127,24 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     // Deliberately loud (unlike the per-tab status lines): a slow latency
     // timer doesn't stop anything working, it just makes the audio choppy,
     // which is easy to blame on the network or the reflector instead.
-    m_latencyBanner = new QLabel;
-    m_latencyBanner->setWordWrap(true);
-    m_latencyBanner->setTextFormat(Qt::RichText);
-    m_latencyBanner->setOpenExternalLinks(true);
-    m_latencyBanner->setStyleSheet("QLabel { background-color: #ffd54f; color: #3e2700;"
-                                   "  border: 2px solid #f57c00; border-radius: 4px; padding: 8px; }");
-    m_latencyBanner->hide();
+    auto makeBanner = [] {
+        auto *banner = new QLabel;
+        banner->setWordWrap(true);
+        banner->setTextFormat(Qt::RichText);
+        banner->setOpenExternalLinks(true);
+        banner->setStyleSheet("QLabel { background-color: #ffd54f; color: #3e2700;"
+                              "  border: 2px solid #f57c00; border-radius: 4px; padding: 8px; }");
+        banner->hide();
+        return banner;
+    };
+    m_latencyBanner = makeBanner();
+    m_slowBanner = makeBanner();
 
     auto *central = new QWidget;
     auto *layout = new QVBoxLayout(central);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_latencyBanner);
+    layout->addWidget(m_slowBanner);
     layout->addWidget(m_tabs);
     setCentralWidget(central);
     resize(900, 480);
@@ -216,6 +224,22 @@ void MainWindow::onThumbdvLatencyChecked(bool ok, const QString &ttyName, int la
                                  .arg(ttyName.toHtmlEscaped())
                                  .arg(kLatencyHelpUrl));
     m_latencyBanner->show();
+}
+
+void MainWindow::onThumbdvSlowChanged(bool slow, int roundTripMs, bool network) {
+    if (!slow) {
+        m_slowBanner->hide();
+        return;
+    }
+    QString fix = network ? "On the machine running AMBEServer, set the ThumbDV's FTDI latency timer to 1 ms, "
+                            "and on Wi-Fi turn off power saving on both machines: "
+                          : "Check the ThumbDV's USB connection and FTDI latency timer: ";
+    m_slowBanner->setText(QString("<b>&#9888; The ThumbDV is too slow: each 20 ms audio frame takes about %1 ms.</b> "
+                                  "Audio will break up. %2<a href=\"%3\">see Getting Started</a>.")
+                              .arg(roundTripMs)
+                              .arg(fix)
+                              .arg(kLatencyHelpUrl));
+    m_slowBanner->show();
 }
 
 void MainWindow::updateSettingsActionEnabled() {

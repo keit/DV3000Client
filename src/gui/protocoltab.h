@@ -7,10 +7,14 @@
 // live session or an in-flight connect/disconnect, and stopping that
 // session cleanly on window close.
 
+#include <algorithm>
+#include <cstdio>
+
 #include <QMetaObject>
 #include <QSplitter>
 #include <QWidget>
 
+#include "dvcontroller.h"
 #include "ftdi_latency.h"
 #include "settings.h"
 
@@ -76,6 +80,52 @@ protected:
     // Set by each tab's constructor to its left/Last-Heard splitter.
     QSplitter *m_splitter = nullptr;
 
+    // Called with the level meters (every 50 ms) while connected: watches
+    // how long the ThumbDV's round trips take (see DVController::
+    // recentEncodeMicros()) and emits thumbdvSlowChanged() when they're
+    // too slow for real-time audio -- each 20 ms frame waits for its
+    // reply, so much over 20 ms and audio falls behind and breaks up.
+    // Raised after 2 s averaging over 18 ms, cleared after 2 s under
+    // 15 ms; stretches with no audio at all count towards neither, so it
+    // doesn't flicker between overs. Also logs the first round trips of
+    // each session, to show what's normal for a given setup.
+    void checkThumbdvTiming(const SerialDV::DVController &dv, bool network) {
+        unsigned int encode = dv.recentEncodeMicros();
+        unsigned int decode = dv.recentDecodeMicros();
+        if (encode && !m_loggedEncodeTiming) {
+            std::fprintf(stderr, "thumbdv: encode round trip %.1f ms\n", encode / 1000.0);
+            m_loggedEncodeTiming = true;
+        }
+        if (decode && !m_loggedDecodeTiming) {
+            std::fprintf(stderr, "thumbdv: decode round trip %.1f ms\n", decode / 1000.0);
+            m_loggedDecodeTiming = true;
+        }
+        if (!encode && !decode) return;
+
+        bool slow = encode > kSlowMicros || decode > kSlowMicros;
+        bool fast = encode < kFastMicros && decode < kFastMicros;
+        int &polls = m_thumbdvSlow ? m_fastPolls : m_slowPolls;
+        polls = (m_thumbdvSlow ? fast : slow) ? polls + 1 : 0;
+        if (polls < kPollsToChange) return;
+
+        polls = 0;
+        m_thumbdvSlow = !m_thumbdvSlow;
+        std::fprintf(stderr,
+                     m_thumbdvSlow ? "thumbdv: round trips averaging %.1f ms encode / %.1f ms decode -- over the 20 ms "
+                                     "per frame real-time audio allows, so audio will break up\n"
+                                   : "thumbdv: round trips back to %.1f ms encode / %.1f ms decode\n",
+                     encode / 1000.0, decode / 1000.0);
+        emit thumbdvSlowChanged(m_thumbdvSlow, (std::max(encode, decode) + 500) / 1000, network);
+    }
+
+    // On each new connection: start the counts and first-round-trip logs
+    // afresh. A warning already shown stays until round trips are seen to
+    // be fast again.
+    void resetThumbdvTiming() {
+        m_slowPolls = m_fastPolls = 0;
+        m_loggedEncodeTiming = m_loggedDecodeTiming = false;
+    }
+
     // Called from a tab's connect worker thread right after its
     // DVController opened the ThumbDV: lowers a local FTDI's latency timer
     // to 1 ms if it can (see ftdi_latency.h) and reports the outcome on
@@ -101,4 +151,18 @@ signals:
     // Outcome of checkThumbdvLatency() for the ThumbDV just opened: ok is
     // false when it's a local FTDI device still above 1 ms (latencyMs).
     void thumbdvLatencyChecked(bool ok, QString ttyName, int latencyMs);
+    // See checkThumbdvTiming(): slow is whether round trips are too slow
+    // for real-time audio, roundTripMs the slower direction's average, and
+    // network whether the ThumbDV is behind an AMBEServer.
+    void thumbdvSlowChanged(bool slow, int roundTripMs, bool network);
+
+private:
+    static constexpr unsigned int kSlowMicros = 18000;
+    static constexpr unsigned int kFastMicros = 15000;
+    static constexpr int kPollsToChange = 40; // 2 s of 50 ms polls
+    bool m_thumbdvSlow = false;
+    int m_slowPolls = 0;
+    int m_fastPolls = 0;
+    bool m_loggedEncodeTiming = false;
+    bool m_loggedDecodeTiming = false;
 };

@@ -767,6 +767,7 @@ void DmrTab::setConnected(bool connected, const QString &status) {
     m_connected = connected;
     m_connectedStatus = connected ? status : QString();
     m_vocoderDown = false;
+    if (connected) resetThumbdvTiming();
     m_connectButton->setText(connected ? "Disconnect" : "Connect");
     m_connectButton->setStyleSheet(connected ? kConnectedButtonStyle : "");
     m_statusLabel->setStyleSheet(kStatusLabelStyle);
@@ -781,6 +782,7 @@ void DmrTab::updateVocoderStatus() {
     // m_connected is true (with m_busy false) only in between, both set
     // on this thread -- so while that holds it's safe to read here.
     if (!m_connected || m_busy || !m_dv) return;
+    checkThumbdvTiming(*m_dv, m_settings.thumbdvIsNetwork());
     bool down = !m_dv->isResponding();
     if (down == m_vocoderDown) return;
     m_vocoderDown = down;

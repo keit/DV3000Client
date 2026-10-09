@@ -116,6 +116,9 @@ private:
 
     // Live session state -- only meaningful while m_connected.
     std::unique_ptr<SerialDV::DVController> m_dv;
+    // All encoding and decoding goes through this while connected (see
+    // vocoder_pipeline.h); declared after m_dv so it's destroyed first.
+    std::unique_ptr<audio::VocoderPipeline> m_vocoder;
     audio::AlsaPcm m_capture, m_playback;
     std::unique_ptr<dextra::DextraClient> m_client;
     audio::PcmQueue m_rxQueue;

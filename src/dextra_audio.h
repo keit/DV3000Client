@@ -12,7 +12,7 @@
 
 #include "alsa_audio.h"
 #include "dextra_client.h"
-#include "dvcontroller.h"
+#include "vocoder_pipeline.h"
 
 namespace dextra {
 
@@ -21,8 +21,9 @@ namespace dextra {
 // paces it. pttActive is polled once per period to decide whether to
 // originate/continue/end a transmission -- callers supply it (a terminal
 // key state, a GUI button, ...) rather than this assuming any particular
-// input device.
-void captureThread(SerialDV::DVController *dv, audio::AlsaPcm *capture, DextraClient *client,
+// input device. vocoder must be at DVRate3600x2400 (D-Star's AMBE);
+// frames are sent from its reply thread as they come back encoded.
+void captureThread(audio::VocoderPipeline *vocoder, audio::AlsaPcm *capture, DextraClient *client,
                     std::function<bool()> pttActive);
 
 } // namespace dextra

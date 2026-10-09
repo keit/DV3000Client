@@ -563,6 +563,11 @@ void DmrTab::connectWorker(GuiSettings settings, QString network) {
         ok = false;
     } else {
         checkThumbdvLatency(settings);
+        m_vocoder = std::make_unique<audio::VocoderPipeline>(*m_dv, SerialDV::DVRate3600x2450);
+        if (!m_vocoder->ok()) {
+            error = "ThumbDV " + settings.thumbdvTarget() + " didn't accept DMR's AMBE+2 rate";
+            ok = false;
+        }
     }
 
     if (ok && !m_capture.open(settings.audioInputDevice.toStdString(), SND_PCM_STREAM_CAPTURE)) {
@@ -603,7 +608,7 @@ void DmrTab::connectWorker(GuiSettings settings, QString network) {
             ok = false;
         } else {
             client->setIdentity(settings.dmrId, settings.bmPassword.toStdString(), "DV3000Client");
-            client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_dv.get(), &m_rxQueue));
+            client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_vocoder.get(), &m_rxQueue));
             client->setHeaderSink(headerSink);
             result = client->link();
             if (result != dmr::LinkResult::Success) {
@@ -640,7 +645,7 @@ void DmrTab::connectWorker(GuiSettings settings, QString network) {
             std::fprintf(stderr, "dmrtab: repeater ID %u (DMR ID %u%s)\n", repeaterId, settings.dmrId,
                          repeaterId == settings.dmrId ? "" : " + suffix");
             client->setIdentity(settings.dmrId, settings.tgifPassword.toStdString(), config, repeaterId);
-            client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_dv.get(), &m_rxQueue));
+            client->setVoiceRxSink(dmr::makeVoiceRxHandler(m_vocoder.get(), &m_rxQueue));
             client->setHeaderSink(headerSink);
             result = client->link();
             if (result != dmr::LinkResult::Success) {
@@ -656,6 +661,7 @@ void DmrTab::connectWorker(GuiSettings settings, QString network) {
         m_rewindClient = nullptr;
         m_capture.close();
         m_playback.close();
+        m_vocoder.reset();
         if (m_dv) m_dv->close();
         m_dv.reset();
     }
@@ -676,7 +682,7 @@ void DmrTab::onConnectFinished(bool ok, QString error) {
     m_pttActive.store(false);
     dmr::g_running = 1;
     m_captureThread = std::thread(
-        dmr::captureThread, m_dv.get(), &m_capture, m_client.get(), [this] { return m_talkgroup.load(); },
+        dmr::captureThread, m_vocoder.get(), &m_capture, m_client.get(), [this] { return m_talkgroup.load(); },
         [this] { return m_privateCall.load() ? dmr::CallType::Private : dmr::CallType::Group; },
         [this] { return m_pttActive.load(); });
     m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dmr::g_running);
@@ -739,6 +745,9 @@ void DmrTab::stopSessionBlocking() {
     if (m_client) m_client->disconnect();
     m_capture.close();
     m_playback.close();
+    // Waits for anything still in flight; after the threads above, since
+    // they submit to it.
+    m_vocoder.reset();
     if (m_dv) m_dv->close();
     dmr::g_running = 1;
 }

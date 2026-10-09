@@ -45,8 +45,8 @@ private:
     // above 1 ms after the app's own attempt to lower it -- i.e. exactly
     // when the Getting Started page's udev rule is needed.
     QLabel *m_latencyBanner;
-    // Shown while the ThumbDV's round trips are too slow for real-time
-    // audio (ProtocolTab::checkThumbdvTiming()) -- e.g. a remote ThumbDV
-    // whose latency timer the app can't set itself.
+    // Shown while the ThumbDV can't keep up with real-time audio
+    // (ProtocolTab::checkThumbdvTiming()) -- e.g. an overloaded AMBEServer
+    // host or a poor Wi-Fi link.
     QLabel *m_slowBanner;
 };

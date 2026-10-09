@@ -61,10 +61,17 @@ add_executable(xlx_directory_test
 )
 target_link_libraries(xlx_directory_test xlx_directory)
 
+# Keeps several ThumbDV requests in flight instead of waiting for each
+# reply -- see vocoder_pipeline.h. Used by every live audio path.
+add_library(vocoder_pipeline
+  src/vocoder_pipeline.cpp
+)
+target_link_libraries(vocoder_pipeline serialdv)
+
 add_library(dextra_client
   src/dextra_client.cpp
 )
-target_link_libraries(dextra_client serialdv)
+target_link_libraries(dextra_client serialdv vocoder_pipeline)
 target_include_directories(dextra_client PUBLIC third_party/serialDV)
 
 # Protocol-independent ALSA audio (streams, RX queue, playback thread,
@@ -147,7 +154,7 @@ target_link_libraries(dmr_test dmr_client)
 add_library(dmr_audio
   src/dmr_audio.cpp
 )
-target_link_libraries(dmr_audio dmr_transport alsa_audio)
+target_link_libraries(dmr_audio dmr_transport alsa_audio vocoder_pipeline)
 
 # BrandMeister's Open DMR Terminal (Rewind) protocol -- see dmr_rewind.h's
 # header comment. Implements DmrTransport, same as dmr_client; shares

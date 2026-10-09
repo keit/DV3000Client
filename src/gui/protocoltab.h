@@ -81,15 +81,19 @@ protected:
     QSplitter *m_splitter = nullptr;
 
     // Called with the level meters (every 50 ms) while connected: watches
-    // how long the ThumbDV's round trips take (see DVController::
-    // recentEncodeMicros()) and emits thumbdvSlowChanged() when they're
-    // too slow for real-time audio -- each 20 ms frame waits for its
-    // reply, so much over 20 ms and audio falls behind and breaks up.
-    // Raised after 2 s averaging over 20 ms, cleared after 2 s under
-    // 17 ms; stretches with no audio at all count towards neither, so it
-    // doesn't flicker between overs. Measured: a healthy ThumbDV behind an
-    // AMBEServer runs 15-18.5 ms (one plugged in locally ~10-12 ms), the
-    // same one with the Pi's latency timer at 16 ms 32-35 ms. Also logs the first round trips of
+    // how long the ThumbDV's replies take (see DVController::
+    // recentEncodeMicros()) and emits thumbdvSlowChanged() when it can't
+    // keep up with real-time audio. Requests are pipelined (see
+    // vocoder_pipeline.h), so a slow round trip on its own only delays
+    // audio; what breaks it is replies coming slower than one per 20 ms,
+    // which makes requests queue up and the time climb (until frames are
+    // dropped at 8 waiting). Measured round trips: ThumbDV plugged in
+    // locally ~10-12 ms; behind an AMBEServer 15-18.5 ms, or 32-35 ms with
+    // the Pi's latency timer at 16 ms -- up to ~55 ms for the third frame
+    // of a DMR burst, which waits behind the other two. Raised after 2 s
+    // averaging over 100 ms, cleared after 2 s under 70 ms; stretches with
+    // no audio at all count towards neither, so it doesn't flicker
+    // between overs. Also logs the first round trips of
     // each session, to show what's normal for a given setup.
     void checkThumbdvTiming(const SerialDV::DVController &dv, bool network) {
         unsigned int encode = dv.recentEncodeMicros();
@@ -121,10 +125,10 @@ protected:
             std::snprintf(figures, sizeof(figures), "%.1f ms %s", (encode ? encode : decode) / 1000.0,
                           encode ? "encode" : "decode");
         if (m_thumbdvSlow)
-            std::fprintf(stderr, "thumbdv: round trips averaging %s -- over the 20 ms per frame real-time audio "
-                                 "allows, so audio will break up\n", figures);
+            std::fprintf(stderr, "thumbdv: replies averaging %s -- not keeping up with real-time audio, "
+                                 "which will break up\n", figures);
         else
-            std::fprintf(stderr, "thumbdv: round trips back to %s\n", figures);
+            std::fprintf(stderr, "thumbdv: replies back to %s\n", figures);
         emit thumbdvSlowChanged(m_thumbdvSlow, (std::max(encode, decode) + 500) / 1000, network);
     }
 
@@ -161,14 +165,14 @@ signals:
     // Outcome of checkThumbdvLatency() for the ThumbDV just opened: ok is
     // false when it's a local FTDI device still above 1 ms (latencyMs).
     void thumbdvLatencyChecked(bool ok, QString ttyName, int latencyMs);
-    // See checkThumbdvTiming(): slow is whether round trips are too slow
-    // for real-time audio, roundTripMs the slower direction's average, and
+    // See checkThumbdvTiming(): slow is whether the ThumbDV is falling behind
+    // real-time audio, roundTripMs the slower direction's average reply time, and
     // network whether the ThumbDV is behind an AMBEServer.
     void thumbdvSlowChanged(bool slow, int roundTripMs, bool network);
 
 private:
-    static constexpr unsigned int kSlowMicros = 20000;
-    static constexpr unsigned int kFastMicros = 17000;
+    static constexpr unsigned int kSlowMicros = 100000;
+    static constexpr unsigned int kFastMicros = 70000;
     static constexpr int kPollsToChange = 40; // 2 s of 50 ms polls
     bool m_thumbdvSlow = false;
     int m_slowPolls = 0;

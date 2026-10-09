@@ -106,7 +106,9 @@ int main(int argc, char **argv) {
         for (size_t i = 0; i < len && i < 16; i++) std::fprintf(stderr, " %02x", data[i]);
         std::fprintf(stderr, "%s\n", len > 16 ? " ..." : "");
     });
-    client.setVoiceRxSink(dmr::makeVoiceRxHandler(&dv, &rxQueue));
+    // After client, so it's destroyed first: its replies call into client.
+    audio::VocoderPipeline vocoder(dv, SerialDV::DVRate3600x2450);
+    client.setVoiceRxSink(dmr::makeVoiceRxHandler(&vocoder, &rxQueue));
 
     if (client.link() != dmr::LinkResult::Success) {
         std::fprintf(stderr, "odt_test: handshake failed\n");
@@ -127,7 +129,7 @@ int main(int argc, char **argv) {
     std::thread pttInputThread;
     if (doTx) {
         captureThread = std::thread(
-            dmr::captureThread, &dv, &capture, &client, [txTalkgroup] { return txTalkgroup; },
+            dmr::captureThread, &vocoder, &capture, &client, [txTalkgroup] { return txTalkgroup; },
             [txPrivate] { return txPrivate ? dmr::CallType::Private : dmr::CallType::Group; },
             [&pttActive] { return pttActive.load(); });
         pttInputThread = std::thread([&pttActive, txTalkgroup, txPrivate] {

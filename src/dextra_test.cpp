@@ -195,6 +195,9 @@ int main(int argc, char **argv) {
 
         audio::PcmQueue rxQueue;
         dextra::DextraClient client(&dv, [&rxQueue](const short *pcm) { rxQueue.push(pcm); }, liveRxPcmOut);
+        // After client, so it's destroyed first: its replies call into client.
+        audio::VocoderPipeline vocoder(dv, SerialDV::DVRate3600x2400);
+        client.setVocoder(&vocoder);
         if (!client.open(resolveReflectorHost(argv[1]), argv[2][0])) return 1;
         if (!client.link()) return 1;
 
@@ -204,7 +207,7 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        std::thread capThread(dextra::captureThread, &dv, &capture, &client, [&ptt] { return ptt.active(); });
+        std::thread capThread(dextra::captureThread, &vocoder, &capture, &client, [&ptt] { return ptt.active(); });
         std::thread playThread(audio::playbackThread, &playback, &rxQueue, &dextra::g_running);
 
         client.run(); // blocks until g_running is cleared (SIGINT/SIGTERM)

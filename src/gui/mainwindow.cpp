@@ -234,7 +234,7 @@ void MainWindow::onThumbdvSlowChanged(bool slow, int roundTripMs, bool network) 
     QString fix = network ? "On the machine running AMBEServer, set the ThumbDV's FTDI latency timer to 1 ms, "
                             "and on Wi-Fi turn off power saving on both machines: "
                           : "Check the ThumbDV's USB connection and FTDI latency timer: ";
-    m_slowBanner->setText(QString("<b>&#9888; The ThumbDV is too slow: each 20 ms audio frame takes about %1 ms.</b> "
+    m_slowBanner->setText(QString("<b>&#9888; The ThumbDV can't keep up: its replies are taking about %1 ms.</b> "
                                   "Audio will break up. %2<a href=\"%3\">see Getting Started</a>.")
                               .arg(roundTripMs)
                               .arg(fix)

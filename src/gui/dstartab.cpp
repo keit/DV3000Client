@@ -349,6 +349,11 @@ void DStarTab::connectWorker(QString host, QString reflectorName, char targetMod
         ok = false;
     } else {
         checkThumbdvLatency(settings);
+        m_vocoder = std::make_unique<audio::VocoderPipeline>(*m_dv, SerialDV::DVRate3600x2400);
+        if (!m_vocoder->ok()) {
+            error = "ThumbDV " + settings.thumbdvTarget() + " didn't accept D-Star's AMBE rate";
+            ok = false;
+        }
     }
 
     if (ok && !m_capture.open(settings.audioInputDevice.toStdString(), SND_PCM_STREAM_CAPTURE)) {
@@ -365,6 +370,7 @@ void DStarTab::connectWorker(QString host, QString reflectorName, char targetMod
         char myModule = settings.moduleSuffix.isEmpty() ? 'B' : settings.moduleSuffix.at(0).toLatin1();
         m_client = std::make_unique<dextra::DextraClient>(
             m_dv.get(), [this](const short *pcm) { m_rxQueue.push(pcm); }, nullptr);
+        m_client->setVocoder(m_vocoder.get());
         m_client->setIdentity(settings.callsign.toStdString(), myModule, settings.suffix.toStdString());
         // Runs on the network thread once client->run() starts -- marshal
         // to the GUI thread rather than touching widgets directly here.
@@ -391,6 +397,7 @@ void DStarTab::connectWorker(QString host, QString reflectorName, char targetMod
         m_client.reset();
         m_capture.close();
         m_playback.close();
+        m_vocoder.reset();
         if (m_dv) m_dv->close();
         m_dv.reset();
     }
@@ -422,7 +429,7 @@ void DStarTab::onConnectFinished(bool ok, QString error, QString reflectorName, 
     m_connectedModule = targetModule;
 
     m_pttActive.store(false);
-    m_captureThread = std::thread(dextra::captureThread, m_dv.get(), &m_capture, m_client.get(),
+    m_captureThread = std::thread(dextra::captureThread, m_vocoder.get(), &m_capture, m_client.get(),
                                    [this] { return m_pttActive.load(); });
     m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dextra::g_running);
     m_networkThread = std::thread([this] { m_client->run(); });
@@ -490,6 +497,9 @@ void DStarTab::stopSessionBlocking() {
     if (m_client) m_client->disconnect();
     m_capture.close();
     m_playback.close();
+    // Waits for anything still in flight; after the threads above, since
+    // they submit to it.
+    m_vocoder.reset();
     if (m_dv) m_dv->close();
     dextra::g_running = 1;
 }

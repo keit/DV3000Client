@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "dvcontroller.h"
+#include "vocoder_pipeline.h"
 
 namespace dextra {
 
@@ -57,6 +58,12 @@ public:
     // here too, so a live session can be recorded for offline quality
     // inspection alongside (not instead of) real-time playback.
     DextraClient(SerialDV::DVController *dv, std::function<void(const short *)> liveRxSink, FILE *rxPcmOut = nullptr);
+
+    // Live mode: decode through vocoder instead of waiting on dv frame by
+    // frame, so a slow ThumbDV link doesn't hold up the network thread (see
+    // vocoder_pipeline.h). The sink then runs on vocoder's reply thread.
+    // Set before link(); dv must then not be used for anything else.
+    void setVocoder(audio::VocoderPipeline *vocoder) { m_vocoder = vocoder; }
 
     // Our own callsign and module letter, sent in CONNECT/keepalive/echo
     // packets. Defaults match the previous hardcoded values; call before
@@ -123,6 +130,7 @@ private:
     uint8_t m_liveTxPacketId = 0;
 
     SerialDV::DVController *m_dv;
+    audio::VocoderPipeline *m_vocoder = nullptr;
     FILE *m_rxPcmOut;
     bool m_liveMode = false;
     std::function<void(const short *)> m_liveRxSink;

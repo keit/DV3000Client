@@ -199,6 +199,9 @@ private:
     // subscription step), which isn't and shouldn't be part of the
     // shared interface, so this is how the GUI reaches it when relevant.
     std::unique_ptr<SerialDV::DVController> m_dv;
+    // All encoding and decoding goes through this while connected (see
+    // vocoder_pipeline.h); declared after m_dv so it's destroyed first.
+    std::unique_ptr<audio::VocoderPipeline> m_vocoder;
     audio::AlsaPcm m_capture, m_playback;
     std::unique_ptr<dmr::DmrTransport> m_client;
     dmr::rewind::RewindClient *m_rewindClient = nullptr;

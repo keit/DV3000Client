@@ -303,7 +303,12 @@ void DextraClient::onFramePacket(const uint8_t *buf) {
     if (m_liveMode) {
         // Decode-on-arrival, straight to the playback sink -- no
         // buffering, and no echo (a real speaker replaces that stand-in).
-        if (!isLast) {
+        if (!isLast && m_vocoder) {
+            m_vocoder->decode(buf + 15, [this](const short *pcm) {
+                if (m_liveRxSink) m_liveRxSink(pcm);
+                if (m_rxPcmOut) std::fwrite(pcm, sizeof(short), SerialDV::MBE_AUDIO_BLOCK_SIZE, m_rxPcmOut);
+            });
+        } else if (!isLast) {
             short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
             bool ok;
             {

@@ -244,7 +244,7 @@ set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/keit/DV3000Client")
 # those anyway.
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
-  "libc6 (>= 2.34), libgcc-s1 (>= 3.0), libstdc++6 (>= 11), \
+  "libc6 (>= 2.34), libgcc-s1 (>= 3.0), libstdc++6 (>= 12), \
 libasound2t64 (>= 1.0.16) | libasound2 (>= 1.0.16), \
 libqt6core6t64 (>= 6.4.0) | libqt6core6 (>= 6.4.0), \
 libqt6gui6t64 (>= 6.1.2) | libqt6gui6 (>= 6.1.2), \

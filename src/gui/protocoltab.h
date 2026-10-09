@@ -85,9 +85,11 @@ protected:
     // recentEncodeMicros()) and emits thumbdvSlowChanged() when they're
     // too slow for real-time audio -- each 20 ms frame waits for its
     // reply, so much over 20 ms and audio falls behind and breaks up.
-    // Raised after 2 s averaging over 18 ms, cleared after 2 s under
-    // 15 ms; stretches with no audio at all count towards neither, so it
-    // doesn't flicker between overs. Also logs the first round trips of
+    // Raised after 2 s averaging over 20 ms, cleared after 2 s under
+    // 17 ms; stretches with no audio at all count towards neither, so it
+    // doesn't flicker between overs. Measured: a healthy ThumbDV behind an
+    // AMBEServer runs 15-18.5 ms (one plugged in locally ~10-12 ms), the
+    // same one with the Pi's latency timer at 16 ms 32-35 ms. Also logs the first round trips of
     // each session, to show what's normal for a given setup.
     void checkThumbdvTiming(const SerialDV::DVController &dv, bool network) {
         unsigned int encode = dv.recentEncodeMicros();
@@ -110,11 +112,19 @@ protected:
 
         polls = 0;
         m_thumbdvSlow = !m_thumbdvSlow;
-        std::fprintf(stderr,
-                     m_thumbdvSlow ? "thumbdv: round trips averaging %.1f ms encode / %.1f ms decode -- over the 20 ms "
-                                     "per frame real-time audio allows, so audio will break up\n"
-                                   : "thumbdv: round trips back to %.1f ms encode / %.1f ms decode\n",
-                     encode / 1000.0, decode / 1000.0);
+        // Only the directions with audio going through: 0 means idle (e.g.
+        // no encoding while just listening), not instant.
+        char figures[64];
+        if (encode && decode)
+            std::snprintf(figures, sizeof(figures), "%.1f ms encode / %.1f ms decode", encode / 1000.0, decode / 1000.0);
+        else
+            std::snprintf(figures, sizeof(figures), "%.1f ms %s", (encode ? encode : decode) / 1000.0,
+                          encode ? "encode" : "decode");
+        if (m_thumbdvSlow)
+            std::fprintf(stderr, "thumbdv: round trips averaging %s -- over the 20 ms per frame real-time audio "
+                                 "allows, so audio will break up\n", figures);
+        else
+            std::fprintf(stderr, "thumbdv: round trips back to %s\n", figures);
         emit thumbdvSlowChanged(m_thumbdvSlow, (std::max(encode, decode) + 500) / 1000, network);
     }
 
@@ -157,8 +167,8 @@ signals:
     void thumbdvSlowChanged(bool slow, int roundTripMs, bool network);
 
 private:
-    static constexpr unsigned int kSlowMicros = 18000;
-    static constexpr unsigned int kFastMicros = 15000;
+    static constexpr unsigned int kSlowMicros = 20000;
+    static constexpr unsigned int kFastMicros = 17000;
     static constexpr int kPollsToChange = 40; // 2 s of 50 ms polls
     bool m_thumbdvSlow = false;
     int m_slowPolls = 0;

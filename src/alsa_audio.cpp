@@ -3,6 +3,7 @@
 #include "audio_gain.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <thread>
@@ -76,9 +77,21 @@ bool AlsaPcm::write(const short *pcm) {
     applyGain(scaled, SerialDV::MBE_AUDIO_BLOCK_SIZE, m_gain.load());
     notePeak(scaled);
     snd_pcm_sframes_t n = snd_pcm_writei(m_handle, scaled, SerialDV::MBE_AUDIO_BLOCK_SIZE);
-    if (n == static_cast<snd_pcm_sframes_t>(SerialDV::MBE_AUDIO_BLOCK_SIZE)) return true;
-    if (n < 0) return recover(static_cast<int>(n));
-    return false;
+    if (n < 0 && recover(static_cast<int>(n))) {
+        // The frame that hit the underrun still gets played: dropping it
+        // left an audible blip in the middle of the audio.
+        n = snd_pcm_writei(m_handle, scaled, SerialDV::MBE_AUDIO_BLOCK_SIZE);
+    }
+    return n == static_cast<snd_pcm_sframes_t>(SerialDV::MBE_AUDIO_BLOCK_SIZE);
+}
+
+void AlsaPcm::restartIfStopped() {
+    if (!m_handle) return;
+    snd_pcm_state_t state = snd_pcm_state(m_handle);
+    // Expected after a pause, so silent (recover's last argument), unlike a
+    // real underrun mid-over, which write() logs.
+    if (state == SND_PCM_STATE_XRUN) snd_pcm_recover(m_handle, -EPIPE, 1);
+    else if (state == SND_PCM_STATE_SUSPENDED) snd_pcm_recover(m_handle, -ESTRPIPE, 1);
 }
 
 void AlsaPcm::notePeak(const short *pcm) {
@@ -122,7 +135,10 @@ void playbackThread(AlsaPcm *playback, PcmQueue *queue, const volatile std::sig_
 
     while (*running) {
         if (queue->pop(pcm, 20)) {
-            lastRealFrame = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            // The first frame after a pause: see restartIfStopped().
+            if (now - lastRealFrame >= std::chrono::milliseconds(500)) playback->restartIfStopped();
+            lastRealFrame = now;
             playback->write(pcm);
             continue;
         }

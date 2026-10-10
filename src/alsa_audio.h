@@ -36,9 +36,18 @@ public:
     void drain();
 
     // Reads/writes exactly SerialDV::MBE_AUDIO_BLOCK_SIZE samples,
-    // recovering from over/underruns rather than treating them as fatal.
+    // recovering from over/underruns rather than treating them as fatal
+    // (write() then retries the same frame, rather than losing it).
     bool read(short *pcm);
     bool write(const short *pcm);
+
+    // Playback only: if the stream ran dry and stopped since the last
+    // write -- which it always does in a pause between overs, once the
+    // playback thread stops backfilling silence -- restart it quietly now,
+    // before the first frame of the next over. Otherwise that first write
+    // is what discovers the old underrun: logged as an xrun at the start
+    // of the over, with that frame lost.
+    void restartIfStopped();
 
     // Linear gain applied to everything read()/written from now on (see
     // audio_gain.h) -- how the GUI's mic and speaker volume sliders take

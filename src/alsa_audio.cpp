@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <thread>
 
@@ -133,13 +134,36 @@ void playbackThread(AlsaPcm *playback, PcmQueue *queue, const volatile std::sig_
     // Start "idle": nothing's been heard yet, so there's nothing to backfill.
     auto lastRealFrame = std::chrono::steady_clock::now() - std::chrono::seconds(10);
 
+    // Debugging aid: with DV3K_RECORD_PLAYBACK=<file> set, everything sent
+    // to the sound card (before the speaker volume) is also appended to
+    // that file as raw 8 kHz 16-bit mono, and the sample where each over
+    // starts is logged -- to tell a click that's in the decoded audio from
+    // one the output hardware adds.
+    FILE *record = nullptr;
+    long long recorded = 0;
+    if (const char *path = std::getenv("DV3K_RECORD_PLAYBACK")) {
+        record = std::fopen(path, "ab");
+        if (record) recorded = std::ftell(record) / static_cast<long>(sizeof(short));
+        std::fprintf(stderr, "audio: %s playback to %s\n", record ? "recording" : "cannot record", path);
+    }
+    auto writeFrame = [&](const short *frame) {
+        playback->write(frame);
+        if (record) {
+            std::fwrite(frame, sizeof(short), SerialDV::MBE_AUDIO_BLOCK_SIZE, record);
+            recorded += SerialDV::MBE_AUDIO_BLOCK_SIZE;
+        }
+    };
+
     while (*running) {
         if (queue->pop(pcm, 20)) {
             auto now = std::chrono::steady_clock::now();
             // The first frame after a pause: see restartIfStopped().
-            if (now - lastRealFrame >= std::chrono::milliseconds(500)) playback->restartIfStopped();
+            if (now - lastRealFrame >= std::chrono::milliseconds(500)) {
+                playback->restartIfStopped();
+                if (record) std::fprintf(stderr, "audio: playback resumes at recorded sample %lld\n", recorded);
+            }
             lastRealFrame = now;
-            playback->write(pcm);
+            writeFrame(pcm);
             continue;
         }
 
@@ -161,9 +185,10 @@ void playbackThread(AlsaPcm *playback, PcmQueue *queue, const volatile std::sig_
         // mid-transmission case this is actually meant to cover.
         if (std::chrono::steady_clock::now() - lastRealFrame < std::chrono::milliseconds(500)) {
             std::memset(pcm, 0, sizeof(pcm));
-            playback->write(pcm);
+            writeFrame(pcm);
         }
     }
+    if (record) std::fclose(record);
 }
 
 void CaptureThrottle::afterRead(std::chrono::steady_clock::duration readElapsed, bool transmitting) {

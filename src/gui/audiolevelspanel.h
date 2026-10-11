@@ -1,7 +1,8 @@
 #pragma once
 
 // Mic and speaker volume sliders, shown at the bottom of both protocol
-// tabs so they can be adjusted while communicating. Layout follows the
+// tabs so they can be adjusted while communicating, plus a Record toggle
+// in the Speaker box for recording what's heard. Layout follows the
 // author's pttUSB project (a "Microphone" and a "Speaker" group box, each
 // a "Volume" label over a 0..100 slider), minus its test buttons -- the
 // Settings dialog already has those. Purely the widget: the owning tab
@@ -11,6 +12,7 @@
 #include <QWidget>
 
 class QProgressBar;
+class QPushButton;
 class QSlider;
 
 class AudioLevelsPanel : public QWidget {
@@ -28,6 +30,12 @@ public:
     // instantly, falls a few points per call, so a brief peak is visible.
     void updateLevels(int mic, int speaker);
 
+    // Record is only usable while connected; setRecording() moves the
+    // toggle without emitting recordToggled(), e.g. when a disconnect
+    // stops the recording, or starting it failed.
+    void setRecordEnabled(bool enabled);
+    void setRecording(bool recording);
+
 signals:
     // Every change, including while a slider is being dragged.
     void changed(int mic, int speaker);
@@ -35,10 +43,13 @@ signals:
     // the point at which to save, so dragging doesn't write the settings
     // file on every pixel.
     void committed();
+    // The Record toggle was switched on or off by the user.
+    void recordToggled(bool on);
 
 private:
     QSlider *m_mic;
     QSlider *m_speaker;
     QProgressBar *m_micLevel;
     QProgressBar *m_speakerLevel;
+    QPushButton *m_record;
 };

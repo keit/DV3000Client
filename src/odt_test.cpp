@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
         if (tg > 0) client.subscribe(tg, dmr::rewind::SessionType::GroupVoice);
     }
 
-    std::thread playbackThread(audio::playbackThread, &playback, &rxQueue, &dmr::g_running);
+    std::thread playbackThread(audio::playbackThread, &playback, &rxQueue, &dmr::g_running, nullptr);
 
     std::atomic<bool> pttActive{false};
     std::thread captureThread;

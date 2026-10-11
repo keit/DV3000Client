@@ -1,7 +1,9 @@
 #include "audiolevelspanel.h"
 
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QProgressBar>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -35,7 +37,8 @@ QProgressBar *makeMeter() {
     return bar;
 }
 
-QSlider *makeSlider(QGroupBox *box, const QString &what, QProgressBar *meter) {
+// extra, if given, goes at the right of the "Volume" label's row.
+QSlider *makeSlider(QGroupBox *box, const QString &what, QProgressBar *meter, QWidget *extra = nullptr) {
     auto *slider = new QSlider(Qt::Horizontal);
     slider->setRange(0, 100);
     slider->setValue(50);
@@ -45,7 +48,15 @@ QSlider *makeSlider(QGroupBox *box, const QString &what, QProgressBar *meter) {
     auto *layout = new QVBoxLayout(box);
     layout->setContentsMargins(8, 4, 8, 6);
     layout->setSpacing(2);
-    layout->addWidget(new QLabel("Volume"));
+    if (extra) {
+        auto *row = new QHBoxLayout;
+        row->addWidget(new QLabel("Volume"));
+        row->addStretch();
+        row->addWidget(extra);
+        layout->addLayout(row);
+    } else {
+        layout->addWidget(new QLabel("Volume"));
+    }
     layout->addWidget(slider);
     layout->addWidget(meter);
     return slider;
@@ -58,7 +69,14 @@ AudioLevelsPanel::AudioLevelsPanel(QWidget *parent) : QWidget(parent) {
     m_mic = makeSlider(micBox, "Microphone", m_micLevel);
     auto *speakerBox = new QGroupBox("Speaker");
     m_speakerLevel = makeMeter();
-    m_speaker = makeSlider(speakerBox, "Speaker", m_speakerLevel);
+    m_record = new QPushButton("\u25CF Record");
+    m_record->setCheckable(true);
+    m_record->setEnabled(false);
+    m_record->setToolTip("Record what you hear to a WAV file (File \u203A Open Recordings Folder)");
+    // Red while recording, so it's hard to forget it's on.
+    m_record->setStyleSheet("QPushButton:checked { background-color: #e53935; color: white; }");
+    m_speaker = makeSlider(speakerBox, "Speaker", m_speakerLevel, m_record);
+    connect(m_record, &QPushButton::toggled, this, &AudioLevelsPanel::recordToggled);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -83,6 +101,13 @@ void AudioLevelsPanel::setVolumes(int mic, int speaker) {
     m_speaker->setValue(speaker);
     m_mic->setToolTip(volumeTooltip("Microphone", mic));
     m_speaker->setToolTip(volumeTooltip("Speaker", speaker));
+}
+
+void AudioLevelsPanel::setRecordEnabled(bool enabled) { m_record->setEnabled(enabled); }
+
+void AudioLevelsPanel::setRecording(bool recording) {
+    QSignalBlocker block(m_record);
+    m_record->setChecked(recording);
 }
 
 void AudioLevelsPanel::updateLevels(int mic, int speaker) {

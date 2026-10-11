@@ -306,6 +306,10 @@ iw event -t | grep scan
 | `dv3000client.log`         | ログファイル(**Help > Log File Location...** からも開けます)  |
 | `cache/`                   | リフレクター・トークグループ・DMR ID ディレクトリのキャッシュ |
 
+Speaker 欄の **Record** ボタンで、受信音声を WAV ファイルとして `~/Music/DV3K Client/` に
+保存できます。ファイル名は日時と接続先です(**File > Open Recordings Folder** で開けます)。
+自分の送信音声は含まれません。
+
 ## コマンドラインツール
 
 使用例です。引数なしで実行すると使い方が表示されます。

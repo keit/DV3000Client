@@ -3,6 +3,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDesktopServices>
+#include <QDir>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
@@ -11,6 +13,7 @@
 #include <QPushButton>
 #include <QTabWidget>
 #include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include "dmrtab.h"
@@ -56,6 +59,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     auto *fileMenu = menuBar()->addMenu("&File");
     m_settingsAction = fileMenu->addAction("&Settings...", this, &MainWindow::openSettings);
     m_settingsAction->setShortcut(QKeySequence::Preferences);
+    fileMenu->addAction("Open &Recordings Folder", this, [] {
+        // The Record buttons' files (see ProtocolTab::startRecording).
+        QDir().mkpath(ProtocolTab::recordingsFolder());
+        QDesktopServices::openUrl(QUrl::fromLocalFile(ProtocolTab::recordingsFolder()));
+    });
     fileMenu->addSeparator();
     fileMenu->addAction("&Quit", QKeySequence::Quit, this, &QWidget::close);
 

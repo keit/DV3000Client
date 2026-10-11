@@ -310,6 +310,11 @@ Under `~/.config/DV3000Client/`:
 | `dv3000client.log`         | Log file (also reachable via **Help > Log File Location...**)   |
 | `cache/`                   | Cached reflector, talkgroup and DMR ID directories              |
 
+The **Record** button in the Speaker box saves what you hear as WAV files in
+`~/Music/DV3K Client/`, named by date, time and what you're connected to
+(**File > Open Recordings Folder** opens it). Your own transmissions aren't
+included.
+
 ## Command-line tools
 
 Examples; run any tool with no arguments for its usage line.

@@ -265,6 +265,14 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
         emit volumesChanged(mic, speaker);
     });
     connect(m_audioLevels, &AudioLevelsPanel::committed, this, &ProtocolTab::volumesCommitted);
+    // Record what's heard; only enabled while connected (see setConnected).
+    connect(m_audioLevels, &AudioLevelsPanel::recordToggled, this, [this](bool on) {
+        if (!on) {
+            stopRecording();
+            return;
+        }
+        if (startRecording(QString("DMR %1").arg(m_connectedNetwork == "brandmeister" ? "BrandMeister" : "TGIF")).isEmpty()) m_audioLevels->setRecording(false);
+    });
     layout->addWidget(m_audioLevels);
 
     // Level meters: peak of what the mic device is delivering and what's
@@ -685,7 +693,7 @@ void DmrTab::onConnectFinished(bool ok, QString error) {
         dmr::captureThread, m_vocoder.get(), &m_capture, m_client.get(), [this] { return m_talkgroup.load(); },
         [this] { return m_privateCall.load() ? dmr::CallType::Private : dmr::CallType::Group; },
         [this] { return m_pttActive.load(); });
-    m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dmr::g_running);
+    m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dmr::g_running, &m_recorder);
     m_networkThread = std::thread([this] { m_client->run(); });
 
     setConnected(true, "Connected to " + (m_connectedNetwork == "brandmeister" ? m_settings.bmServer : m_settings.tgifServer));
@@ -777,6 +785,12 @@ void DmrTab::setConnected(bool connected, const QString &status) {
     m_connectedStatus = connected ? status : QString();
     m_vocoderDown = false;
     if (connected) resetThumbdvTiming();
+    m_audioLevels->setRecordEnabled(connected);
+    if (!connected) {
+        // The playback thread has stopped by now, so the file is complete.
+        stopRecording();
+        m_audioLevels->setRecording(false);
+    }
     m_connectButton->setText(connected ? "Disconnect" : "Connect");
     m_connectButton->setStyleSheet(connected ? kConnectedButtonStyle : "");
     m_statusLabel->setStyleSheet(kStatusLabelStyle);

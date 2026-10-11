@@ -245,6 +245,14 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
         emit volumesChanged(mic, speaker);
     });
     connect(m_audioLevels, &AudioLevelsPanel::committed, this, &ProtocolTab::volumesCommitted);
+    // Record what's heard; only enabled while connected (see setConnected).
+    connect(m_audioLevels, &AudioLevelsPanel::recordToggled, this, [this](bool on) {
+        if (!on) {
+            stopRecording();
+            return;
+        }
+        if (startRecording(QString("D-Star %1 %2").arg(m_connectedReflectorName).arg(QChar(m_connectedModule))).isEmpty()) m_audioLevels->setRecording(false);
+    });
     layout->addWidget(m_audioLevels);
 
     // Level meters: peak of what the mic device is delivering and what's
@@ -431,7 +439,7 @@ void DStarTab::onConnectFinished(bool ok, QString error, QString reflectorName, 
     m_pttActive.store(false);
     m_captureThread = std::thread(dextra::captureThread, m_vocoder.get(), &m_capture, m_client.get(),
                                    [this] { return m_pttActive.load(); });
-    m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dextra::g_running);
+    m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dextra::g_running, &m_recorder);
     m_networkThread = std::thread([this] { m_client->run(); });
 
     setConnected(true, QString("Connected to %1, module %2")
@@ -527,6 +535,12 @@ void DStarTab::setConnected(bool connected, const QString &status) {
     m_connectedStatus = connected ? status : QString();
     m_vocoderDown = false;
     if (connected) resetThumbdvTiming();
+    m_audioLevels->setRecordEnabled(connected);
+    if (!connected) {
+        // The playback thread has stopped by now, so the file is complete.
+        stopRecording();
+        m_audioLevels->setRecording(false);
+    }
     m_connectButton->setText(connected ? "Disconnect" : "Connect");
     m_connectButton->setStyleSheet(connected ? kConnectedButtonStyle : "");
     m_statusLabel->setStyleSheet(kStatusLabelStyle);

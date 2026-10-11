@@ -10,11 +10,15 @@
 #include <algorithm>
 #include <cstdio>
 
+#include <QDateTime>
+#include <QDir>
 #include <QMetaObject>
 #include <QSplitter>
+#include <QStandardPaths>
 #include <QWidget>
 
 #include "dvcontroller.h"
+#include "wav_recorder.h"
 #include "ftdi_latency.h"
 #include "settings.h"
 
@@ -69,6 +73,14 @@ public:
     // switch, so the dividing border sits in the same place on both. The
     // splitter itself clamps to each tab's minimum width, so a width one
     // tab can't fit is simply the nearest it can.
+    // Where the Record button saves: ~/Music/DV3K Client (or the home
+    // folder if there's no Music folder). Created on first use.
+    static QString recordingsFolder() {
+        QString base = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+        if (base.isEmpty()) base = QDir::homePath();
+        return base + "/DV3K Client";
+    }
+
     int leftPaneWidth() const { return m_splitter ? m_splitter->sizes().value(0) : 0; }
     void setLeftPaneWidth(int width) {
         if (!m_splitter) return;
@@ -79,6 +91,35 @@ public:
 protected:
     // Set by each tab's constructor to its left/Last-Heard splitter.
     QSplitter *m_splitter = nullptr;
+
+    // What the Record button records into: each tab passes it to its
+    // playback thread, which writes everything played.
+    audio::WavRecorder m_recorder;
+
+    // Starts a new recording, named after the time and label (what this
+    // tab is connected to); returns its path, or an empty string if the
+    // file couldn't be created.
+    QString startRecording(const QString &label) {
+        QDir().mkpath(recordingsFolder());
+        QString name = QDateTime::currentDateTime().toString("yyyy-MM-dd HH-mm-ss") + " " + label;
+        name.replace('/', '-').replace(':', '-');
+        QString path = recordingsFolder() + "/" + name + ".wav";
+        if (!m_recorder.start(path.toStdString())) {
+            std::fprintf(stderr, "recording: cannot create %s\n", qPrintable(path));
+            return {};
+        }
+        std::fprintf(stderr, "recording: started %s\n", qPrintable(path));
+        m_recordingPath = path;
+        return path;
+    }
+
+    void stopRecording() {
+        if (!m_recorder.recording()) return;
+        m_recorder.stop();
+        std::fprintf(stderr, "recording: saved %s\n", qPrintable(m_recordingPath));
+    }
+
+    QString m_recordingPath;
 
     // Called with the level meters (every 50 ms) while connected: watches
     // how long the ThumbDV's replies take (see DVController::

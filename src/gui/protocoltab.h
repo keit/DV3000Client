@@ -68,6 +68,10 @@ public:
     // apply the saved values at startup.
     virtual void setVolumes(int mic, int speaker) = 0;
 
+    // Sets this tab's Auto level box and applies it, without emitting
+    // autoLevelChanged() -- same role as setVolumes().
+    virtual void setAutoLevel(bool on) = 0;
+
     // Width of the left pane (controls) in this tab's left/Last-Heard
     // splitter -- MainWindow carries it from one tab to the next on a tab
     // switch, so the dividing border sits in the same place on both. The
@@ -95,6 +99,9 @@ protected:
     // What the Record button records into: each tab passes it to its
     // playback thread, which writes everything played.
     audio::WavRecorder m_recorder;
+    // Levels received audio when the Auto level box is ticked; each tab
+    // passes it to its playback thread.
+    audio::AutoLevel m_autoLevel;
 
     // Starts a new recording, named after the time and label (what this
     // tab is connected to); returns its path, or an empty string if the
@@ -201,6 +208,8 @@ signals:
     void stateChanged(); // isActiveOrBusy() may have changed
     // The user moved one of this tab's volume sliders.
     void volumesChanged(int mic, int speaker);
+    // The user ticked or unticked this tab's Auto level box.
+    void autoLevelChanged(bool on);
     // ...and it has settled -- time to save.
     void volumesCommitted();
     // Outcome of checkThumbdvLatency() for the ThumbDV just opened: ok is

@@ -208,7 +208,7 @@ int main(int argc, char **argv) {
         }
 
         std::thread capThread(dextra::captureThread, &vocoder, &capture, &client, [&ptt] { return ptt.active(); });
-        std::thread playThread(audio::playbackThread, &playback, &rxQueue, &dextra::g_running, nullptr);
+        std::thread playThread(audio::playbackThread, &playback, &rxQueue, &dextra::g_running, nullptr, nullptr);
 
         client.run(); // blocks until g_running is cleared (SIGINT/SIGTERM)
 

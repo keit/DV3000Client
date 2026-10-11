@@ -105,6 +105,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         });
         connect(tab, &ProtocolTab::volumesCommitted, this, [this] { m_settings.save(); });
         tab->setVolumes(m_settings.micVolume, m_settings.speakerVolume);
+        // The Auto level box works the same way, saved on every change.
+        connect(tab, &ProtocolTab::autoLevelChanged, this, [this, other](bool on) {
+            m_settings.autoLevel = on;
+            other->setAutoLevel(on);
+            m_settings.save();
+        });
+        tab->setAutoLevel(m_settings.autoLevel);
     }
 
     // Remember which network the DMR tab was on, to start there next time.

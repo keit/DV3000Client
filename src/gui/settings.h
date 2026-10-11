@@ -35,6 +35,9 @@ struct GuiSettings {
     // than through the Settings dialog.
     int micVolume = 50;
     int speakerVolume = 50;
+    // The Speaker box's Auto level box (see auto_level.h): evens out how
+    // loud different stations are. Shared by both tabs, like the volumes.
+    bool autoLevel = true;
 
     // DMR identity. The DMR ID is one per operator, so it's shared by every
     // network; each network has its own server and its own password (TGIF's

@@ -265,6 +265,10 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
         emit volumesChanged(mic, speaker);
     });
     connect(m_audioLevels, &AudioLevelsPanel::committed, this, &ProtocolTab::volumesCommitted);
+    connect(m_audioLevels, &AudioLevelsPanel::autoLevelToggled, this, [this](bool on) {
+        m_autoLevel.setEnabled(on);
+        emit autoLevelChanged(on);
+    });
     // Record what's heard; only enabled while connected (see setConnected).
     connect(m_audioLevels, &AudioLevelsPanel::recordToggled, this, [this](bool on) {
         if (!on) {
@@ -693,7 +697,8 @@ void DmrTab::onConnectFinished(bool ok, QString error) {
         dmr::captureThread, m_vocoder.get(), &m_capture, m_client.get(), [this] { return m_talkgroup.load(); },
         [this] { return m_privateCall.load() ? dmr::CallType::Private : dmr::CallType::Group; },
         [this] { return m_pttActive.load(); });
-    m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dmr::g_running, &m_recorder);
+    m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dmr::g_running, &m_recorder,
+                                   &m_autoLevel);
     m_networkThread = std::thread([this] { m_client->run(); });
 
     setConnected(true, "Connected to " + (m_connectedNetwork == "brandmeister" ? m_settings.bmServer : m_settings.tgifServer));
@@ -763,6 +768,11 @@ void DmrTab::stopSessionBlocking() {
 // Applied to the AlsaPcm objects themselves, which outlive any one
 // connection -- so this works while disconnected too and carries over to
 // the next connect.
+void DmrTab::setAutoLevel(bool on) {
+    m_audioLevels->setAutoLevel(on);
+    m_autoLevel.setEnabled(on);
+}
+
 void DmrTab::setVolumes(int mic, int speaker) {
     m_audioLevels->setVolumes(mic, speaker);
     m_capture.setGain(sliderToGain(mic));

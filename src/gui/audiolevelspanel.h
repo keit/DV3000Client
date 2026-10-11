@@ -11,6 +11,7 @@
 
 #include <QWidget>
 
+class QCheckBox;
 class QProgressBar;
 class QPushButton;
 class QSlider;
@@ -35,6 +36,8 @@ public:
     // stops the recording, or starting it failed.
     void setRecordEnabled(bool enabled);
     void setRecording(bool recording);
+    // Moves the Auto level box without emitting autoLevelToggled().
+    void setAutoLevel(bool on);
 
 signals:
     // Every change, including while a slider is being dragged.
@@ -45,6 +48,8 @@ signals:
     void committed();
     // The Record toggle was switched on or off by the user.
     void recordToggled(bool on);
+    // The Auto level box was ticked or unticked by the user.
+    void autoLevelToggled(bool on);
 
 private:
     QSlider *m_mic;
@@ -52,4 +57,5 @@ private:
     QProgressBar *m_micLevel;
     QProgressBar *m_speakerLevel;
     QPushButton *m_record;
+    QCheckBox *m_autoLevel;
 };

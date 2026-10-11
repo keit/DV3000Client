@@ -1,5 +1,6 @@
 #include "audiolevelspanel.h"
 
+#include <QCheckBox>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -75,8 +76,17 @@ AudioLevelsPanel::AudioLevelsPanel(QWidget *parent) : QWidget(parent) {
     m_record->setToolTip("Record what you hear to a WAV file (File \u203A Open Recordings Folder)");
     // Red while recording, so it's hard to forget it's on.
     m_record->setStyleSheet("QPushButton:checked { background-color: #e53935; color: white; }");
-    m_speaker = makeSlider(speakerBox, "Speaker", m_speakerLevel, m_record);
+    m_autoLevel = new QCheckBox("Auto level");
+    m_autoLevel->setChecked(true);
+    m_autoLevel->setToolTip("Even out how loud different stations are (up to 12 dB either way)");
+    auto *speakerExtras = new QWidget;
+    auto *extrasRow = new QHBoxLayout(speakerExtras);
+    extrasRow->setContentsMargins(0, 0, 0, 0);
+    extrasRow->addWidget(m_autoLevel);
+    extrasRow->addWidget(m_record);
+    m_speaker = makeSlider(speakerBox, "Speaker", m_speakerLevel, speakerExtras);
     connect(m_record, &QPushButton::toggled, this, &AudioLevelsPanel::recordToggled);
+    connect(m_autoLevel, &QCheckBox::toggled, this, &AudioLevelsPanel::autoLevelToggled);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -104,6 +114,11 @@ void AudioLevelsPanel::setVolumes(int mic, int speaker) {
 }
 
 void AudioLevelsPanel::setRecordEnabled(bool enabled) { m_record->setEnabled(enabled); }
+
+void AudioLevelsPanel::setAutoLevel(bool on) {
+    QSignalBlocker block(m_autoLevel);
+    m_autoLevel->setChecked(on);
+}
 
 void AudioLevelsPanel::setRecording(bool recording) {
     QSignalBlocker block(m_record);

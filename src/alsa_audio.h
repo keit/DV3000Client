@@ -20,6 +20,7 @@
 #include <alsa/asoundlib.h>
 
 #include "dvcontroller.h"
+#include "auto_level.h"
 #include "wav_recorder.h"
 
 namespace audio {
@@ -94,9 +95,10 @@ private:
 // why both matter). Runs until *running is cleared -- each protocol
 // passes its own flag (dextra::g_running / dmr::g_running) so the two
 // sides' sessions can be stopped independently.
-// recorder, if given, gets everything played (see wav_recorder.h).
+// recorder, if given, gets everything played (see wav_recorder.h);
+// autoLevel, if given, levels received audio first (see auto_level.h).
 void playbackThread(AlsaPcm *playback, PcmQueue *queue, const volatile std::sig_atomic_t *running,
-                    WavRecorder *recorder = nullptr);
+                    WavRecorder *recorder, AutoLevel *autoLevel);
 
 // The capture loops' pacing guard. AlsaPcm::read() blocking for one 20ms
 // period is what normally paces a capture loop, but a stand-in device

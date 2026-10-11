@@ -78,6 +78,7 @@ target_include_directories(dextra_client PUBLIC third_party/serialDV)
 # capture pacing) shared by the D-Star and DMR live-audio modules.
 add_library(alsa_audio
   src/alsa_audio.cpp
+  src/auto_level.cpp
   src/wav_recorder.cpp
 )
 target_link_libraries(alsa_audio serialdv ${ALSA_LIBRARIES})

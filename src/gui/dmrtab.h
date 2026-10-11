@@ -58,6 +58,7 @@ public:
     }
     void stopSessionBlocking() override;
     void setVolumes(int mic, int speaker) override;
+    void setAutoLevel(bool on) override;
 
 signals:
     // The user picked a different network in the combo -- MainWindow saves

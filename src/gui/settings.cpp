@@ -37,6 +37,7 @@ GuiSettings GuiSettings::load() {
     if (obj.contains("thumbdv_port")) s.thumbdvPort = qBound(1, obj["thumbdv_port"].toInt(), 65535);
     if (obj.contains("mic_volume")) s.micVolume = qBound(0, obj["mic_volume"].toInt(), 100);
     if (obj.contains("speaker_volume")) s.speakerVolume = qBound(0, obj["speaker_volume"].toInt(), 100);
+    if (obj.contains("auto_level")) s.autoLevel = obj["auto_level"].toBool();
     if (obj.contains("dmr_id")) s.dmrId = static_cast<uint32_t>(obj["dmr_id"].toDouble());
     if (obj.contains("dmr_network")) s.dmrNetwork = obj["dmr_network"].toString();
     // BrandMeister keeps the keys it had before TGIF existed, so existing
@@ -68,6 +69,7 @@ bool GuiSettings::save() const {
     obj["thumbdv_port"] = thumbdvPort;
     obj["mic_volume"] = micVolume;
     obj["speaker_volume"] = speakerVolume;
+    obj["auto_level"] = autoLevel;
     obj["dmr_id"] = static_cast<double>(dmrId);
     obj["dmr_network"] = dmrNetwork;
     obj["dmr_password"] = bmPassword;

@@ -245,6 +245,10 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
         emit volumesChanged(mic, speaker);
     });
     connect(m_audioLevels, &AudioLevelsPanel::committed, this, &ProtocolTab::volumesCommitted);
+    connect(m_audioLevels, &AudioLevelsPanel::autoLevelToggled, this, [this](bool on) {
+        m_autoLevel.setEnabled(on);
+        emit autoLevelChanged(on);
+    });
     // Record what's heard; only enabled while connected (see setConnected).
     connect(m_audioLevels, &AudioLevelsPanel::recordToggled, this, [this](bool on) {
         if (!on) {
@@ -439,7 +443,8 @@ void DStarTab::onConnectFinished(bool ok, QString error, QString reflectorName, 
     m_pttActive.store(false);
     m_captureThread = std::thread(dextra::captureThread, m_vocoder.get(), &m_capture, m_client.get(),
                                    [this] { return m_pttActive.load(); });
-    m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dextra::g_running, &m_recorder);
+    m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dextra::g_running, &m_recorder,
+                                   &m_autoLevel);
     m_networkThread = std::thread([this] { m_client->run(); });
 
     setConnected(true, QString("Connected to %1, module %2")
@@ -515,6 +520,11 @@ void DStarTab::stopSessionBlocking() {
 // Applied to the AlsaPcm objects themselves, which outlive any one
 // connection -- so this works while disconnected too and carries over to
 // the next connect.
+void DStarTab::setAutoLevel(bool on) {
+    m_audioLevels->setAutoLevel(on);
+    m_autoLevel.setEnabled(on);
+}
+
 void DStarTab::setVolumes(int mic, int speaker) {
     m_audioLevels->setVolumes(mic, speaker);
     m_capture.setGain(sliderToGain(mic));

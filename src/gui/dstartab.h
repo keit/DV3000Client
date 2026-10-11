@@ -51,6 +51,7 @@ public:
     }
     void stopSessionBlocking() override;
     void setVolumes(int mic, int speaker) override;
+    void setAutoLevel(bool on) override;
 
 private:
     bool hasValidReflectorSelection() const;

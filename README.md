@@ -33,7 +33,8 @@ about building from source.
   current-subscription display, a favourites list per network, Last Heard
   list with callsign and talkgroup-name lookup.
 - **Volume:** microphone and speaker sliders with level meters at the bottom
-  of both tabs, adjustable mid-QSO.
+  of both tabs, adjustable mid-QSO. **Auto level** evens out how loud
+  different stations are, and **Record** saves what you hear (see below).
 - **Settings:** callsign/DMR identity, the server and password for each DMR
   network, audio input/output device with test buttons (tone for output,
   live level meter for input), ThumbDV serial device.

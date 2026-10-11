@@ -157,7 +157,7 @@ bool PcmQueue::pop(short *pcm, int timeoutMs) {
 }
 
 void playbackThread(AlsaPcm *playback, PcmQueue *queue, const volatile std::sig_atomic_t *running,
-                    WavRecorder *recorder) {
+                    WavRecorder *recorder, AutoLevel *autoLevel) {
     short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
     // Start "idle": nothing's been heard yet, so there's nothing to backfill.
     auto lastRealFrame = std::chrono::steady_clock::now() - std::chrono::seconds(10);
@@ -173,8 +173,12 @@ void playbackThread(AlsaPcm *playback, PcmQueue *queue, const volatile std::sig_
         if (queue->pop(pcm, 20)) {
             auto now = std::chrono::steady_clock::now();
             // The first frame after a pause: see restartIfStopped().
-            if (now - lastRealFrame >= std::chrono::milliseconds(500)) playback->restartIfStopped();
+            if (now - lastRealFrame >= std::chrono::milliseconds(500)) {
+                playback->restartIfStopped();
+                if (autoLevel) autoLevel->reset(); // a new over, maybe a different station
+            }
             lastRealFrame = now;
+            if (autoLevel) autoLevel->process(pcm, SerialDV::MBE_AUDIO_BLOCK_SIZE);
             writeFrame(pcm);
             continue;
         }

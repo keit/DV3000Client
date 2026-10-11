@@ -10,6 +10,13 @@
 
 namespace audio {
 
+namespace {
+// Frames (20 ms each) queued before playback starts -- see AlsaPcm::open().
+// 120 ms: the speaker volume and every over are heard that long after
+// they're decoded, instead of 800 ms.
+constexpr unsigned int kPlaybackStartFrames = 6;
+} // namespace
+
 bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
     m_stream = stream;
     int err = snd_pcm_open(&m_handle, device.c_str(), stream, 0);
@@ -43,6 +50,27 @@ bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
         snd_pcm_close(m_handle);
         m_handle = nullptr;
         return false;
+    }
+
+    if (stream == SND_PCM_STREAM_PLAYBACK) {
+        // snd_pcm_set_params() only starts playback once the whole buffer
+        // is full, so every over was heard 800 ms late -- and the speaker
+        // volume, applied as frames go in (write()), lagged the slider by
+        // as much. Start once kPlaybackStartFrames are queued instead: the
+        // rest of the buffer is still there to absorb bursts. Enough now
+        // that requests to the ThumbDV are pipelined (vocoder_pipeline.h),
+        // so decoded audio no longer arrives in fits and starts.
+        snd_pcm_sw_params_t *sw;
+        snd_pcm_sw_params_alloca(&sw);
+        if (snd_pcm_sw_params_current(m_handle, sw) == 0 &&
+            snd_pcm_sw_params_set_start_threshold(m_handle, sw,
+                                                  kPlaybackStartFrames * SerialDV::MBE_AUDIO_BLOCK_SIZE) == 0) {
+            err = snd_pcm_sw_params(m_handle, sw);
+        }
+        if (err < 0) {
+            std::fprintf(stderr, "audio: cannot lower playback start threshold on %s: %s\n", device.c_str(),
+                         snd_strerror(err));
+        }
     }
     return true;
 }

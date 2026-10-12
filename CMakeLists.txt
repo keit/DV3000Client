@@ -100,6 +100,17 @@ add_library(ftdi_latency
   src/ftdi_latency.cpp
 )
 
+# DPlus: REF reflectors and DPlus repeater gateways -- see dplus_client.h.
+add_library(dplus_client
+  src/dplus_client.cpp
+)
+target_link_libraries(dplus_client dextra_client dmr_fec)
+
+add_executable(dplus_test
+  src/dplus_test.cpp
+)
+target_link_libraries(dplus_test dplus_client alsa_audio vocoder_pipeline)
+
 add_library(sha256
   src/sha256.cpp
 )

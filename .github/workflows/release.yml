@@ -151,11 +151,18 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y ./dv3kclient_*_${{ matrix.deb-arch }}.deb
           dv3kclient --version
+      # Informational: a finding marks this step (not the job) as failed.
+      # Two are skipped as not applicable to a package installed from our
+      # own releases and APT repository, not Debian's archive:
+      #   no-changelog    Debian-archive policy; the changelog is the
+      #                   GitHub release notes
+      #   no-manual-page  --help covers the only two options
+      # so anything lintian does report is new and worth a look.
       - name: Lintian (informational)
         continue-on-error: true
         run: |
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends lintian
-          lintian --info dv3kclient_*_${{ matrix.deb-arch }}.deb
+          lintian --info --suppress-tags no-changelog,no-manual-page dv3kclient_*_${{ matrix.deb-arch }}.deb
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

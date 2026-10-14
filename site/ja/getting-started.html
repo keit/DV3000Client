@@ -152,7 +152,7 @@ sudo udevadm control --reload-rules</code></pre>
     <h2 id="settings">3. 設定と最初の交信</h2>
     <p><strong>File › Settings</strong>(ファイル › 設定)を開きます:</p>
     <ul>
-      <li><strong>General(一般):</strong> コールサイン、D-Star のモジュール文字、DMR ID。使う DMR ネットワークごとに、<em>DMR network</em> でネットワークを選び、サーバーとパスワードを入力します:
+      <li><strong>General(一般):</strong> コールサイン、D-Star のモジュールサフィックス(このアプリが自局のどの D-Star ターミナルか。<a href="#dplus">下記</a>参照)と TX メッセージ(任意)、DMR ID。使う DMR ネットワークごとに、<em>DMR network</em> でネットワークを選び、サーバーとパスワードを入力します:
         <ul>
           <li><strong>BrandMeister:</strong> BrandMeister の SelfCare で設定した <em>Hotspot Security</em> パスワード(アカウントのパスワードではありません)。</li>
           <li><strong>TGIF:</strong> TGIF アカウントのセキュリティページで生成される16桁の <em>Hotspot Security Key</em>。</li>
@@ -167,6 +167,16 @@ sudo udevadm control --reload-rules</code></pre>
       <li><strong>PTT to send</strong>(またはスペースキー)で送信のオン・オフを切り替えます。</li>
     </ul>
     <p>自分の声を確認するには Parrot を使います。BrandMeister では <strong>Private call</strong> にチェックを入れて <code>9990</code> を呼び出し、TGIF では TG <code>9990</code> へグループコールします。</p>
+
+    <h3 id="dplus">REF リフレクターとレピーターゲートウェイ(DPlus)</h3>
+    <p>REF リフレクターと DPlus レピーターゲートウェイ(レピーター自身のコールサイン、例: <code>ZL2VH</code>)は XLX・XRF と同じ一覧にあります。これらに接続する場合:</p>
+    <ul>
+      <li>コールサインが <strong>D-Star に登録済み</strong>である必要があります(どのゲートウェイでも同じです)。コールサインを設定すると、REF リフレクターとゲートウェイが一覧に表示されます。</li>
+      <li>コールサインに <strong>Module suffix</strong> の文字を付けた名前(例: <code>ZL2MIM P</code>)でログインし、送信します。同じ名前では1つしかログインできないため、ほかの無線機やホットスポットが使っていない文字を選んでください。その名前がすでに接続中(ホットスポット、無線機のターミナルモードやレピーターモニターなど)の場合は、その旨を表示して接続しません。</li>
+      <li>文字は<strong>登録済みの D-Star ターミナル</strong>のいずれかである必要があります。そうでない場合は受信のみ可能で、ステータス欄に <em>listen only</em> と表示されます。</li>
+      <li><strong>All modules</strong> は無線機のレピーターモニターのように、どのモジュールでも先に始まった送信を再生します。受信専用なので、送信するにはモジュールを選んでください。</li>
+      <li>レピーターゲートウェイが転送するのは CQ だけです。UR にコールサインやレピーター(<code>/ZL2VH C</code>)を設定している局の音声は聞こえません。</li>
+    </ul>
 
     <h2 id="help">うまく動かないときは</h2>
     <ul>

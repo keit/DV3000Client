@@ -5,7 +5,8 @@
 A Linux desktop client for digital-voice radio reflectors and networks, built
 around a real **ThumbDV** (AMBE3000) USB dongle:
 
-- **D-Star** via the DExtra protocol (XLX / XRF-style reflectors)
+- **D-Star** via DExtra (XLX and XRF reflectors) and DPlus (REF reflectors
+  and DPlus repeater gateways)
 - **DMR** on two networks: **BrandMeister** via its Open DMR Terminal
   protocol, and **TGIF** via the Homebrew/MMDVM protocol
 
@@ -25,9 +26,11 @@ about building from source.
 
 ## Features
 
-- **D-Star tab:** searchable reflector picker (live XLX directory), module
-  selection, connect/disconnect, push-to-talk, last-received header, Last Heard
-  list.
+- **D-Star tab:** searchable picker of XLX, XRF and REF reflectors and DPlus
+  repeater gateways (live directories), module selection (or **All modules**
+  to monitor a whole reflector or repeater), connect/disconnect, push-to-talk,
+  your TX message, last-received header and Last Heard list with each
+  station's module and TX message.
 - **DMR tab:** a network picker (BrandMeister or TGIF), searchable talkgroup
   picker for that network, group calls (plus private calls on BrandMeister),
   current-subscription display, a favourites list per network, Last Heard
@@ -85,6 +88,7 @@ The build produces these binaries in `build/`:
 | -------------------- | ------------------------------------------------------------------- |
 | `dv3kclient`         | The Qt GUI (D-Star and DMR tabs)                                    |
 | `dextra_test`        | Command-line DExtra client, incl. live audio mode                   |
+| `dplus_test`         | Command-line DPlus client: listens and logs every stream            |
 | `dmr_test`           | Command-line DMR client for Homebrew/MMDVM masters (e.g. TGIF)      |
 | `odt_test`           | Command-line BrandMeister Open DMR Terminal client, with live audio |
 | `roundtrip_test`     | PCM to AMBE to PCM round trip through the ThumbDV                   |
@@ -215,7 +219,8 @@ To start it from the desktop's application launcher instead (GNOME, KDE,
 ```
 
 1. Open **File > Settings...** and fill in:
-   - **General:** your D-Star callsign and module letter; for DMR, your DMR
+   - **General:** your D-Star callsign, module suffix and optional TX message
+     (see [D-Star: REF reflectors and DPlus gateways](#d-star-ref-reflectors-and-dplus-gateways)); for DMR, your DMR
      ID and then, per network, that network's fields. Pick **BrandMeister** or
      **TGIF** in the _DMR network_ box to see and edit its fields. You can
      fill in both; only networks with a server and password set appear on the
@@ -233,6 +238,32 @@ To start it from the desktop's application launcher instead (GNOME, KDE,
    bar when a text field isn't focused).
 
 Settings can't be changed while a session is connected.
+
+### D-Star: REF reflectors and DPlus gateways
+
+REF reflectors and DPlus repeater gateways (a repeater's own callsign, e.g.
+`ZL2VH`) are in the same reflector picker as XLX and XRF, labelled _DPlus
+reflector_ or _DPlus gateway_. They use DPlus, the protocol DV Dongles and
+hotspots use for REF, which works a little differently:
+
+- **Your callsign must be registered for D-Star** (a US Trust/ircDDB
+  registration, as for any gateway). Connecting first logs in to the DPlus
+  authentication server; that login is also where the list of REF reflectors
+  and gateways comes from, so it appears once your callsign is set.
+- **Module suffix.** The app logs in, and transmits, as your callsign plus
+  the _Module suffix_ letter, e.g. `ZL2MIM P`, the way hotspots do. A DPlus
+  server allows one login per name, so pick a letter none of your other radios
+  or hotspots use while linked at the same time. If the name is already
+  connected (a hotspot, a radio's Terminal Mode or Repeater Monitor), the
+  connection is refused with a message saying so. The letter must be one of
+  your registered D-Star terminals: otherwise the login is read-only, and the
+  status line says _listen only_.
+- **All modules** plays whichever module's transmission comes first, like a
+  radio's Repeater Monitor, and lists every module's stations in Last Heard.
+  It's listen only; pick a module to transmit.
+- A repeater gateway passes on CQ calls (UR `CQCQCQ`) only. A station
+  routing a call somewhere (UR set to a callsign, or to `/ZL2VH C`) isn't sent
+  to DPlus users, so you won't hear it.
 
 ### ThumbDV on another machine (AMBEServer 3000)
 
@@ -306,7 +337,7 @@ Under `~/.config/DV3000Client/`:
 | -------------------------- | --------------------------------------------------------------- |
 | `settings.json`            | Your settings (includes the DMR hotspot password in plain text) |
 | `dmr_favourites.json`      | BrandMeister favourites list                                    |
-| `dstar_favourites.json`    | D-Star favourites (reflector + module)                          |
+| `dstar_favourites.json`    | D-Star favourites (reflector + module, or all modules)          |
 | `dmr_favourites_tgif.json` | TGIF favourites list                                            |
 | `dv3000client.log`         | Log file (also reachable via **Help > Log File Location...**)   |
 | `cache/`                   | Cached reflector, talkgroup and DMR ID directories              |
@@ -323,6 +354,10 @@ Examples; run any tool with no arguments for its usage line.
 ```sh
 # D-Star: link to a reflector on module B and go live with audio devices
 ./build/dextra_test <reflector-ip> B /dev/serial/by-id/<thumbdv> live plughw:1,0 plughw:1,0
+
+# D-Star DPlus: log in as "<callsign> P" and log every stream on REF001, all modules,
+# without decoding (no ThumbDV or audio device needed)
+./build/dplus_test <callsign>/P REF001 none none all
 
 # DMR (Homebrew, e.g. TGIF): log in and send a short test transmission to the
 # Parrot (group call to TG 9990), staying connected 20 seconds. The password

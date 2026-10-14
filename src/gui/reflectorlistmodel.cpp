@@ -75,12 +75,12 @@ ReflectorListModel::ReflectorListModel(QObject *parent) : QAbstractListModel(par
     QTimer::singleShot(0, this, [this] {
         QByteArray cached;
         if (cache::read(CACHE_KEY, cached)) {
-            m_live = xlx::parseReflectorList(std::string(cached.constData(), static_cast<size_t>(cached.size())));
-            rebuildRows();
+            auto live = xlx::parseReflectorList(std::string(cached.constData(), static_cast<size_t>(cached.size())));
+            rebuildRows([&] { m_live = std::move(live); });
         }
         if (cache::read(DPLUS_CACHE_KEY, cached)) {
-            m_dplus = toReflectorInfo(fromCache(cached));
-            rebuildRows();
+            auto dplus = toReflectorInfo(fromCache(cached));
+            rebuildRows([&] { m_dplus = std::move(dplus); });
         }
     });
 }
@@ -169,17 +169,17 @@ void ReflectorListModel::refreshDPlus(const QString &callsign) {
 void ReflectorListModel::setDPlusList(std::vector<dplus::GatewayEntry> list) {
     if (list.empty()) return;
     cache::write(DPLUS_CACHE_KEY, toCache(list));
-    m_dplus = toReflectorInfo(list);
-    rebuildRows();
+    auto dplus = toReflectorInfo(list);
+    rebuildRows([&] { m_dplus = std::move(dplus); });
 }
 
 void ReflectorListModel::applyLive(std::vector<xlx::ReflectorInfo> live) {
-    m_live = std::move(live);
-    rebuildRows();
+    rebuildRows([&] { m_live = std::move(live); });
 }
 
-void ReflectorListModel::rebuildRows() {
+void ReflectorListModel::rebuildRows(const std::function<void()> &change) {
     beginResetModel();
+    if (change) change();
     m_rows.clear();
     m_rows.reserve(m_live.size() + m_fallback.size() + m_dplus.size());
     for (const auto &r : m_live) m_rows.push_back({&r, false});

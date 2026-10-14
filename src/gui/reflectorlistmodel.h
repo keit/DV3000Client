@@ -14,6 +14,7 @@
 
 #include <QAbstractListModel>
 
+#include <functional>
 #include <vector>
 
 #include "dplus_client.h"
@@ -47,7 +48,11 @@ signals:
 
 private:
     void applyLive(std::vector<xlx::ReflectorInfo> live);
-    void rebuildRows();
+    // Applies change (replacing one of the lists below) inside a model
+    // reset and rebuilds m_rows. The change has to come after
+    // beginResetModel(): m_rows points into those lists, and views (and
+    // DStarTab's modelAboutToBeReset handler) read rows until then.
+    void rebuildRows(const std::function<void()> &change = {});
 
     struct Row {
         const xlx::ReflectorInfo *info;

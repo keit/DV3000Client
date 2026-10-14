@@ -54,7 +54,8 @@ public:
     void setAutoLevel(bool on) override;
 
 private:
-    bool hasValidReflectorSelection() const;
+    // The model row picked or typed, -1 if none -- see the .cpp.
+    int selectedRow() const;
     QString selectedHost() const;
     QString selectedReflectorName() const;
     bool selectedIsDPlus() const;
@@ -112,6 +113,7 @@ private:
     // The reflector selected when the list began refreshing, to select again.
     QString m_pickBeforeReset;
     bool m_pickBeforeResetDPlus = false;
+    bool m_restoringPick = false;
     ReflectorListModel *m_model;
     QComboBox *m_targetModule;
     AudioLevelsPanel *m_audioLevels;

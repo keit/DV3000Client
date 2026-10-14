@@ -102,13 +102,13 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     // refreshed by every DPlus connect) mustn't lose that pick, though:
     // remember it across the reset and select the same entry again.
     connect(m_model, &QAbstractItemModel::modelAboutToBeReset, this, [this] {
+        m_restoringPick = true; // the selection is in flux until it's restored below
         m_pickBeforeReset = selectedReflectorName();
         m_pickBeforeResetDPlus = selectedIsDPlus();
     });
     connect(m_model, &QAbstractItemModel::modelReset, this, [this] {
         m_reflectorCombo->setCurrentIndex(-1);
-        if (m_pickBeforeReset.isEmpty()) return;
-        for (int row = 0; row < m_model->rowCount(); row++) {
+        for (int row = 0; !m_pickBeforeReset.isEmpty() && row < m_model->rowCount(); row++) {
             QModelIndex index = m_model->index(row, 0);
             if (m_model->data(index, ReflectorListModel::NameRole).toString() == m_pickBeforeReset &&
                 m_model->data(index, ReflectorListModel::IsDPlusRole).toBool() == m_pickBeforeResetDPlus) {
@@ -117,6 +117,8 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
             }
         }
         m_pickBeforeReset.clear();
+        m_restoringPick = false;
+        updateConnectButtonEnabled();
     });
 
     auto *completer = new QCompleter(m_model, this);
@@ -128,7 +130,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     m_reflectorCombo->setCompleter(completer);
 
     // Re-check on every text change, not just when currentIndex() itself
-    // changes -- see hasValidReflectorSelection(). textChanged (not
+    // changes -- see selectedRow(). textChanged (not
     // textEdited) deliberately: re-picking the *same* row after having
     // edited away from it restores the same index it was already sitting
     // on, so currentIndexChanged doesn't fire (the value didn't change),
@@ -341,26 +343,37 @@ QWidget *DStarTab::spaceExemptFocusWidget() const { return m_reflectorCombo->lin
 // invalidate it just because the user edited the line edit's text away
 // from whatever that row says (there's no "unselect on edit" built in).
 // So a pick only counts if the row it points to is still what's actually
-// displayed right now.
-bool DStarTab::hasValidReflectorSelection() const {
+// displayed right now. Typing a name exactly ("ZL2VH", "ref001") counts
+// too, without picking it from the popup -- the text is left as typed.
+int DStarTab::selectedRow() const {
     int row = m_reflectorCombo->currentIndex();
-    if (row < 0) return false;
-    return m_reflectorCombo->currentText() == m_model->data(m_model->index(row, 0), Qt::DisplayRole).toString();
+    QString text = m_reflectorCombo->currentText();
+    if (row >= 0 && text == m_model->data(m_model->index(row, 0), Qt::DisplayRole).toString()) return row;
+    QString typed = text.trimmed();
+    if (typed.isEmpty()) return -1;
+    for (int r = 0; r < m_model->rowCount(); r++) {
+        if (m_model->data(m_model->index(r, 0), ReflectorListModel::NameRole).toString().compare(typed, Qt::CaseInsensitive) == 0)
+            return r;
+    }
+    return -1;
 }
 
 QString DStarTab::selectedHost() const {
-    if (!hasValidReflectorSelection()) return {};
-    return m_model->data(m_model->index(m_reflectorCombo->currentIndex(), 0), ReflectorListModel::HostRole).toString();
+    int row = selectedRow();
+    if (row < 0) return {};
+    return m_model->data(m_model->index(row, 0), ReflectorListModel::HostRole).toString();
 }
 
 QString DStarTab::selectedReflectorName() const {
-    if (!hasValidReflectorSelection()) return {};
-    return m_model->data(m_model->index(m_reflectorCombo->currentIndex(), 0), ReflectorListModel::NameRole).toString();
+    int row = selectedRow();
+    if (row < 0) return {};
+    return m_model->data(m_model->index(row, 0), ReflectorListModel::NameRole).toString();
 }
 
 bool DStarTab::selectedIsDPlus() const {
-    if (!hasValidReflectorSelection()) return false;
-    return m_model->data(m_model->index(m_reflectorCombo->currentIndex(), 0), ReflectorListModel::IsDPlusRole).toBool();
+    int row = selectedRow();
+    if (row < 0) return false;
+    return m_model->data(m_model->index(row, 0), ReflectorListModel::IsDPlusRole).toBool();
 }
 
 char DStarTab::selectedModule() const {
@@ -370,12 +383,16 @@ char DStarTab::selectedModule() const {
 }
 
 void DStarTab::updateModuleChoices() {
-    // Only greyed out, never deselected: changing the selection here would
-    // re-enter updateConnectButtonEnabled(). selectedModule() treats it as
-    // no choice for a DExtra reflector.
+    // Greyed out unless a DPlus entry is picked -- and deselected when a
+    // DExtra reflector is picked with it chosen, rather than left there
+    // greyed with Connect disabled for no visible reason. Not while typing
+    // (no valid pick yet) or mid list refresh (see m_restoringPick).
     if (auto *model = qobject_cast<QStandardItemModel *>(m_targetModule->model())) {
         if (QStandardItem *all = model->item(1)) all->setEnabled(selectedIsDPlus());
     }
+    if (!m_restoringPick && selectedRow() >= 0 && !selectedIsDPlus() &&
+        m_targetModule->currentData().toInt() == '*')
+        m_targetModule->setCurrentIndex(0); // re-enters updateConnectButtonEnabled() once, harmlessly
 }
 
 void DStarTab::onConnectClicked() {

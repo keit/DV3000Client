@@ -5,7 +5,8 @@
 **ThumbDV**(AMBE3000)USBドングルを使用する、デジタル音声無線のリフレクター・
 ネットワーク向け Linux デスクトップクライアントです:
 
-- **D-Star**: DExtra プロトコル経由(XLX / XRF 系リフレクター)
+- **D-Star**: DExtra(XLX・XRF リフレクター)と DPlus(REF リフレクター・DPlus
+  レピーターゲートウェイ)
 - **DMR**: 2つのネットワークに対応 — **BrandMeister**(Open DMR Terminal プロトコル
   経由)と **TGIF**(Homebrew/MMDVM プロトコル経由)
 
@@ -23,8 +24,10 @@ Debian、Ubuntu、Raspberry Pi OS では [keit APT リポジトリ](https://keit
 
 ## 機能
 
-- **D-Star タブ:** リフレクター検索(XLXディレクトリをリアルタイム取得)、モジュール
-  選択、接続/切断、PTT送信、直近に受信したヘッダー、Last Heard(受信履歴)一覧。
+- **D-Star タブ:** XLX・XRF・REF リフレクターと DPlus レピーターゲートウェイの検索
+  (ディレクトリをリアルタイム取得)、モジュール選択(**All modules** でリフレクターや
+  レピーター全体をモニター)、接続/切断、PTT送信、TX メッセージ、直近に受信したヘッダー、
+  各局のモジュールと TX メッセージ付きの Last Heard(受信履歴)一覧。
 - **DMR タブ:** ネットワーク選択(BrandMeister または TGIF)、そのネットワーク用の
   トークグループ検索、グループコール(BrandMeister ではプライベートコールも可)、現在
   の購読状況の表示、ネットワークごとのお気に入りリスト、コールサインとトークグループ
@@ -82,6 +85,7 @@ git submodule update --init --recursive
 | -------------------- | ---------------------------------------------------------------------------- |
 | `dv3kclient`         | Qt GUI 本体(D-Star タブ・DMR タブ)                                           |
 | `dextra_test`        | コマンドライン版 DExtra クライアント(ライブ音声モード対応)                   |
+| `dplus_test`         | コマンドライン版 DPlus クライアント(受信して全ストリームをログに記録)         |
 | `dmr_test`           | Homebrew/MMDVM マスター(TGIF など)向けコマンドライン版 DMR クライアント      |
 | `odt_test`           | コマンドライン版 BrandMeister Open DMR Terminal クライアント(ライブ音声対応) |
 | `roundtrip_test`     | ThumbDV を通した PCM→AMBE→PCM のラウンドトリップテスト                       |
@@ -210,7 +214,8 @@ iw event -t | grep scan
 ```
 
 1. **ファイル > 設定...** を開き、以下を入力します:
-   - **General(一般):** D-Star のコールサインとモジュール文字。DMR用にはDMR ID、
+   - **General(一般):** D-Star のコールサイン、モジュールサフィックス、TX メッセージ
+     (任意。[D-Star: REF リフレクターと DPlus ゲートウェイ](#d-star-ref-リフレクターと-dplus-ゲートウェイ)参照)。DMR用にはDMR ID、
      続いてネットワークごとの項目。_DMR network_ ボックスで **BrandMeister** または
      **TGIF** を選び、それぞれの項目を表示・編集します。両方入力しても構いません —
      サーバーとパスワードが設定されているネットワークのみがDMRタブに表示されます。
@@ -228,6 +233,32 @@ iw event -t | grep scan
    カスがない状態でスペースキーを押します)。
 
 接続中は設定を変更できません。
+
+### D-Star: REF リフレクターと DPlus ゲートウェイ
+
+REF リフレクターと DPlus レピーターゲートウェイ(レピーター自身のコールサイン、例:
+`ZL2VH`)は XLX・XRF と同じリフレクター一覧に、_DPlus reflector_ / _DPlus gateway_
+と表示されます。DV Dongle やホットスポットが REF に使う DPlus プロトコルで接続し、
+次の点が異なります:
+
+- **コールサインが D-Star に登録済みである必要があります**(どのゲートウェイでも必要な
+  US Trust/ircDDB の登録)。接続時にまず DPlus の認証サーバーにログインします。REF
+  リフレクターとゲートウェイの一覧もこのログインで取得するため、コールサインを設定する
+  と一覧に表示されます。
+- **モジュールサフィックス:** ホットスポットと同様に、コールサインに _Module suffix_
+  の文字を付けた名前(例: `ZL2MIM P`)でログインし、送信します。DPlus サーバーには
+  同じ名前で1つしかログインできないため、同時にリンクしているほかの無線機やホットス
+  ポットが使っていない文字を選んでください。その名前がすでに接続中(ホットスポット、
+  無線機のターミナルモードやレピーターモニターなど)の場合は、その旨のメッセージを表示
+  して接続できません。また、文字は登録済みの D-Star ターミナルのいずれかである必要が
+  あります。そうでない場合は受信専用のログインとなり、ステータス欄に _listen only_ と
+  表示されます。
+- **All modules** は無線機のレピーターモニターのように、どのモジュールでも先に始まった
+  送信を再生し、全モジュールの局を Last Heard に表示します。受信専用なので、送信する
+  にはモジュールを選んでください。
+- レピーターゲートウェイが転送するのは CQ(UR `CQCQCQ`)だけです。UR にコールサイン
+  や `/ZL2VH C` を設定して特定の宛先へ送っている局の音声は DPlus 利用者には送られない
+  ため、聞こえません。
 
 ### 別システム上の ThumbDV(AMBEServer 3000)
 
@@ -302,7 +333,7 @@ iw event -t | grep scan
 | -------------------------- | ------------------------------------------------------------- |
 | `settings.json`            | 設定内容(DMRホットスポットのパスワードを平文で含みます)       |
 | `dmr_favourites.json`      | BrandMeister のお気に入りリスト                               |
-| `dstar_favourites.json`    | D-Star のお気に入り(リフレクター + モジュール)                |
+| `dstar_favourites.json`    | D-Star のお気に入り(リフレクター + モジュールまたは全モジュール) |
 | `dmr_favourites_tgif.json` | TGIF のお気に入りリスト                                       |
 | `dv3000client.log`         | ログファイル(**Help > Log File Location...** からも開けます)  |
 | `cache/`                   | リフレクター・トークグループ・DMR ID ディレクトリのキャッシュ |
@@ -318,6 +349,10 @@ Speaker 欄の **Record** ボタンで、受信音声を WAV ファイルとし�
 ```sh
 # D-Star: モジュールBでリフレクターにリンクし、オーディオデバイスでライブ動作させる
 ./build/dextra_test <reflector-ip> B /dev/serial/by-id/<thumbdv> live plughw:1,0 plughw:1,0
+
+# D-Star DPlus: "<callsign> P" としてログインし、REF001 の全モジュールのストリームを
+# デコードせずにログに記録する(ThumbDV もオーディオデバイスも不要)
+./build/dplus_test <callsign>/P REF001 none none all
 
 # DMR(Homebrew、例: TGIF): ログインし Parrot(TG 9990へのグループコール)へ短い
 # テスト送信を行う。20秒間接続を維持する。パスワードに "-" を指定すると

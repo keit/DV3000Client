@@ -231,9 +231,10 @@ set(CPACK_PACKAGE_NAME dv3kclient)
 set(CPACK_PACKAGE_VERSION ${DV3K_DEB_VERSION})
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "D-Star and DMR client for the ThumbDV (AMBE-3000)")
 set(CPACK_PACKAGE_DESCRIPTION
-  "Connects a ThumbDV (or an AMBEServer) to D-Star DExtra reflectors and\n\
-DMR networks (BrandMeister, TGIF) from the desktop, with push-to-talk\n\
-audio through the PC's microphone and speakers.")
+  "Connects a ThumbDV (or an AMBEServer) to D-Star reflectors (XLX, XRF,\n\
+REF) and DPlus repeater gateways, and to DMR networks (BrandMeister,\n\
+TGIF), from the desktop, with push-to-talk audio through the PC's\n\
+microphone and speakers.")
 set(CPACK_PACKAGE_CONTACT "Kei Takashima <takashima.kei@gmail.com>")
 set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
 set(CPACK_STRIP_FILES ON)

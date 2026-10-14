@@ -200,7 +200,8 @@ sudo udevadm control --reload-rules</code></pre>
     <h2 id="settings">3. Settings and your first contact</h2>
     <p>Open <strong>File › Settings</strong>:</p>
     <ul>
-      <li><strong>General:</strong> your callsign and D-Star module letter, and your DMR ID. For
+      <li><strong>General:</strong> your callsign, D-Star module suffix (which of your D-Star
+        terminals this app is, see <a href="#dplus">below</a>) and an optional TX message, and your DMR ID. For
         each DMR network you use, pick it in <em>DMR network</em> and enter its server and
         password:
         <ul>
@@ -224,6 +225,26 @@ sudo udevadm control --reload-rules</code></pre>
     <p>To hear yourself back, use the Parrot: on BrandMeister, tick <strong>Private
       call</strong> and call <code>9990</code>; on TGIF, make a group call to TG
       <code>9990</code>.</p>
+
+    <h3 id="dplus">REF reflectors and repeater gateways (DPlus)</h3>
+    <p>REF reflectors and DPlus repeater gateways (a repeater's own callsign, e.g.
+      <code>ZL2VH</code>) are in the same list as XLX and XRF. For these:</p>
+    <ul>
+      <li>Your callsign must be <strong>registered for D-Star</strong>, as for any gateway. The
+        list of REF reflectors and gateways appears once your callsign is set.</li>
+      <li>The app logs in, and transmits, as your callsign plus the <strong>Module
+        suffix</strong>, e.g. <code>ZL2MIM P</code>. Only one login per name is allowed, so pick
+        a letter your other radios and hotspots don't use. If that name is already connected (a
+        hotspot, a radio's Terminal Mode or Repeater Monitor), the app tells you and doesn't
+        connect.</li>
+      <li>The letter must be one of your <strong>registered D-Star terminals</strong>.
+        Otherwise you can listen but not transmit, and the status line says <em>listen
+        only</em>.</li>
+      <li><strong>All modules</strong> plays whichever module's transmission comes first, like
+        a radio's Repeater Monitor. It's listen only: pick a module to transmit.</li>
+      <li>A repeater gateway passes on CQ calls only. You won't hear a station whose UR is set
+        to a callsign or to a repeater (<code>/ZL2VH C</code>).</li>
+    </ul>
 
     <h2 id="help">Something not working?</h2>
     <ul>

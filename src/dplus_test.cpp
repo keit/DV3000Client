@@ -60,11 +60,7 @@ int main(int argc, char **argv) {
     std::string full = upper(argv[1]);
     size_t sep = full.find_first_of("/ ");
     std::string callsign = full.substr(0, sep);
-    std::string loginCallsign = callsign;
-    if (sep != std::string::npos && sep + 1 < full.size()) {
-        loginCallsign.resize(7, ' ');
-        loginCallsign += full.back();
-    }
+    char suffix = sep != std::string::npos && sep + 1 < full.size() ? full.back() : ' ';
     std::string target = argv[2];
     char wanted = argc > 5 && upper(argv[5]) != "ALL" ? static_cast<char>(std::toupper(argv[5][0])) : '*';
     bool kerchunk = argc > 6 && upper(argv[6]) == "KERCHUNK" && wanted != '*';
@@ -100,50 +96,43 @@ int main(int argc, char **argv) {
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
+    std::unique_ptr<audio::VocoderPipeline> vocoder;
+    if (!logOnly) vocoder = std::make_unique<audio::VocoderPipeline>(dv, SerialDV::DVRate3600x2400);
+
     dplus::DPlusClient client;
-    if (!client.open(host) || !client.link(loginCallsign)) return 1;
-    if (kerchunk) client.sendKerchunk(upper(target), wanted, callsign);
+    client.setIdentity(callsign, suffix);
+    client.setTarget(upper(target), wanted);
+    if (vocoder) client.setLiveRx(vocoder.get(), [&queue](const short *pcm) { queue.push(pcm); });
+    if (!client.open(host)) return 1;
+    dplus::LinkResult linked = client.link();
+    if (linked != dplus::LinkResult::Accepted && linked != dplus::LinkResult::ReadOnly) return 1;
+    if (kerchunk) client.sendKerchunk();
     std::fprintf(stderr, "dplus_test: linked; playing %s; Ctrl-C to stop\n",
                  wanted == '*' ? "whichever stream comes first (all modules)" : (std::string("module ") + wanted).c_str());
 
-    std::unique_ptr<audio::VocoderPipeline> vocoder;
-    if (!logOnly) vocoder = std::make_unique<audio::VocoderPipeline>(dv, SerialDV::DVRate3600x2400);
+    // Log every stream; the client picks which one to play.
     std::map<uint16_t, Stream> streams;
-    int playing = -1; // stream ID being played, -1 if none
-
-    client.setHeaderSink([&](uint16_t id, const dextra::DStarHeader &h) {
-        auto now = std::chrono::steady_clock::now();
-        // A played stream that went quiet without its last frame is over.
-        if (playing >= 0 && (!streams.count(playing) || now - streams[playing].last > std::chrono::seconds(1))) playing = -1;
-        // The module is in RPT2 ("REF001 C", or "ZL2VH  B" for traffic the
-        // gateway sends towards module B) -- unless RPT2 is the gateway
-        // itself ("ZL2VH  G", a radio keying the repeater), when it's in
-        // RPT1 ("ZL2VH  C"). RPT1 on a reflector is the sender's own
-        // hotspot ("KI4EYK D"), so it can't come first.
-        char m1 = h.rpt1.empty() ? ' ' : h.rpt1.back(), m2 = h.rpt2.empty() ? ' ' : h.rpt2.back();
-        char module = m2 != 'G' && m2 != ' ' ? m2 : m1;
-        bool play = playing < 0 && (wanted == '*' || module == wanted);
-        if (play) playing = id;
-        streams[id] = Stream{h.myCall + (h.myCall2.empty() ? "" : "/" + h.myCall2), module, 0, now, now};
-        std::fprintf(stderr, "dplus_test: stream %u started: MY %-8s/%-4s UR %-8s RPT1 %-8s RPT2 %-8s module %c%s\n", id,
-                     h.myCall.c_str(), h.myCall2.c_str(), h.urCall.c_str(), h.rpt1.c_str(), h.rpt2.c_str(), module,
-                     play ? "  [playing]" : (playing >= 0 ? "  [not played: another stream is playing]" : "  [not played: other module]"));
-    });
-    client.setFrameSink([&](uint16_t id, uint8_t, const uint8_t *ambe, bool last) {
-        auto it = streams.find(id);
-        if (it == streams.end()) return; // joined mid-stream, header not seen
-        it->second.last = std::chrono::steady_clock::now();
-        if (!last) {
-            it->second.frames++;
-            if (id == playing && vocoder) vocoder->decode(ambe, [&queue](const short *pcm) { queue.push(pcm); });
-            return;
-        }
-        double secs = std::chrono::duration<double>(it->second.last - it->second.start).count();
-        std::fprintf(stderr, "dplus_test: stream %u ended: %s, module %c, %d frames over %.1f s\n", id,
-                     it->second.who.c_str(), it->second.module, it->second.frames, secs);
-        if (id == playing) playing = -1;
-        streams.erase(it);
-    });
+    client.setRawSinks(
+        [&](uint16_t id, const dextra::DStarHeader &h) {
+            auto now = std::chrono::steady_clock::now();
+            char module = dplus::streamModule(h);
+            streams[id] = Stream{h.myCall + (h.myCall2.empty() ? "" : "/" + h.myCall2), module, 0, now, now};
+            std::fprintf(stderr, "dplus_test: stream %u started: MY %-8s/%-4s UR %-8s RPT1 %-8s RPT2 %-8s module %c\n", id,
+                         h.myCall.c_str(), h.myCall2.c_str(), h.urCall.c_str(), h.rpt1.c_str(), h.rpt2.c_str(), module);
+        },
+        [&](uint16_t id, uint8_t, const uint8_t *, bool last) {
+            auto it = streams.find(id);
+            if (it == streams.end()) return; // joined mid-stream, header not seen
+            it->second.last = std::chrono::steady_clock::now();
+            if (!last) {
+                it->second.frames++;
+                return;
+            }
+            double secs = std::chrono::duration<double>(it->second.last - it->second.start).count();
+            std::fprintf(stderr, "dplus_test: stream %u ended: %s, module %c, %d frames over %.1f s\n", id,
+                         it->second.who.c_str(), it->second.module, it->second.frames, secs);
+            streams.erase(it);
+        });
 
     std::thread playThread;
     if (!logOnly) playThread = std::thread(audio::playbackThread, &playback, &queue, &g_running, nullptr, nullptr);

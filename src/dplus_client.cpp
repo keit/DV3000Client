@@ -14,6 +14,8 @@
 #include <thread>
 
 #include "ccrc.h" // xlxd's CCITT CRC, the D-Star header's (via dmr_fec)
+#include "dextra_client.h" // dextra::g_running
+#include "dstar_slowdata.h"
 
 namespace dplus {
 
@@ -118,8 +120,32 @@ bool authenticate(const std::string &callsign, std::vector<GatewayEntry> *gatewa
     return gotReply;
 }
 
+char streamModule(const dextra::DStarHeader &header) {
+    // Fields are trimmed, so a module letter is only there at full length.
+    auto module = [](const std::string &rpt) { return rpt.size() == 8 ? rpt[7] : ' '; };
+    char m2 = module(header.rpt2);
+    return m2 != 'G' && m2 != ' ' ? m2 : module(header.rpt1);
+}
+
 DPlusClient::~DPlusClient() {
     if (m_fd >= 0) ::close(m_fd);
+}
+
+void DPlusClient::setIdentity(const std::string &callsign, char suffix, const std::string &myCall2) {
+    m_callsign = callsign.substr(0, 7);
+    m_loginCallsign = m_callsign;
+    if (suffix != ' ' && suffix != '\0') {
+        // "ZL2MIM B": callsign padded to 7, the letter 8th -- as
+        // ircDDBGateway/Pi-Star hotspots log in.
+        m_loginCallsign.resize(7, ' ');
+        m_loginCallsign += suffix;
+    }
+    m_myCall2 = myCall2.substr(0, 4);
+}
+
+void DPlusClient::setTarget(const std::string &name, char module) {
+    m_target = name.substr(0, 7);
+    m_module = module;
 }
 
 bool DPlusClient::open(const std::string &host) {
@@ -132,97 +158,46 @@ bool DPlusClient::open(const std::string &host) {
     return true;
 }
 
-bool DPlusClient::link(const std::string &callsign) {
+LinkResult DPlusClient::link() {
     // Connect request (echoed back), then the 28-byte login: callsign
     // zero-padded at 4, "DV019999" at 20 (ircDDBGateway's CT_LINK2).
     uint8_t login[28] = {0x1C, 0xC0, 0x04, 0x00};
-    std::memcpy(login + 4, callsign.data(), std::min<size_t>(callsign.size(), 16));
+    std::memcpy(login + 4, m_loginCallsign.data(), std::min<size_t>(m_loginCallsign.size(), 16));
     std::memcpy(login + 20, "DV019999", 8);
 
     bool connected = false;
-    for (int attempt = 0; attempt < 5; attempt++) {
+    for (int attempt = 0; attempt < 5 && dextra::g_running; attempt++) {
         ::send(m_fd, connected ? login : CONNECT, connected ? sizeof(login) : sizeof(CONNECT), 0);
         auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        while (std::chrono::steady_clock::now() < deadline) {
+        while (std::chrono::steady_clock::now() < deadline && dextra::g_running) {
             uint8_t buf[64];
             ssize_t n = recvWithTimeout(buf, sizeof(buf), 200);
             if (!connected && n == 5 && std::memcmp(buf, CONNECT, 5) == 0) {
                 connected = true;
-                std::fprintf(stderr, "dplus: connect acknowledged, logging in as %s\n", callsign.c_str());
+                std::fprintf(stderr, "dplus: connect acknowledged, logging in as %s\n", m_loginCallsign.c_str());
                 ::send(m_fd, login, sizeof(login), 0);
             } else if (connected && n == 8 && buf[0] == 0x08 && buf[1] == 0xC0) {
-                if (std::memcmp(buf + 4, "OKRW", 4) == 0) {
+                m_loginReply.assign(reinterpret_cast<const char *>(buf + 4), 4);
+                if (m_loginReply == "OKRW") {
                     std::fprintf(stderr, "dplus: login accepted\n");
-                    return true;
+                    return LinkResult::Accepted;
                 }
-                // "OK, read-only": may listen but not transmit -- what
-                // ZL2VH answers for a callsign suffix that isn't a
+                // What ZL2VH answers for a callsign suffix that isn't a
                 // registered terminal (ZL2MIM D, while ZL2MIM and ZL2MIM B
                 // got OKRW).
-                if (std::memcmp(buf + 4, "OKRO", 4) == 0) {
+                if (m_loginReply == "OKRO") {
                     std::fprintf(stderr, "dplus: login accepted read-only (listen only, transmitting not allowed)\n");
-                    return true;
+                    return LinkResult::ReadOnly;
                 }
-                std::fprintf(stderr, "dplus: login refused (%.4s) -- is %s registered?\n", buf + 4, callsign.c_str());
-                return false;
+                // BUSY: this login is already connected (the operator's
+                // Repeater Monitor, hotspot link, ...).
+                std::fprintf(stderr, "dplus: login refused (%s)\n", m_loginReply.c_str());
+                return LinkResult::Refused;
             }
         }
     }
     std::fprintf(stderr, "dplus: no answer to %s\n", connected ? "login" : "connect request");
-    return false;
-}
-
-void DPlusClient::sendKerchunk(const std::string &gateway, char module, const std::string &callsign) {
-    auto field = [](const std::string &s, size_t n) {
-        std::string f = s.substr(0, n);
-        f.resize(n, ' ');
-        return f;
-    };
-    // "ZL2VH  C": the gateway callsign padded to 7, module in the 8th byte;
-    // module first, gateway ("G") second -- see the header comment.
-    std::string first = field(gateway, 7) + module, second = field(gateway, 7) + 'G';
-    uint16_t streamId = static_cast<uint16_t>(std::chrono::steady_clock::now().time_since_epoch().count() | 1);
-
-    uint8_t header[58] = {0x3A, 0x80, 'D', 'S', 'V', 'T', 0x10, 0x00, 0x00, 0x00, 0x20, 0x00, 0x01, 0x02};
-    header[14] = static_cast<uint8_t>(streamId);
-    header[15] = static_cast<uint8_t>(streamId >> 8);
-    header[16] = 0x80;
-    uint8_t *h = header + 17; // flags[3], RPT2, RPT1, UR, MY, MY2, CRC
-    h[0] = h[1] = h[2] = 0x00;
-    std::memcpy(h + 3, first.data(), 8);
-    std::memcpy(h + 11, second.data(), 8);
-    std::memcpy(h + 19, field("CQCQCQ", 8).data(), 8);
-    std::memcpy(h + 27, field(callsign, 8).data(), 8);
-    std::memcpy(h + 35, "    ", 4);
-    CCRC::addCCITT161(h, 41); // fills h[39..40]
-    for (int i = 0; i < 3; i++) ::send(m_fd, header, sizeof(header), 0);
-
-    // D-Star AMBE silence; slow data carries the sync pattern on frame 0
-    // and the idle filler otherwise.
-    const uint8_t silence[9] = {0x9E, 0x8D, 0x32, 0x88, 0x26, 0x1A, 0x3F, 0x61, 0xE8};
-    const uint8_t sync[3] = {0x55, 0x2D, 0x16}, filler[3] = {0x16, 0x29, 0xF5};
-    uint8_t frame[29] = {0x1D, 0x80, 'D', 'S', 'V', 'T', 0x20, 0x00, 0x00, 0x00, 0x20, 0x00, 0x01, 0x02};
-    frame[14] = header[14];
-    frame[15] = header[15];
-    uint8_t packetId = 0;
-    for (; packetId < 10; packetId++) {
-        frame[16] = packetId;
-        std::memcpy(frame + 17, silence, 9);
-        std::memcpy(frame + 26, packetId == 0 ? sync : filler, 3);
-        ::send(m_fd, frame, sizeof(frame), 0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    // End of stream, as xlxd encodes it.
-    uint8_t last[32] = {0x20, 0x80, 'D', 'S', 'V', 'T', 0x20, 0x00, 0x81, 0x00, 0x20, 0x00, 0x01, 0x02};
-    last[14] = header[14];
-    last[15] = header[15];
-    last[16] = static_cast<uint8_t>(packetId | 0x40);
-    const uint8_t endPattern[15] = {0x55, 0xC8, 0x7A, 0x55, 0x55, 0x55, 0x55, 0x55,
-                                    0x55, 0x55, 0x55, 0x55, 0x25, 0x1A, 0xC6};
-    std::memcpy(last + 17, endPattern, 15);
-    ::send(m_fd, last, sizeof(last), 0);
-    std::fprintf(stderr, "dplus: sent a 0.2 s silent transmission to %s / %s (stream %u)\n", first.c_str(),
-                 second.c_str(), streamId);
+    return LinkResult::NoAnswer;
 }
 
 void DPlusClient::disconnect() {
@@ -230,6 +205,97 @@ void DPlusClient::disconnect() {
     for (int i = 0; i < 3; i++) ::send(m_fd, DISCONNECT, sizeof(DISCONNECT), 0);
     std::fprintf(stderr, "dplus: sent disconnect\n");
 }
+
+// --- transmit ---------------------------------------------------------------
+
+namespace {
+
+std::string field(const std::string &s, size_t n) {
+    std::string f = s.substr(0, n);
+    f.resize(n, ' ');
+    return f;
+}
+
+// D-Star AMBE silence.
+const uint8_t SILENCE[9] = {0x9E, 0x8D, 0x32, 0x88, 0x26, 0x1A, 0x3F, 0x61, 0xE8};
+
+} // namespace
+
+void DPlusClient::sendHeader(uint16_t streamId) {
+    // Routed the way Pi-Star/ircDDBGateway send a hotspot's traffic: RPT2
+    // (first on the wire) the target and module, "ZL2VH  C"; RPT1 our own
+    // login, "ZL2MIM P" -- xlxd's DPlus reads the client's module from RPT1
+    // and routes on RPT2.
+    uint8_t header[58] = {0x3A, 0x80, 'D', 'S', 'V', 'T', 0x10, 0x00, 0x00, 0x00, 0x20, 0x00, 0x01, 0x02};
+    header[14] = static_cast<uint8_t>(streamId);
+    header[15] = static_cast<uint8_t>(streamId >> 8);
+    header[16] = 0x80;
+    uint8_t *h = header + 17; // flags[3], RPT2, RPT1, UR, MY, MY2, CRC
+    h[0] = h[1] = h[2] = 0x00;
+    std::memcpy(h + 3, (field(m_target, 7) + m_module).data(), 8);
+    std::memcpy(h + 11, field(m_loginCallsign, 8).data(), 8);
+    std::memcpy(h + 19, field("CQCQCQ", 8).data(), 8);
+    // MY too: the terminal letter in MY's 8th byte is how a station shows
+    // which of its terminals is talking (dashboards' Last Heard, callsign
+    // routing to that terminal), e.g. "ZL2TWS P".
+    std::memcpy(h + 27, field(m_loginCallsign, 8).data(), 8);
+    std::memcpy(h + 35, field(m_myCall2, 4).data(), 4);
+    CCRC::addCCITT161(h, 41); // fills h[39..40]
+    for (int i = 0; i < 3; i++) ::send(m_fd, header, sizeof(header), 0);
+    std::fprintf(stderr, "dplus: TX stream %u %s\n", streamId, dstar::describeTxHeader(h + 3, m_txMessage).c_str());
+}
+
+void DPlusClient::sendFrame(uint16_t streamId, uint8_t packetId, const uint8_t *ambe) {
+    uint8_t frame[29] = {0x1D, 0x80, 'D', 'S', 'V', 'T', 0x20, 0x00, 0x00, 0x00, 0x20, 0x00, 0x01, 0x02};
+    frame[14] = static_cast<uint8_t>(streamId);
+    frame[15] = static_cast<uint8_t>(streamId >> 8);
+    frame[16] = packetId;
+    std::memcpy(frame + 17, ambe, 9);
+    dstar::slowData(packetId, m_txMessage, frame + 26);
+    ::send(m_fd, frame, sizeof(frame), 0);
+}
+
+void DPlusClient::sendLast(uint16_t streamId, uint8_t packetId) {
+    // End of stream, as xlxd encodes it.
+    uint8_t last[32] = {0x20, 0x80, 'D', 'S', 'V', 'T', 0x20, 0x00, 0x81, 0x00, 0x20, 0x00, 0x01, 0x02};
+    last[14] = static_cast<uint8_t>(streamId);
+    last[15] = static_cast<uint8_t>(streamId >> 8);
+    last[16] = static_cast<uint8_t>(packetId | 0x40);
+    const uint8_t endPattern[15] = {0x55, 0xC8, 0x7A, 0x55, 0x55, 0x55, 0x55, 0x55,
+                                    0x55, 0x55, 0x55, 0x55, 0x25, 0x1A, 0xC6};
+    std::memcpy(last + 17, endPattern, 15);
+    ::send(m_fd, last, sizeof(last), 0);
+}
+
+uint16_t DPlusClient::beginLiveTx() {
+    uint16_t streamId = static_cast<uint16_t>(std::chrono::steady_clock::now().time_since_epoch().count() | 1);
+    m_txPacketId = 0;
+    sendHeader(streamId);
+    std::fprintf(stderr, "dplus: PTT down, stream %u\n", streamId);
+    return streamId;
+}
+
+void DPlusClient::sendLiveTxFrame(uint16_t streamId, const uint8_t *ambe) {
+    sendFrame(streamId, m_txPacketId, ambe);
+    m_txPacketId = static_cast<uint8_t>((m_txPacketId + 1) % 21);
+}
+
+void DPlusClient::endLiveTx(uint16_t streamId) {
+    sendLast(streamId, m_txPacketId);
+    m_txPacketId = 0;
+    std::fprintf(stderr, "dplus: PTT up, stream %u\n", streamId);
+}
+
+void DPlusClient::sendKerchunk() {
+    uint16_t streamId = beginLiveTx();
+    for (int i = 0; i < 10; i++) {
+        sendLiveTxFrame(streamId, SILENCE);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    endLiveTx(streamId);
+}
+
+// --- receive ----------------------------------------------------------------
 
 ssize_t DPlusClient::recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs) {
     fd_set fds;
@@ -239,6 +305,8 @@ ssize_t DPlusClient::recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs) {
     if (::select(m_fd + 1, &fds, nullptr, nullptr, &tv) <= 0) return 0;
     return ::recv(m_fd, buf, len, 0);
 }
+
+void DPlusClient::run() { run(&dextra::g_running); }
 
 void DPlusClient::run(const volatile std::sig_atomic_t *running) {
     auto lastKeepalive = std::chrono::steady_clock::now();
@@ -255,9 +323,81 @@ void DPlusClient::run(const volatile std::sig_atomic_t *running) {
         }
         uint8_t buf[128];
         ssize_t n = recvWithTimeout(buf, sizeof(buf), 200);
+        expireStreams();
         if (n <= 0) continue;
         lastHeard = std::chrono::steady_clock::now();
         handlePacket(buf, static_cast<size_t>(n));
+    }
+}
+
+void DPlusClient::endStream(uint16_t streamId, const char *how) {
+    auto it = m_rxStreams.find(streamId);
+    if (it == m_rxStreams.end()) return;
+    const RxStream &s = it->second;
+    double secs = std::chrono::duration<double>(s.last - s.start).count();
+    if (s.frames == 0) {
+        std::fprintf(stderr, "dplus: RX stream %u %s on %c %s: header only, no audio, over %.1f s\n", streamId,
+                     s.who.c_str(), s.module, how, secs);
+    } else {
+        std::fprintf(stderr, "dplus: RX stream %u %s on %c %s: %d frames (%.1f s of audio) over %.1f s\n", streamId,
+                     s.who.c_str(), s.module, how, s.frames, s.frames * 0.02, secs);
+    }
+    m_rxStreams.erase(it);
+}
+
+void DPlusClient::expireStreams() {
+    auto now = std::chrono::steady_clock::now();
+    for (auto it = m_rxStreams.begin(); it != m_rxStreams.end();) {
+        uint16_t id = (it++)->first; // endStream erases it
+        if (now - m_rxStreams[id].last > std::chrono::seconds(2)) endStream(id, "timed out");
+    }
+}
+
+void DPlusClient::onHeader(uint16_t streamId, const dextra::DStarHeader &header) {
+    auto now = std::chrono::steady_clock::now();
+    // A played stream that went quiet without its last frame is over.
+    if (m_playing >= 0 && now - m_playingLast > std::chrono::seconds(1)) m_playing = -1;
+    char module = streamModule(header);
+    const char *played = "playing";
+    if (m_playing < 0 && (m_module == '*' || module == m_module)) {
+        m_playing = streamId;
+        m_playingLast = now;
+    } else {
+        played = m_playing >= 0 ? "not played: another stream is playing" : "not played: other module";
+    }
+    std::string who = header.myCall + (header.myCall2.empty() ? "" : "/" + header.myCall2);
+    RxStream &rx = m_rxStreams[streamId];
+    rx = RxStream{who, module == ' ' ? '?' : module, 0, now, now, header, {}};
+    rx.slowData.reset();
+    std::fprintf(stderr, "dplus: RX stream %u %s on %c started (UR %s, RPT1 %s, RPT2 %s; %s)\n", streamId, who.c_str(),
+                 module == ' ' ? '?' : module, header.urCall.c_str(), header.rpt1.c_str(), header.rpt2.c_str(), played);
+    if (m_rawHeaderSink) m_rawHeaderSink(streamId, header);
+    if (m_headerSink) m_headerSink(header);
+}
+
+void DPlusClient::onFrame(uint16_t streamId, uint8_t packetId, const uint8_t *ambe, bool last) {
+    if (m_rawFrameSink) m_rawFrameSink(streamId, packetId, ambe, last);
+    auto rx = m_rxStreams.find(streamId);
+    if (rx != m_rxStreams.end()) {
+        rx->second.last = std::chrono::steady_clock::now();
+        if (!last) {
+            rx->second.frames++;
+            // The slow data follows the 9 AMBE bytes.
+            if (rx->second.slowData.add(packetId, ambe + 9)) {
+                std::string message = rx->second.slowData.message();
+                std::fprintf(stderr, "dplus: RX stream %u %s TX message \"%s\"\n", streamId, rx->second.who.c_str(),
+                             message.c_str());
+                if (m_txMessageSink && !message.empty()) m_txMessageSink(rx->second.header, message);
+            }
+        }
+    }
+    if (last) endStream(streamId, "ended");
+    if (streamId != m_playing) return;
+    m_playingLast = std::chrono::steady_clock::now();
+    if (last) {
+        m_playing = -1;
+    } else if (m_vocoder && m_liveRxSink) {
+        m_vocoder->decode(ambe, [this](const short *pcm) { m_liveRxSink(pcm); });
     }
 }
 
@@ -277,11 +417,22 @@ void DPlusClient::handlePacket(const uint8_t *buf, size_t len) {
         header.urCall = trimmed(buf + 36, 8);
         header.myCall = trimmed(buf + 44, 8);
         header.myCall2 = trimmed(buf + 52, 4);
-        if (m_headerSink) m_headerSink(streamId, header);
+        onHeader(streamId, header);
     } else if (len == 29 && buf[0] == 0x1D && buf[1] == 0x80 && dsvt) {
-        if (m_frameSink) m_frameSink(streamId, buf[16], buf + 17, false);
+        onFrame(streamId, buf[16], buf + 17, false);
     } else if (len == 32 && buf[0] == 0x20 && buf[1] == 0x80 && dsvt) {
-        if (m_frameSink) m_frameSink(streamId, buf[16], nullptr, true);
+        onFrame(streamId, buf[16], nullptr, true);
+    } else if (len == 10 && buf[0] == 0x0A && buf[1] == 0xC0 && buf[2] == 0x0B) {
+        // A DPlus gateway's end-of-stream summary: stream ID, packet count.
+        // Its RF users' streams end with this rather than a last frame.
+        uint16_t id = static_cast<uint16_t>(buf[4] | (buf[5] << 8));
+        if (id == m_playing) m_playing = -1;
+        endStream(id, "ended (gateway summary)");
+    } else if (len == 24 && buf[0] == 0x18 && buf[1] == 0xC0 && buf[2] == 0x03) {
+        // A gateway's last-heard entry (callsign, repeater, time) -- the
+        // headers already tell us.
+    } else if (len > 10 && buf[1] == 0xC0 && buf[2] == 0x10 && std::memcmp(buf + 4, "gwmsg=", 6) == 0) {
+        std::fprintf(stderr, "dplus: gateway says: %s\n", trimmed(buf + 10, len - 10).c_str());
     } else if (len == 3 && std::memcmp(buf, KEEPALIVE, 3) == 0) {
         // the server's own keepalive
     } else if (len == 5 && std::memcmp(buf, DISCONNECT, 5) == 0) {

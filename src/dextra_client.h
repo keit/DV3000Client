@@ -17,23 +17,14 @@
 #include <string>
 #include <vector>
 
+#include "dstar_slowdata.h"
+#include "dstar_transport.h"
 #include "dvcontroller.h"
 #include "vocoder_pipeline.h"
 
 namespace dextra {
 
 constexpr int AMBE_SIZE = 9;
-
-// The 5 human-readable callsign fields carried in every D-Star header
-// (dstar_header, see onHeaderPacket()'s layout comment) -- who's
-// transmitting and the repeater path the transmission took to get here.
-struct DStarHeader {
-    std::string rpt2;    // repeater 2 (the reflector + module actually routing this stream)
-    std::string rpt1;    // repeater 1 (the gateway the originator is keying through)
-    std::string urCall;  // called station, or "CQCQCQ" for a general call
-    std::string myCall;  // originating station's callsign
-    std::string myCall2; // originator's 4-char suffix (extension/module)
-};
 
 // Cleared by SIGINT/SIGTERM (installed by the frontend) to unwind every
 // blocking loop in this library -- DextraClient::run()/link(),
@@ -48,7 +39,7 @@ extern volatile sig_atomic_t g_running;
 // audio), so every call to it, from any file, goes through this lock.
 extern std::mutex g_dvMutex;
 
-class DextraClient {
+class DextraClient : public dstar::DStarTransport {
 public:
     DextraClient(SerialDV::DVController *dv, FILE *rxPcmOut);
 
@@ -79,20 +70,20 @@ public:
     // fields as soon as it arrives (see onHeaderPacket()), before any of
     // its audio frames. Optional -- a frontend that doesn't care who's
     // talking can leave this unset.
-    void setHeaderSink(std::function<void(const DStarHeader &)> sink);
+    void setHeaderSink(std::function<void(const DStarHeader &)> sink) override;
 
     bool open(const std::string &host, char targetModule);
 
     // Sends CONNECT and waits (with retries) for a 14-byte ACK/NAK.
     bool link();
-    void disconnect();
+    void disconnect() override;
 
     // Live-mode TX, driven by the capture thread's PTT state machine. Only
     // that one thread calls these, so no locking is needed beyond what UDP
     // send() already gives for free.
-    uint16_t beginLiveTx();
-    void sendLiveTxFrame(uint16_t streamId, const uint8_t *ambe);
-    void endLiveTx(uint16_t streamId);
+    uint16_t beginLiveTx() override;
+    void sendLiveTxFrame(uint16_t streamId, const uint8_t *ambe) override;
+    void endLiveTx(uint16_t streamId) override;
 
     // Originates one transmission encoding real PCM audio via the ThumbDV,
     // for exercising/verifying the transmit path against a real reflector
@@ -101,7 +92,7 @@ public:
     void sendTestTransmission(const std::string &pcmPath);
 
     // Main receive/keepalive/echo loop. Returns when g_running is cleared.
-    void run();
+    void run() override;
 
 private:
     ssize_t recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs);
@@ -125,6 +116,8 @@ private:
     uint16_t m_rxStreamId = 0;
     uint16_t m_lastRxStreamId = 0xFFFF; // sentinel: no valid stream uses this on the wire in practice here
     std::vector<std::array<uint8_t, AMBE_SIZE>> m_rxAmbeFrames;
+    DStarHeader m_rxHeader;
+    dstar::SlowDataDecoder m_rxSlowData;
 
     uint16_t m_txStreamCounter = 0;
     uint8_t m_liveTxPacketId = 0;

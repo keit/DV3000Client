@@ -29,6 +29,7 @@ GuiSettings GuiSettings::load() {
     if (obj.contains("callsign")) s.callsign = obj["callsign"].toString();
     if (obj.contains("suffix")) s.suffix = obj["suffix"].toString();
     if (obj.contains("module_suffix")) s.moduleSuffix = obj["module_suffix"].toString();
+    if (obj.contains("tx_message")) s.txMessage = obj["tx_message"].toString();
     if (obj.contains("audio_input_device")) s.audioInputDevice = obj["audio_input_device"].toString();
     if (obj.contains("audio_output_device")) s.audioOutputDevice = obj["audio_output_device"].toString();
     if (obj.contains("thumbdv_device")) s.thumbdvDevice = obj["thumbdv_device"].toString();
@@ -61,6 +62,7 @@ bool GuiSettings::save() const {
     obj["callsign"] = callsign;
     obj["suffix"] = suffix;
     obj["module_suffix"] = moduleSuffix;
+    obj["tx_message"] = txMessage;
     obj["audio_input_device"] = audioInputDevice;
     obj["audio_output_device"] = audioOutputDevice;
     obj["thumbdv_device"] = thumbdvDevice;

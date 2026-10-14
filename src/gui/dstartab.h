@@ -40,7 +40,7 @@ class DStarTab : public ProtocolTab {
 public:
     explicit DStarTab(const GuiSettings &settings, QWidget *parent = nullptr);
 
-    void applySettings(const GuiSettings &settings) { m_settings = settings; }
+    void applySettings(const GuiSettings &settings);
 
     QPushButton *pttButton() const override { return m_pttButton; }
     QPushButton *connectButton() const override { return m_connectButton; }
@@ -57,12 +57,28 @@ private:
     bool hasValidReflectorSelection() const;
     QString selectedHost() const;
     QString selectedReflectorName() const;
+    bool selectedIsDPlus() const;
+    // The module picked: 'A'..'Z', '*' for all modules (DPlus only), 0 if
+    // none (or all, with a DExtra reflector selected).
+    char selectedModule() const;
+    // Greys out "All modules" unless a DPlus reflector/gateway is selected.
+    void updateModuleChoices();
     void onConnectClicked();
 
     void startConnect();
-    void connectWorker(QString host, QString reflectorName, char targetModule, GuiSettings settings);
-    void onConnectFinished(bool ok, QString error, QString reflectorName, char targetModule);
+    void connectWorker(QString host, QString reflectorName, bool isDPlus, char targetModule, GuiSettings settings);
+    // DExtra or DPlus specifics of connectWorker: create and link m_client.
+    // Returns an error message, empty on success; *note gets anything the
+    // status line should add (a read-only login).
+    QString connectDExtra(const QString &host, char targetModule, const GuiSettings &settings);
+    QString connectDPlus(QString host, const QString &reflectorName, char targetModule, const GuiSettings &settings,
+                         QString *note, bool *txAllowed);
+    void onConnectFinished(bool ok, QString error, QString reflectorName, char targetModule, QString note,
+                           bool txAllowed);
     void onHeaderReceived(dextra::DStarHeader header);
+    // Fills in the message of that header's header-box display and Last
+    // Heard row, if they're still that transmission's.
+    void onTxMessageReceived(dextra::DStarHeader header, QString message);
     void addLastHeardEntry(const dextra::DStarHeader &header);
 
     void startDisconnect();
@@ -93,6 +109,9 @@ private:
     GuiSettings m_settings;
 
     QComboBox *m_reflectorCombo;
+    // The reflector selected when the list began refreshing, to select again.
+    QString m_pickBeforeReset;
+    bool m_pickBeforeResetDPlus = false;
     ReflectorListModel *m_model;
     QComboBox *m_targetModule;
     AudioLevelsPanel *m_audioLevels;
@@ -106,6 +125,7 @@ private:
     QLabel *m_urCallLabel;
     QLabel *m_myCallLabel;
     QLabel *m_myCall2Label;
+    QLabel *m_txMessageLabel;
     QTableWidget *m_lastHeardTable;
 
     // Which reflector/module m_lastHeardTable's entries are attributed to
@@ -113,7 +133,12 @@ private:
     // linked to one reflector+module at a time, so every station heard
     // during it was necessarily heard via that same one.
     QString m_connectedReflectorName;
-    char m_connectedModule = 0;
+    char m_connectedModule = 0; // '*' for all modules (DPlus)
+    bool m_connectedDPlus = false;
+    // False for a DPlus session on all modules or with a read-only login.
+    bool m_txAllowed = true;
+    // Set when the network thread ended the session, not the user.
+    bool m_lostConnection = false;
 
     // Live session state -- only meaningful while m_connected.
     std::unique_ptr<SerialDV::DVController> m_dv;
@@ -121,7 +146,7 @@ private:
     // vocoder_pipeline.h); declared after m_dv so it's destroyed first.
     std::unique_ptr<audio::VocoderPipeline> m_vocoder;
     audio::AlsaPcm m_capture, m_playback;
-    std::unique_ptr<dextra::DextraClient> m_client;
+    std::unique_ptr<dstar::DStarTransport> m_client; // DextraClient or DPlusClient
     audio::PcmQueue m_rxQueue;
     std::thread m_captureThread, m_playbackThread, m_networkThread;
     std::thread m_worker; // the in-flight connect/disconnect sequence, if any

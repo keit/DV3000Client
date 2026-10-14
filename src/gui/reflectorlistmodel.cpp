@@ -13,6 +13,35 @@
 namespace {
 
 constexpr const char *CACHE_KEY = "reflectors";
+// One "name address" line per entry.
+constexpr const char *DPLUS_CACHE_KEY = "dplus_hosts";
+
+std::vector<xlx::ReflectorInfo> toReflectorInfo(const std::vector<dplus::GatewayEntry> &list) {
+    std::vector<xlx::ReflectorInfo> out;
+    for (const auto &g : list) {
+        xlx::ReflectorInfo r;
+        r.name = g.name;
+        r.host = g.address;
+        r.comment = g.name.rfind("REF", 0) == 0 ? "DPlus reflector" : "DPlus gateway";
+        out.push_back(r);
+    }
+    return out;
+}
+
+QByteArray toCache(const std::vector<dplus::GatewayEntry> &list) {
+    QByteArray data;
+    for (const auto &g : list) data += QByteArray::fromStdString(g.name + " " + g.address + "\n");
+    return data;
+}
+
+std::vector<dplus::GatewayEntry> fromCache(const QByteArray &data) {
+    std::vector<dplus::GatewayEntry> list;
+    for (const QByteArray &line : data.split('\n')) {
+        QList<QByteArray> fields = line.split(' ');
+        if (fields.size() == 2) list.push_back({fields[0].toStdString(), fields[1].toStdString()});
+    }
+    return list;
+}
 
 QString displayText(const xlx::ReflectorInfo &r) {
     QString text = QString::fromStdString(r.name);
@@ -49,6 +78,10 @@ ReflectorListModel::ReflectorListModel(QObject *parent) : QAbstractListModel(par
             m_live = xlx::parseReflectorList(std::string(cached.constData(), static_cast<size_t>(cached.size())));
             rebuildRows();
         }
+        if (cache::read(DPLUS_CACHE_KEY, cached)) {
+            m_dplus = toReflectorInfo(fromCache(cached));
+            rebuildRows();
+        }
     });
 }
 
@@ -61,7 +94,7 @@ QVariant ReflectorListModel::data(const QModelIndex &index, int role) const {
     if (!index.isValid() || index.row() < 0 || index.row() >= static_cast<int>(m_rows.size()))
         return {};
 
-    const xlx::ReflectorInfo *r = m_rows[static_cast<size_t>(index.row())];
+    const xlx::ReflectorInfo *r = m_rows[static_cast<size_t>(index.row())].info;
     // EditRole matters here even though nothing in this model is actually
     // edited: QComboBox::itemText() (used to fill an editable combo's line
     // edit when a row is picked from its own dropdown, as opposed to from
@@ -72,6 +105,7 @@ QVariant ReflectorListModel::data(const QModelIndex &index, int role) const {
     if (role == Qt::DisplayRole || role == Qt::EditRole) return displayText(*r);
     if (role == HostRole) return QString::fromStdString(r->host);
     if (role == NameRole) return QString::fromStdString(r->name);
+    if (role == IsDPlusRole) return m_rows[static_cast<size_t>(index.row())].dplus;
     return {};
 }
 
@@ -111,6 +145,34 @@ void ReflectorListModel::refresh() {
     }).detach();
 }
 
+void ReflectorListModel::refreshDPlus(const QString &callsign) {
+    if (m_refreshingDPlus || callsign.isEmpty() || cache::isFresh(DPLUS_CACHE_KEY, cache::ONE_DAY_SECONDS)) return;
+    m_refreshingDPlus = true;
+    std::thread([this, callsign = callsign.toStdString()] {
+        std::vector<dplus::GatewayEntry> list;
+        std::string error;
+        bool ok = dplus::authenticate(callsign, &list, error) && !list.empty();
+        QMetaObject::invokeMethod(
+            this,
+            [this, ok, list = std::move(list), error]() mutable {
+                m_refreshingDPlus = false;
+                if (ok) {
+                    setDPlusList(std::move(list));
+                } else {
+                    emit refreshFailed(QString::fromStdString("DPlus: " + error));
+                }
+            },
+            Qt::QueuedConnection);
+    }).detach();
+}
+
+void ReflectorListModel::setDPlusList(std::vector<dplus::GatewayEntry> list) {
+    if (list.empty()) return;
+    cache::write(DPLUS_CACHE_KEY, toCache(list));
+    m_dplus = toReflectorInfo(list);
+    rebuildRows();
+}
+
 void ReflectorListModel::applyLive(std::vector<xlx::ReflectorInfo> live) {
     m_live = std::move(live);
     rebuildRows();
@@ -119,10 +181,10 @@ void ReflectorListModel::applyLive(std::vector<xlx::ReflectorInfo> live) {
 void ReflectorListModel::rebuildRows() {
     beginResetModel();
     m_rows.clear();
-    m_rows.reserve(m_live.size() + m_fallback.size());
-    for (const auto &r : m_live) m_rows.push_back(&r);
-    for (const auto &r : m_fallback) m_rows.push_back(&r);
-    std::sort(m_rows.begin(), m_rows.end(),
-              [](const xlx::ReflectorInfo *a, const xlx::ReflectorInfo *b) { return a->name < b->name; });
+    m_rows.reserve(m_live.size() + m_fallback.size() + m_dplus.size());
+    for (const auto &r : m_live) m_rows.push_back({&r, false});
+    for (const auto &r : m_fallback) m_rows.push_back({&r, false});
+    for (const auto &r : m_dplus) m_rows.push_back({&r, true});
+    std::sort(m_rows.begin(), m_rows.end(), [](const Row &a, const Row &b) { return a.info->name < b.info->name; });
     endResetModel();
 }

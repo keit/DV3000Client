@@ -58,6 +58,7 @@ private:
     QLineEdit *m_callsign;
     QLineEdit *m_suffix;
     QComboBox *m_moduleSuffix;
+    QLineEdit *m_txMessage;
     QComboBox *m_audioInput;
     QPushButton *m_audioInputTest;
     QProgressBar *m_audioInputLevel;

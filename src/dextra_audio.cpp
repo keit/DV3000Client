@@ -4,7 +4,7 @@
 
 namespace dextra {
 
-void captureThread(audio::VocoderPipeline *vocoder, audio::AlsaPcm *capture, DextraClient *client,
+void captureThread(audio::VocoderPipeline *vocoder, audio::AlsaPcm *capture, dstar::DStarTransport *client,
                     std::function<bool()> pttActive) {
     bool transmitting = false;
     uint16_t streamId = 0;

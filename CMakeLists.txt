@@ -205,7 +205,7 @@ if(Qt6_FOUND)
     src/gui/talkgrouplistmodel.cpp
     resources/dv3kclient.qrc
   )
-  target_link_libraries(dv3kclient alsa_audio dextra_audio dmr_audio dmr_client dmr_rewind ftdi_latency xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
+  target_link_libraries(dv3kclient alsa_audio dextra_audio dplus_client dmr_audio dmr_client dmr_rewind ftdi_latency xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
   target_include_directories(dv3kclient PRIVATE src ${ALSA_INCLUDE_DIRS})
   # Shown in Help > About and --version; bump it in project() above.
   target_compile_definitions(dv3kclient PRIVATE DV3K_VERSION="${DV3K_VERSION}")

@@ -186,6 +186,19 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     m_moduleSuffix = new QComboBox;
     for (char c = 'A'; c <= 'Z'; c++) m_moduleSuffix->addItem(QString(QChar(c)));
     m_moduleSuffix->setCurrentText(current.moduleSuffix);
+    // See GuiSettings::moduleSuffix.
+    m_moduleSuffix->setToolTip("Which of your D-Star terminals this app is, e.g. P for ZL2MIM P. Use a letter your\n"
+                               "radios and hotspots don't: REF reflectors and DPlus gateways allow one login per\n"
+                               "name. For DPlus it must be one of your registered terminals, or you can listen but\n"
+                               "not transmit.");
+
+    m_txMessage = new QLineEdit(current.txMessage);
+    m_txMessage->setMaxLength(20);
+    m_txMessage->setPlaceholderText("optional, up to 20 characters");
+    m_txMessage->setToolTip("Sent with every D-Star transmission, like a radio's TX message: shown on\n"
+                            "other stations' radios and on reflector and repeater dashboards.");
+    // Slow data carries plain ASCII.
+    m_txMessage->setValidator(new QRegularExpressionValidator(QRegularExpression("[ -~]*"), m_txMessage));
 
     m_audioInput = makeAlsaDeviceCombo(listAlsaHardwareDevices(SND_PCM_STREAM_CAPTURE), current.audioInputDevice);
     m_audioOutput = makeAlsaDeviceCombo(listAlsaHardwareDevices(SND_PCM_STREAM_PLAYBACK), current.audioOutputDevice);
@@ -443,6 +456,7 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     auto *dstarForm = new QFormLayout(dstarBox);
     dstarForm->addRow("Suffix:", m_suffix);
     dstarForm->addRow("Module suffix:", m_moduleSuffix);
+    dstarForm->addRow("TX message:", m_txMessage);
 
     auto *dmrBox = new QGroupBox("DMR");
     auto *dmrForm = new QFormLayout(dmrBox);
@@ -649,6 +663,7 @@ GuiSettings SettingsDialog::settings() const {
     s.callsign = m_callsign->text().trimmed().toUpper();
     s.suffix = m_suffix->text().trimmed().toUpper();
     s.moduleSuffix = m_moduleSuffix->currentText();
+    s.txMessage = m_txMessage->text();
     s.audioInputDevice = m_audioInput->currentText().trimmed();
     s.audioOutputDevice = m_audioOutput->currentText().trimmed();
     s.thumbdvMode = m_thumbdvMode->currentData().toString();

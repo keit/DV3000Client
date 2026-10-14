@@ -20,6 +20,7 @@
 #include <QMetaObject>
 #include <QPushButton>
 #include <QShortcut>
+#include <QStandardItemModel>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QTableWidget>
@@ -29,6 +30,7 @@
 
 #include "audio_gain.h"
 #include "audiolevelspanel.h"
+#include "dplus_client.h"
 #include "reflectorlistmodel.h"
 
 namespace {
@@ -57,8 +59,10 @@ QString favouritesFilePath() {
 }
 
 QString favouriteText(const QString &reflectorName, char module) {
-    return reflectorName + " \u2013 module " + QChar(module);
+    return reflectorName + (module == '*' ? QString(" \u2013 all modules") : QString(" \u2013 module ") + QChar(module));
 }
+
+QString moduleText(char module) { return module == '*' ? QString("all") : QString(QChar(module)); }
 } // namespace
 
 DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(parent), m_settings(settings) {
@@ -81,7 +85,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     m_reflectorCombo->setInsertPolicy(QComboBox::NoInsert);
     m_reflectorCombo->setModel(m_model);
     m_reflectorCombo->setCurrentIndex(-1);
-    m_reflectorCombo->lineEdit()->setPlaceholderText("Search reflectors (e.g. 123, XLX123, XRF587)...");
+    m_reflectorCombo->lineEdit()->setPlaceholderText("Search reflectors and gateways (e.g. 123, XLX123, XRF587, REF001, ZL2VH)...");
     m_reflectorCombo->setStyleSheet(
         QString("QComboBox QAbstractItemView { background-color: %1; }").arg(kLightGrayBackground));
 
@@ -93,7 +97,27 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     // the box would silently end up with reflector #1 "selected" (and its
     // name filled into the line edit) as soon as that background fetch
     // completes, whether or not the user has touched anything yet.
-    connect(m_model, &QAbstractItemModel::modelReset, this, [this] { m_reflectorCombo->setCurrentIndex(-1); });
+    //
+    // A refresh after the user has picked something (the DPlus list is
+    // refreshed by every DPlus connect) mustn't lose that pick, though:
+    // remember it across the reset and select the same entry again.
+    connect(m_model, &QAbstractItemModel::modelAboutToBeReset, this, [this] {
+        m_pickBeforeReset = selectedReflectorName();
+        m_pickBeforeResetDPlus = selectedIsDPlus();
+    });
+    connect(m_model, &QAbstractItemModel::modelReset, this, [this] {
+        m_reflectorCombo->setCurrentIndex(-1);
+        if (m_pickBeforeReset.isEmpty()) return;
+        for (int row = 0; row < m_model->rowCount(); row++) {
+            QModelIndex index = m_model->index(row, 0);
+            if (m_model->data(index, ReflectorListModel::NameRole).toString() == m_pickBeforeReset &&
+                m_model->data(index, ReflectorListModel::IsDPlusRole).toBool() == m_pickBeforeResetDPlus) {
+                m_reflectorCombo->setCurrentIndex(row);
+                break;
+            }
+        }
+        m_pickBeforeReset.clear();
+    });
 
     auto *completer = new QCompleter(m_model, this);
     completer->setCompletionRole(Qt::DisplayRole);
@@ -120,10 +144,16 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
 
     // Index 0 is a placeholder, not a real module -- without it the combo
     // box would silently start on "A" already selected, letting Connect
-    // send you to a module you never actually chose.
+    // send you to a module you never actually chose. Each item's data is
+    // its module (see selectedModule()). "All modules" plays every
+    // module's traffic, like a radio's Repeater Monitor -- DPlus only,
+    // since a DExtra link is to one module.
     m_targetModule = new QComboBox;
-    m_targetModule->addItem("Select module...");
-    for (char c = 'A'; c <= 'Z'; c++) m_targetModule->addItem(QString(QChar(c)));
+    m_targetModule->addItem("Select module...", 0);
+    m_targetModule->addItem("All modules", static_cast<int>('*'));
+    m_targetModule->setItemData(1, "REF reflectors and DPlus gateways only: listen to every module (no transmitting)",
+                                Qt::ToolTipRole);
+    for (char c = 'A'; c <= 'Z'; c++) m_targetModule->addItem(QString(QChar(c)), static_cast<int>(c));
     connect(m_targetModule, &QComboBox::currentIndexChanged, this, &DStarTab::updateConnectButtonEnabled);
 
     m_connectButton = new QPushButton("Connect");
@@ -156,6 +186,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     m_urCallLabel = new QLabel("—");
     m_myCallLabel = new QLabel("—");
     m_myCall2Label = new QLabel("—");
+    m_txMessageLabel = new QLabel("—");
 
     auto *headerBox = new QGroupBox("Last received header");
     auto *headerForm = new QFormLayout(headerBox);
@@ -164,14 +195,15 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     headerForm->addRow("URCALL:", m_urCallLabel);
     headerForm->addRow("RPT1:", m_rpt1Label);
     headerForm->addRow("RPT2:", m_rpt2Label);
+    headerForm->addRow("TX message:", m_txMessageLabel);
 
     // Newest first, capped in addLastHeardEntry() -- reflector/module come
     // from the connection itself (m_connectedReflectorName/Module), not
     // parsed out of the header, since a session only ever links to one
     // reflector+module and everything heard during it necessarily came
     // via that same one.
-    m_lastHeardTable = new QTableWidget(0, 4);
-    m_lastHeardTable->setHorizontalHeaderLabels({"Time", "Callsign", "Reflector", "Module"});
+    m_lastHeardTable = new QTableWidget(0, 5);
+    m_lastHeardTable->setHorizontalHeaderLabels({"Time", "Callsign", "Reflector", "Module", "Message"});
     m_lastHeardTable->verticalHeader()->setVisible(false);
     m_lastHeardTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_lastHeardTable->setSelectionMode(QAbstractItemView::NoSelection);
@@ -180,12 +212,13 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    m_lastHeardTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
     m_lastHeardTable->setStyleSheet(QString("QTableWidget { background-color: %1; }").arg(kLightGrayBackground));
 
     m_addFavouriteButton = new QPushButton("Add to favourites");
     m_addFavouriteButton->setEnabled(false);
     connect(m_addFavouriteButton, &QPushButton::clicked, this, [this] {
-        addFavouriteItem(selectedReflectorName(), static_cast<char>('A' + m_targetModule->currentIndex() - 1));
+        addFavouriteItem(selectedReflectorName(), selectedModule());
         saveFavourites();
         updateAddFavouriteEnabled();
     });
@@ -255,7 +288,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
             stopRecording();
             return;
         }
-        if (startRecording(QString("D-Star %1 %2").arg(m_connectedReflectorName).arg(QChar(m_connectedModule))).isEmpty()) m_audioLevels->setRecording(false);
+        if (startRecording(QString("D-Star %1 %2").arg(m_connectedReflectorName).arg(moduleText(m_connectedModule))).isEmpty()) m_audioLevels->setRecording(false);
     });
     layout->addWidget(m_audioLevels);
 
@@ -291,7 +324,15 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     loadFavourites();
 
     m_model->refresh();
+    // Fetching the DPlus list means logging in as the callsign, so not
+    // before one has been saved (the default isn't the user's).
+    if (QFile::exists(GuiSettings::filePath())) m_model->refreshDPlus(m_settings.callsign);
     updateConnectButtonEnabled();
+}
+
+void DStarTab::applySettings(const GuiSettings &settings) {
+    m_settings = settings;
+    m_model->refreshDPlus(m_settings.callsign);
 }
 
 QWidget *DStarTab::spaceExemptFocusWidget() const { return m_reflectorCombo->lineEdit(); }
@@ -317,6 +358,26 @@ QString DStarTab::selectedReflectorName() const {
     return m_model->data(m_model->index(m_reflectorCombo->currentIndex(), 0), ReflectorListModel::NameRole).toString();
 }
 
+bool DStarTab::selectedIsDPlus() const {
+    if (!hasValidReflectorSelection()) return false;
+    return m_model->data(m_model->index(m_reflectorCombo->currentIndex(), 0), ReflectorListModel::IsDPlusRole).toBool();
+}
+
+char DStarTab::selectedModule() const {
+    char module = static_cast<char>(m_targetModule->currentData().toInt());
+    if (module == '*' && !selectedIsDPlus()) return 0;
+    return module;
+}
+
+void DStarTab::updateModuleChoices() {
+    // Only greyed out, never deselected: changing the selection here would
+    // re-enter updateConnectButtonEnabled(). selectedModule() treats it as
+    // no choice for a DExtra reflector.
+    if (auto *model = qobject_cast<QStandardItemModel *>(m_targetModule->model())) {
+        if (QStandardItem *all = model->item(1)) all->setEnabled(selectedIsDPlus());
+    }
+}
+
 void DStarTab::onConnectClicked() {
     if (m_busy) return;
     if (m_connected) {
@@ -332,7 +393,7 @@ void DStarTab::startConnect() {
         QMessageBox::information(this, "No reflector selected", "Pick a reflector from the list first.");
         return;
     }
-    if (m_targetModule->currentIndex() <= 0) {
+    if (selectedModule() == 0) {
         QMessageBox::information(this, "No module selected", "Pick a target module first.");
         return;
     }
@@ -342,18 +403,19 @@ void DStarTab::startConnect() {
     }
 
     QString reflectorName = selectedReflectorName();
-    char targetModule = m_targetModule->currentText().at(0).toLatin1();
+    char targetModule = selectedModule();
+    bool isDPlus = selectedIsDPlus();
     m_connectButton->setStyleSheet("");
     m_statusLabel->setStyleSheet(kStatusLabelStyle);
-    setBusy(true, "Connecting to " + host + "...");
+    setBusy(true, "Connecting to " + (isDPlus ? reflectorName : host) + "...");
 
     if (m_worker.joinable()) m_worker.join();
-    m_worker = std::thread(&DStarTab::connectWorker, this, host, reflectorName, targetModule, m_settings);
+    m_worker = std::thread(&DStarTab::connectWorker, this, host, reflectorName, isDPlus, targetModule, m_settings);
 }
 
-void DStarTab::connectWorker(QString host, QString reflectorName, char targetModule, GuiSettings settings) {
-    QString error;
-    bool ok = true;
+void DStarTab::connectWorker(QString host, QString reflectorName, bool isDPlus, char targetModule, GuiSettings settings) {
+    QString error, note;
+    bool ok = true, txAllowed = true;
 
     m_dv = std::make_unique<SerialDV::DVController>();
     if (!m_dv->open(settings.thumbdvTarget().toStdString())) {
@@ -379,30 +441,10 @@ void DStarTab::connectWorker(QString host, QString reflectorName, char targetMod
     }
 
     if (ok) {
-        char myModule = settings.moduleSuffix.isEmpty() ? 'B' : settings.moduleSuffix.at(0).toLatin1();
-        m_client = std::make_unique<dextra::DextraClient>(
-            m_dv.get(), [this](const short *pcm) { m_rxQueue.push(pcm); }, nullptr);
-        m_client->setVocoder(m_vocoder.get());
-        m_client->setIdentity(settings.callsign.toStdString(), myModule, settings.suffix.toStdString());
-        // Runs on the network thread once client->run() starts -- marshal
-        // to the GUI thread rather than touching widgets directly here.
-        m_client->setHeaderSink([this](const dextra::DStarHeader &header) {
-            QMetaObject::invokeMethod(
-                this, [this, header]() { onHeaderReceived(header); }, Qt::QueuedConnection);
-        });
-
-        if (!m_client->open(host.toStdString(), targetModule)) {
-            error = "Failed to open network socket to " + host;
-            ok = false;
-        }
-    }
-
-    if (ok) {
         dextra::g_running = 1;
-        if (!m_client->link()) {
-            error = "Reflector did not accept the connection (NAK or timeout)";
-            ok = false;
-        }
+        error = isDPlus ? connectDPlus(host, reflectorName, targetModule, settings, &note, &txAllowed)
+                      : connectDExtra(host, targetModule, settings);
+        ok = error.isEmpty();
     }
 
     if (!ok) {
@@ -416,13 +458,99 @@ void DStarTab::connectWorker(QString host, QString reflectorName, char targetMod
 
     QMetaObject::invokeMethod(
         this,
-        [this, ok, error, reflectorName, targetModule]() {
-            onConnectFinished(ok, error, reflectorName, targetModule);
+        [this, ok, error, reflectorName, isDPlus, targetModule, note, txAllowed]() {
+            m_connectedDPlus = isDPlus;
+            onConnectFinished(ok, error, reflectorName, targetModule, note, txAllowed);
         },
         Qt::QueuedConnection);
 }
 
-void DStarTab::onConnectFinished(bool ok, QString error, QString reflectorName, char targetModule) {
+QString DStarTab::connectDExtra(const QString &host, char targetModule, const GuiSettings &settings) {
+    char myModule = settings.moduleSuffix.isEmpty() ? 'B' : settings.moduleSuffix.at(0).toLatin1();
+    auto client = std::make_unique<dextra::DextraClient>(
+        m_dv.get(), [this](const short *pcm) { m_rxQueue.push(pcm); }, nullptr);
+    client->setVocoder(m_vocoder.get());
+    client->setIdentity(settings.callsign.toStdString(), myModule, settings.suffix.toStdString());
+    client->setTxMessage(settings.txMessage.toStdString());
+    // Runs on the network thread once client->run() starts -- marshal
+    // to the GUI thread rather than touching widgets directly here.
+    client->setHeaderSink([this](const dextra::DStarHeader &header) {
+        QMetaObject::invokeMethod(
+            this, [this, header]() { onHeaderReceived(header); }, Qt::QueuedConnection);
+    });
+    client->setTxMessageSink([this](const dextra::DStarHeader &header, const std::string &message) {
+        QMetaObject::invokeMethod(
+            this, [this, header, text = QString::fromStdString(message)]() { onTxMessageReceived(header, text); },
+            Qt::QueuedConnection);
+    });
+
+    if (!client->open(host.toStdString(), targetModule)) return "Failed to open network socket to " + host;
+    if (!client->link()) return "Reflector did not accept the connection (NAK or timeout)";
+    m_client = std::move(client);
+    return {};
+}
+
+QString DStarTab::connectDPlus(QString host, const QString &reflectorName, char targetModule,
+                               const GuiSettings &settings, QString *note, bool *txAllowed) {
+    // Log in to the DPlus authentication server first -- reflectors and
+    // gateways only accept callsigns it has vouched for. Its reply is the
+    // current list, so the address comes from there when it's listed.
+    std::vector<dplus::GatewayEntry> list;
+    std::string authError;
+    if (!dplus::authenticate(settings.callsign.toStdString(), &list, authError))
+        return "Couldn't log in to the DPlus authentication server: " + QString::fromStdString(authError);
+    for (const auto &g : list) {
+        if (QString::fromStdString(g.name) == reflectorName) host = QString::fromStdString(g.address);
+    }
+    QMetaObject::invokeMethod(
+        m_model, [model = m_model, list]() mutable { model->setDPlusList(std::move(list)); }, Qt::QueuedConnection);
+
+    char suffix = settings.moduleSuffix.isEmpty() ? ' ' : settings.moduleSuffix.at(0).toLatin1();
+    QString login = settings.callsign + (suffix == ' ' ? QString() : QString(" ") + QChar(suffix));
+    auto client = std::make_unique<dplus::DPlusClient>();
+    client->setIdentity(settings.callsign.toStdString(), suffix, settings.suffix.toStdString());
+    client->setTxMessage(settings.txMessage.toStdString());
+    client->setTarget(reflectorName.toStdString(), targetModule);
+    client->setLiveRx(m_vocoder.get(), [this](const short *pcm) { m_rxQueue.push(pcm); });
+    // Every module's streams' headers, not just the one played -- see
+    // dplus_client.h. Marshalled to the GUI thread, as for DExtra.
+    client->setHeaderSink([this](const dextra::DStarHeader &header) {
+        QMetaObject::invokeMethod(
+            this, [this, header]() { onHeaderReceived(header); }, Qt::QueuedConnection);
+    });
+    client->setTxMessageSink([this](const dextra::DStarHeader &header, const std::string &message) {
+        QMetaObject::invokeMethod(
+            this, [this, header, text = QString::fromStdString(message)]() { onTxMessageReceived(header, text); },
+            Qt::QueuedConnection);
+    });
+
+    if (!client->open(host.toStdString())) return "Failed to open network socket to " + host;
+    switch (client->link()) {
+    case dplus::LinkResult::Accepted:
+        break;
+    case dplus::LinkResult::ReadOnly:
+        *note = QString("listen only: %1 isn't one of %2's registered D-Star terminals (module suffix in Settings)")
+                    .arg(login, settings.callsign);
+        *txAllowed = false;
+        break;
+    case dplus::LinkResult::Refused:
+        if (client->loginReply() == "BUSY")
+            return QString("%1 says %2 is already connected. Each name gets one login: turn off whatever else is "
+                           "linked as %2 (a radio's Repeater Monitor or Terminal Mode, a hotspot), or pick a "
+                           "different module suffix in Settings.")
+                .arg(reflectorName, login);
+        return QString("%1 refused the login as %2 (%3). Is %4 registered for D-Star?")
+            .arg(reflectorName, login, QString::fromStdString(client->loginReply()), settings.callsign);
+    case dplus::LinkResult::NoAnswer:
+        return QString("No answer from %1 (%2)").arg(reflectorName, host);
+    }
+    if (targetModule == '*') *txAllowed = false;
+    m_client = std::move(client);
+    return {};
+}
+
+void DStarTab::onConnectFinished(bool ok, QString error, QString reflectorName, char targetModule, QString note,
+                                 bool txAllowed) {
     if (!ok) {
         setBusy(false, "Connect failed: " + error);
         m_connectButton->setStyleSheet(kErrorButtonStyle);
@@ -436,20 +564,38 @@ void DStarTab::onConnectFinished(bool ok, QString error, QString reflectorName, 
     m_urCallLabel->setText("—");
     m_myCallLabel->setText("—");
     m_myCall2Label->setText("—");
+    m_txMessageLabel->setText("—");
 
     m_connectedReflectorName = reflectorName.isEmpty() ? "?" : reflectorName;
     m_connectedModule = targetModule;
+    m_txAllowed = txAllowed;
 
     m_pttActive.store(false);
     m_captureThread = std::thread(dextra::captureThread, m_vocoder.get(), &m_capture, m_client.get(),
                                    [this] { return m_pttActive.load(); });
     m_playbackThread = std::thread(audio::playbackThread, &m_playback, &m_rxQueue, &dextra::g_running, &m_recorder,
                                    &m_autoLevel);
-    m_networkThread = std::thread([this] { m_client->run(); });
+    // run() returning by itself means the link is gone (a DPlus server
+    // that went silent); disconnecting the rest of the session is then
+    // the GUI thread's job.
+    m_networkThread = std::thread([this] {
+        m_client->run();
+        if (!dextra::g_running) return;
+        QMetaObject::invokeMethod(
+            this,
+            [this] {
+                if (!m_connected || m_busy) return;
+                m_lostConnection = true;
+                startDisconnect();
+            },
+            Qt::QueuedConnection);
+    });
 
-    setConnected(true, QString("Connected to %1, module %2")
-                            .arg(reflectorName.isEmpty() ? "?" : reflectorName)
-                            .arg(QChar(targetModule)));
+    QString status = targetModule == '*'
+                         ? QString("Connected to %1, all modules (listen only)").arg(m_connectedReflectorName)
+                         : QString("Connected to %1, module %2").arg(m_connectedReflectorName).arg(QChar(targetModule));
+    if (!note.isEmpty()) status += " \u2014 " + note;
+    setConnected(true, status);
 }
 
 void DStarTab::startDisconnect() {
@@ -471,6 +617,14 @@ void DStarTab::onDisconnectFinished() {
     m_urCallLabel->setText("—");
     m_myCallLabel->setText("—");
     m_myCall2Label->setText("—");
+    m_txMessageLabel->setText("—");
+    if (m_lostConnection) {
+        m_lostConnection = false;
+        setConnected(false, "Connection to " + m_connectedReflectorName + " lost.");
+        m_connectButton->setStyleSheet(kErrorButtonStyle);
+        m_statusLabel->setStyleSheet(kErrorLabelStyle);
+        return;
+    }
     setConnected(false, "Disconnected.");
 }
 
@@ -480,18 +634,46 @@ void DStarTab::onHeaderReceived(dextra::DStarHeader header) {
     m_urCallLabel->setText(QString::fromStdString(header.urCall));
     m_myCallLabel->setText(QString::fromStdString(header.myCall));
     m_myCall2Label->setText(QString::fromStdString(header.myCall2));
+    m_txMessageLabel->setText("—");
     addLastHeardEntry(header);
 }
 
-void DStarTab::addLastHeardEntry(const dextra::DStarHeader &header) {
+namespace {
+QString lastHeardCallsign(const dextra::DStarHeader &header) {
     QString callsign = QString::fromStdString(header.myCall);
     if (!header.myCall2.empty()) callsign += "/" + QString::fromStdString(header.myCall2);
+    return callsign;
+}
+} // namespace
+
+void DStarTab::onTxMessageReceived(dextra::DStarHeader header, QString message) {
+    QString callsign = lastHeardCallsign(header);
+    // The header box shows the latest header, which may be another
+    // stream's by now (a DPlus session sees every module's).
+    if (m_myCallLabel->text() == QString::fromStdString(header.myCall) &&
+        m_rpt1Label->text() == QString::fromStdString(header.rpt1))
+        m_txMessageLabel->setText(message);
+    // The newest Last Heard row for this callsign: its row was added when
+    // the header came, moments before, so it's near the top.
+    for (int row = 0; row < m_lastHeardTable->rowCount() && row < 10; row++) {
+        QTableWidgetItem *item = m_lastHeardTable->item(row, 1);
+        if (item && item->text() == callsign) {
+            m_lastHeardTable->setItem(row, 4, new QTableWidgetItem(message));
+            break;
+        }
+    }
+}
+
+void DStarTab::addLastHeardEntry(const dextra::DStarHeader &header) {
+    QString callsign = lastHeardCallsign(header);
 
     m_lastHeardTable->insertRow(0);
     m_lastHeardTable->setItem(0, 0, new QTableWidgetItem(QTime::currentTime().toString("HH:mm:ss")));
     m_lastHeardTable->setItem(0, 1, new QTableWidgetItem(callsign));
     m_lastHeardTable->setItem(0, 2, new QTableWidgetItem(m_connectedReflectorName));
-    m_lastHeardTable->setItem(0, 3, new QTableWidgetItem(QString(QChar(m_connectedModule))));
+    // A DPlus session gets every module's streams; each says which it's on.
+    char module = m_connectedDPlus ? dplus::streamModule(header) : m_connectedModule;
+    m_lastHeardTable->setItem(0, 3, new QTableWidgetItem(module == ' ' ? QString("?") : QString(QChar(module))));
 
     // Newest-first log, capped rather than left to grow unbounded over a
     // long session -- the oldest entries are at the bottom.
@@ -554,7 +736,7 @@ void DStarTab::setConnected(bool connected, const QString &status) {
     m_connectButton->setText(connected ? "Disconnect" : "Connect");
     m_connectButton->setStyleSheet(connected ? kConnectedButtonStyle : "");
     m_statusLabel->setStyleSheet(kStatusLabelStyle);
-    m_pttButton->setEnabled(connected);
+    m_pttButton->setEnabled(connected && m_txAllowed);
     if (!connected) m_pttButton->setChecked(false); // in case we disconnected mid-send
     setBusy(false, status);
 }
@@ -576,16 +758,16 @@ void DStarTab::updateConnectButtonEnabled() {
     // Once connected, the button becomes Disconnect and should always stay
     // usable regardless of what's selected in the (by then disabled)
     // reflector list and module combo.
-    bool readyToConnect = !selectedHost().isEmpty() && m_targetModule->currentIndex() > 0;
+    updateModuleChoices();
+    bool readyToConnect = !selectedHost().isEmpty() && selectedModule() != 0;
     m_connectButton->setEnabled(!m_busy && (m_connected || readyToConnect));
     updateAddFavouriteEnabled();
 }
 
 void DStarTab::updateAddFavouriteEnabled() {
     if (!m_addFavouriteButton) return; // a selection signal fired mid-construction
-    bool ready = !selectedHost().isEmpty() && m_targetModule->currentIndex() > 0;
-    m_addFavouriteButton->setEnabled(
-        ready && !isFavourite(selectedReflectorName(), static_cast<char>('A' + m_targetModule->currentIndex() - 1)));
+    bool ready = !selectedHost().isEmpty() && selectedModule() != 0;
+    m_addFavouriteButton->setEnabled(ready && !isFavourite(selectedReflectorName(), selectedModule()));
 }
 
 bool DStarTab::isFavourite(const QString &reflectorName, char module) const {
@@ -599,7 +781,8 @@ bool DStarTab::isFavourite(const QString &reflectorName, char module) const {
 }
 
 void DStarTab::addFavouriteItem(const QString &reflectorName, char module) {
-    if (reflectorName.isEmpty() || module < 'A' || module > 'Z' || isFavourite(reflectorName, module)) return;
+    if (reflectorName.isEmpty() || ((module < 'A' || module > 'Z') && module != '*') || isFavourite(reflectorName, module))
+        return;
     auto *item = new QListWidgetItem(favouriteText(reflectorName, module));
     item->setData(kFavouriteNameRole, reflectorName);
     item->setData(kFavouriteModuleRole, static_cast<int>(module));
@@ -619,7 +802,7 @@ void DStarTab::selectFavourite(const QString &reflectorName, char module) {
     for (int row = 0; row < m_model->rowCount(); row++) {
         if (m_model->data(m_model->index(row, 0), ReflectorListModel::NameRole).toString() == reflectorName) {
             m_reflectorCombo->setCurrentIndex(row);
-            m_targetModule->setCurrentIndex(module - 'A' + 1);
+            m_targetModule->setCurrentIndex(qMax(0, m_targetModule->findData(static_cast<int>(module))));
             return;
         }
     }

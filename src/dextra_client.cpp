@@ -5,6 +5,7 @@
 // server this talks to -- rather than reconstructed from memory.
 
 #include "dextra_client.h"
+#include "dstar_slowdata.h"
 
 #include <cmath>
 #include <cstring>
@@ -289,6 +290,8 @@ void DextraClient::onHeaderPacket(const uint8_t *buf) {
     m_rxStreamId = streamId;
     m_rxActive = true;
     m_rxAmbeFrames.clear();
+    m_rxHeader = header;
+    m_rxSlowData.reset();
 
     if (m_liveHeaderSink) m_liveHeaderSink(header);
 }
@@ -299,6 +302,12 @@ void DextraClient::onFramePacket(const uint8_t *buf) {
 
     uint8_t packetId = buf[14];
     bool isLast = (packetId & 0x40) != 0;
+    // Slow data at 24, after the 9 AMBE bytes: the sender's TX message.
+    if (!isLast && m_rxSlowData.add(packetId, buf + 24)) {
+        std::string message = m_rxSlowData.message();
+        std::fprintf(stderr, "dextra_client: RX streamId=%u TX message \"%s\"\n", streamId, message.c_str());
+        if (m_txMessageSink && !message.empty()) m_txMessageSink(m_rxHeader, message);
+    }
 
     if (m_liveMode) {
         // Decode-on-arrival, straight to the playback sink -- no
@@ -425,6 +434,9 @@ void DextraClient::sendOriginatedHeader(uint16_t streamId) {
     // elsewhere in reference DExtra client implementations.
     ::send(m_fd, pkt.data(), pkt.size(), 0);
     ::send(m_fd, pkt.data(), pkt.size(), 0);
+    // The callsign fields start after the tag, stream ID, 0x80 and flags.
+    std::fprintf(stderr, "dextra_client: TX streamId=%u %s\n", streamId,
+                 dstar::describeTxHeader(pkt.data() + 18, m_txMessage).c_str());
 }
 
 void DextraClient::sendOriginatedFrame(uint16_t streamId, uint8_t packetId, const uint8_t *ambe, bool last) {
@@ -437,7 +449,9 @@ void DextraClient::sendOriginatedFrame(uint16_t streamId, uint8_t packetId, cons
         pkt.insert(pkt.end(), LASTFRAME_IDLE, LASTFRAME_IDLE + AMBE_SIZE + DVDATA_SIZE);
     } else {
         pkt.insert(pkt.end(), ambe, ambe + AMBE_SIZE);
-        pkt.insert(pkt.end(), {0x00, 0x00, 0x00}); // DVDATA (slow data), unused
+        uint8_t slow[DVDATA_SIZE];
+        dstar::slowData(packetId, m_txMessage, slow);
+        pkt.insert(pkt.end(), slow, slow + DVDATA_SIZE);
     }
 
     ::send(m_fd, pkt.data(), pkt.size(), 0);

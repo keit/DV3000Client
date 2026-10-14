@@ -23,7 +23,7 @@ namespace dextra {
 // key state, a GUI button, ...) rather than this assuming any particular
 // input device. vocoder must be at DVRate3600x2400 (D-Star's AMBE);
 // frames are sent from its reply thread as they come back encoded.
-void captureThread(audio::VocoderPipeline *vocoder, audio::AlsaPcm *capture, DextraClient *client,
+void captureThread(audio::VocoderPipeline *vocoder, audio::AlsaPcm *capture, dstar::DStarTransport *client,
                     std::function<bool()> pttActive);
 
 } // namespace dextra

@@ -10,7 +10,15 @@
 struct GuiSettings {
     QString callsign = "ZL2MIM";
     QString suffix; // MYCALL2 header field, e.g. a device/purpose suffix -- blank by default
+    // Which of the operator's D-Star terminals this app is: the letter in
+    // the 8th byte of MY ("ZL2MIM P") and of the DExtra/DPlus login. DPlus
+    // allows one login per name, so it must differ from the operator's
+    // other radios and hotspots that link at the same time, and be one of
+    // the callsign's registered terminals, or the login is read-only.
     QString moduleSuffix = "B";
+    // Up to 20 characters sent with every D-Star transmission, shown on
+    // other radios and on dashboards -- a radio's "TX message".
+    QString txMessage;
     QString audioInputDevice = "default";
     QString audioOutputDevice = "default";
     // Where the ThumbDV is: a local serial device, or a remote one served

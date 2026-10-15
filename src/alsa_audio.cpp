@@ -42,8 +42,11 @@ bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
     // Doubling it covers that without the local-serial path losing anything:
     // a few hundred ms to a second of extra latency is inaudible for a
     // half-duplex PTT voice app; audible dropouts aren't.
-    err = snd_pcm_set_params(m_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED,
-                              1, rate, 1, 40 * (1000000 / (rate / SerialDV::MBE_AUDIO_BLOCK_SIZE)));
+    unsigned int bufferTime = 40 * (1000000 / (rate / SerialDV::MBE_AUDIO_BLOCK_SIZE));
+    err = stream == SND_PCM_STREAM_PLAYBACK ? setPlaybackParams(rate, bufferTime) : -1;
+    if (err < 0)
+        err = snd_pcm_set_params(m_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, rate, 1,
+                                 bufferTime);
     if (err < 0) {
         std::fprintf(stderr, "audio: snd_pcm_set_params(%s) failed: %s\n",
                      device.c_str(), snd_strerror(err));
@@ -51,6 +54,9 @@ bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
         m_handle = nullptr;
         return false;
     }
+
+    snd_pcm_uframes_t periodSize = 0;
+    if (snd_pcm_get_params(m_handle, &m_bufferSize, &periodSize) < 0) m_bufferSize = 0;
 
     if (stream == SND_PCM_STREAM_PLAYBACK) {
         // snd_pcm_set_params() only starts playback once the whole buffer
@@ -75,11 +81,46 @@ bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
     return true;
 }
 
+int AlsaPcm::setPlaybackParams(unsigned int rate, unsigned int bufferTime) {
+    // As snd_pcm_set_params() would, but with 20 ms periods (one DV frame)
+    // rather than its buffer/4 = 200 ms. Through plughw's rate converter
+    // (any card that can't play 8 kHz itself, e.g. a 48 kHz-only USB
+    // headset) audio moves to the card a period at a time, so with only a
+    // few frames queued -- playback starts at 120 ms, and frames arrive
+    // just in time -- a 200 ms period kept running dry: an xrun every
+    // ~350 ms (seen on a Pi with a JBL headset; 0 xruns with 20 ms
+    // periods). Cards that play 8 kHz natively never showed it.
+    snd_pcm_hw_params_t *hw;
+    snd_pcm_hw_params_alloca(&hw);
+    unsigned int periodTime = 1000000 / (rate / SerialDV::MBE_AUDIO_BLOCK_SIZE);
+    int err = snd_pcm_hw_params_any(m_handle, hw);
+    if (err >= 0) err = snd_pcm_hw_params_set_rate_resample(m_handle, hw, 1);
+    if (err >= 0) err = snd_pcm_hw_params_set_access(m_handle, hw, SND_PCM_ACCESS_RW_INTERLEAVED);
+    if (err >= 0) err = snd_pcm_hw_params_set_format(m_handle, hw, SND_PCM_FORMAT_S16_LE);
+    if (err >= 0) err = snd_pcm_hw_params_set_channels(m_handle, hw, 1);
+    if (err >= 0) err = snd_pcm_hw_params_set_rate(m_handle, hw, rate, 0);
+    if (err >= 0) err = snd_pcm_hw_params_set_period_time_near(m_handle, hw, &periodTime, nullptr);
+    if (err >= 0) err = snd_pcm_hw_params_set_buffer_time_near(m_handle, hw, &bufferTime, nullptr);
+    if (err >= 0) err = snd_pcm_hw_params(m_handle, hw);
+    if (err < 0) {
+        std::fprintf(stderr, "audio: 20 ms playback periods not available (%s), using the defaults\n",
+                     snd_strerror(err));
+    }
+    return err;
+}
+
 bool AlsaPcm::runningLow(long samples) {
-    if (!m_handle || snd_pcm_state(m_handle) != SND_PCM_STATE_RUNNING) return false;
-    snd_pcm_sframes_t delay = 0;
-    if (snd_pcm_delay(m_handle, &delay) < 0) return false;
-    return delay < samples;
+    if (!m_handle || m_bufferSize == 0 || snd_pcm_state(m_handle) != SND_PCM_STATE_RUNNING) return false;
+    // How much of *our* buffer is still unplayed: what an underrun depends
+    // on. Not snd_pcm_delay(), which through PipeWire's ALSA plugin (the
+    // "default" device on Raspberry Pi OS) also counts audio already
+    // handed to the server -- PipeWire pulls in big chunks, so our buffer
+    // ran dry while the delay still looked healthy: an xrun every few
+    // hundred ms.
+    snd_pcm_sframes_t avail = snd_pcm_avail(m_handle);
+    if (avail < 0) return true; // already in trouble: let write() recover it
+    long queued = static_cast<long>(m_bufferSize) - static_cast<long>(avail);
+    return queued < samples;
 }
 
 void AlsaPcm::close() {

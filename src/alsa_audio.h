@@ -69,6 +69,10 @@ public:
 
 private:
     bool recover(int err);
+    // Playback's hardware parameters, 20 ms periods (see the .cpp); a
+    // negative ALSA error if the device can't, and open() then falls back
+    // to snd_pcm_set_params().
+    int setPlaybackParams(unsigned int rate, unsigned int bufferTime);
 
     void notePeak(const short *pcm);
 
@@ -76,6 +80,7 @@ private:
     std::atomic<int> m_peak{0};
 
     snd_pcm_t *m_handle = nullptr;
+    snd_pcm_uframes_t m_bufferSize = 0; // in samples, from open()
     snd_pcm_stream_t m_stream = SND_PCM_STREAM_CAPTURE;
 };
 

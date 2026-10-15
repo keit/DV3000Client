@@ -75,6 +75,13 @@ bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
     return true;
 }
 
+bool AlsaPcm::runningLow(long samples) {
+    if (!m_handle || snd_pcm_state(m_handle) != SND_PCM_STATE_RUNNING) return false;
+    snd_pcm_sframes_t delay = 0;
+    if (snd_pcm_delay(m_handle, &delay) < 0) return false;
+    return delay < samples;
+}
+
 void AlsaPcm::close() {
     if (m_handle) {
         snd_pcm_close(m_handle);
@@ -199,7 +206,17 @@ void playbackThread(AlsaPcm *playback, PcmQueue *queue, const volatile std::sig_
         // continuously probing it just kept rediscovering that as a
         // "Broken pipe" every ~30s, all night, instead of the rare
         // mid-transmission case this is actually meant to cover.
-        if (std::chrono::steady_clock::now() - lastRealFrame < std::chrono::milliseconds(500)) {
+        //
+        // And only when the device is actually about to run dry: a frame
+        // just a few ms late (common at the start of an over, while the
+        // vocoder pipeline and the network settle) used to get 20 ms of
+        // silence written ahead of it regardless -- while the device still
+        // had 100+ ms queued, or hadn't even started playing (the start
+        // threshold) -- chopping zeros in between the over's first frames:
+        // the "blip" heard at the start of some overs, seen in recordings
+        // as all-zero frames alternating with speech.
+        if (std::chrono::steady_clock::now() - lastRealFrame < std::chrono::milliseconds(500) &&
+            playback->runningLow(2 * SerialDV::MBE_AUDIO_BLOCK_SIZE)) {
             std::memset(pcm, 0, sizeof(pcm));
             writeFrame(pcm);
         }

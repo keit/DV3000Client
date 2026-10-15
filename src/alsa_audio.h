@@ -51,6 +51,11 @@ public:
     // of the over, with that frame lost.
     void restartIfStopped();
 
+    // Playback only: true if the stream is playing and has less than
+    // `samples` left to play -- about to run dry. False before playback has
+    // started (nothing can run dry yet) or if ALSA can't say.
+    bool runningLow(long samples);
+
     // Linear gain applied to everything read()/written from now on (see
     // audio_gain.h) -- how the GUI's mic and speaker volume sliders take
     // effect mid-transmission, without the capture/playback threads

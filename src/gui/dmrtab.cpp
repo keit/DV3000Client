@@ -233,7 +233,6 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     auto *bottomRow = new QHBoxLayout;
     bottomRow->addWidget(m_connectButton);
     bottomRow->addWidget(m_statusLabel, 1);
-    bottomRow->addWidget(m_pttButton);
 
     auto *layout = new QVBoxLayout;
     m_networkCombo = new QComboBox;
@@ -278,6 +277,8 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
         if (startRecording(QString("DMR %1").arg(m_connectedNetwork == "brandmeister" ? "BrandMeister" : "TGIF")).isEmpty()) m_audioLevels->setRecording(false);
     });
     layout->addWidget(m_audioLevels);
+    makeLargePttButton(m_pttButton);
+    layout->addWidget(m_pttButton);
 
     // Level meters: peak of what the mic device is delivering and what's
     // going to the speaker (both after gain), polled from the AlsaPcm

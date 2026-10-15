@@ -13,6 +13,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QMetaObject>
+#include <QPushButton>
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QWidget>
@@ -23,6 +24,17 @@
 #include "settings.h"
 
 class QPushButton;
+
+// Both tabs' PTT button: full width under the Speaker box, and big enough
+// to hit without looking -- the one control used all through a QSO.
+inline void makeLargePttButton(QPushButton *button) {
+    QFont font = button->font();
+    font.setBold(true);
+    font.setPointSizeF(font.pointSizeF() * 1.4);
+    button->setFont(font);
+    button->setMinimumHeight(QFontMetrics(font).height() * 3);
+    button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+}
 
 class ProtocolTab : public QWidget {
     Q_OBJECT

@@ -261,7 +261,6 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     auto *bottomRow = new QHBoxLayout;
     bottomRow->addWidget(m_connectButton);
     bottomRow->addWidget(m_statusLabel, 1);
-    bottomRow->addWidget(m_pttButton);
 
     auto *layout = new QVBoxLayout;
     layout->addWidget(m_reflectorCombo);
@@ -293,6 +292,8 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
         if (startRecording(QString("D-Star %1 %2").arg(m_connectedReflectorName).arg(moduleText(m_connectedModule))).isEmpty()) m_audioLevels->setRecording(false);
     });
     layout->addWidget(m_audioLevels);
+    makeLargePttButton(m_pttButton);
+    layout->addWidget(m_pttButton);
 
     // Level meters: peak of what the mic device is delivering and what's
     // going to the speaker (both after gain), polled from the AlsaPcm

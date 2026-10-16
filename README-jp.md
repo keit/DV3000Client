@@ -133,10 +133,11 @@ cat /sys/bus/usb-serial/devices/ttyUSB0/latency_timer   # 1 と表示されれ�
 を 100ms 以上保留することがあります。ThumbDV を AMBEServer 経由で使う場合、これによ
 り送信・受信の音声が途切れるため、両端で省電力機能をオフにしてください。現在の状態は
 `iw dev <インターフェース名> get power_save` で確認できます(インターフェース名は
-`iw dev` で確認)。
+`iw dev` で確認)。`iw` が入っていない場合(Raspberry Pi OS)は `/sbin/iwconfig` で確認
+し、`Power Management:off` と表示されれば OK です。
 
-_Raspberry Pi(Raspberry Pi OS、Pi-Star):_ インターフェースはカーネル名の `wlan0`
-のままで、NetworkManager も使われていないため、udev ルールで設定できます:
+_Pi-Star:_ インターフェースはカーネル名の `wlan0` のままで、NetworkManager も使われて
+いないため、udev ルールで設定できます:
 
 ```sh
 echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{INTERFACE} set power_save off"' \
@@ -144,8 +145,9 @@ echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{
 sudo reboot
 ```
 
-_Ubuntu(および NetworkManager を使うデスクトップ):_ 上記の udev ルールはここでは効
-きません。ルールのコマンドが実行される前にインターフェース名が変更され(例: `wlan0`
+_Ubuntu、Raspberry Pi OS(Bookworm 以降)など NetworkManager を使うシステム:_ 上記の
+udev ルールはここでは効きません(Raspberry Pi OS には `iw` も入っていません)。Ubuntu
+では、ルールのコマンドが実行される前にインターフェース名が変更され(例: `wlan0`
 → `wlp1s0`)、さらに接続時に NetworkManager が省電力機能を再びオンにするためです
 (Ubuntu には `default-wifi-powersave-on.conf` が同梱されています)。代わりに
 NetworkManager の設定で上書きします。最後に読み込まれたファイルが優先されるため、ファ

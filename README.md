@@ -135,10 +135,11 @@ power saving can hold packets for 100 ms or more when traffic starts after a
 pause, which is exactly what pressing PTT does. With the ThumbDV behind an
 AMBEServer this breaks up transmit and receive audio, so turn it off on both
 ends. Check the current state with `iw dev <interface> get power_save` (find
-the interface name with `iw dev`).
+the interface name with `iw dev`), or with `/sbin/iwconfig` where `iw` isn't
+installed (Raspberry Pi OS); it should say `Power Management:off`.
 
-_Raspberry Pi (Raspberry Pi OS, Pi-Star):_ the interface keeps the kernel
-name `wlan0` and there is no NetworkManager, so a udev rule is enough:
+_Pi-Star:_ the interface keeps the kernel name `wlan0` and there is no
+NetworkManager, so a udev rule is enough:
 
 ```sh
 echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{INTERFACE} set power_save off"' \
@@ -146,8 +147,9 @@ echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{
 sudo reboot
 ```
 
-_Ubuntu (and other NetworkManager desktops):_ the udev rule above doesn't work
-here. The interface is renamed (e.g. `wlan0` to `wlp1s0`) before the rule's
+_Ubuntu, Raspberry Pi OS (Bookworm or later) and other NetworkManager
+systems:_ the udev rule above doesn't work here (Raspberry Pi OS doesn't even
+include `iw`). On Ubuntu the interface is renamed (e.g. `wlan0` to `wlp1s0`) before the rule's
 command runs, and NetworkManager turns power saving back on when it connects
 anyway (Ubuntu ships `default-wifi-powersave-on.conf`). Override it in
 NetworkManager instead. The file name must sort after `default-...`, because

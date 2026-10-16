@@ -102,15 +102,15 @@ sudo apt install ./dv3kclient_*.deb</code></pre>
     <details id="wifi-powersave">
       <summary>Wi-Fi の省電力機能をオフにする</summary>
       <p>しばらく通信がなかった後に通信が始まると(PTT を押した瞬間がまさにこれです)、省電力機能がパケットを 100&nbsp;ms 以上保留することがあります。</p>
-      <p><strong>Raspberry Pi</strong>(Raspberry Pi OS、Pi-Star):</p>
-<pre><code>echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{INTERFACE} set power_save off"' \
-  | sudo tee /etc/udev/rules.d/70-wifi-powersave-off.rules
-sudo reboot</code></pre>
-      <p><strong>Ubuntu の PC</strong>(NetworkManager):</p>
+      <p><strong>Ubuntu の PC、または Raspberry Pi OS</strong>(Bookworm 以降。どちらも NetworkManager を使用):</p>
 <pre><code>printf '[connection]\nwifi.powersave = 2\n' \
   | sudo tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf
 sudo systemctl restart NetworkManager</code></pre>
-      <p>状態は <code>iw dev &lt;インターフェース名&gt; get power_save</code> で確認できます(インターフェース名は <code>iw dev</code> で確認)。</p>
+      <p><strong>Pi-Star:</strong></p>
+<pre><code>echo 'ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/sbin/iw dev $env{INTERFACE} set power_save off"' \
+  | sudo tee /etc/udev/rules.d/70-wifi-powersave-off.rules
+sudo reboot</code></pre>
+      <p>状態は Raspberry Pi OS と Pi-Star では <code>/sbin/iwconfig</code>(<code>Power Management:off</code> と表示されれば OK)、Ubuntu では <code>iw dev &lt;インターフェース名&gt; get power_save</code> で確認できます(インターフェース名は <code>iw dev</code> で確認)。DV3K Client を Raspberry Pi で動かし、別の Raspberry Pi の AMBEServer を使う場合は、両方でオフにしてください。</p>
     </details>
 
     <details id="wifi-scans">

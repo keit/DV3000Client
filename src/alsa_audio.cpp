@@ -43,7 +43,7 @@ bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
     // a few hundred ms to a second of extra latency is inaudible for a
     // half-duplex PTT voice app; audible dropouts aren't.
     unsigned int bufferTime = 40 * (1000000 / (rate / SerialDV::MBE_AUDIO_BLOCK_SIZE));
-    err = stream == SND_PCM_STREAM_PLAYBACK ? setPlaybackParams(rate, bufferTime) : -1;
+    err = setHwParams(rate, bufferTime);
     if (err < 0)
         err = snd_pcm_set_params(m_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, rate, 1,
                                  bufferTime);
@@ -81,15 +81,22 @@ bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
     return true;
 }
 
-int AlsaPcm::setPlaybackParams(unsigned int rate, unsigned int bufferTime) {
+int AlsaPcm::setHwParams(unsigned int rate, unsigned int bufferTime) {
     // As snd_pcm_set_params() would, but with 20 ms periods (one DV frame)
     // rather than its buffer/4 = 200 ms. Through plughw's rate converter
-    // (any card that can't play 8 kHz itself, e.g. a 48 kHz-only USB
-    // headset) audio moves to the card a period at a time, so with only a
-    // few frames queued -- playback starts at 120 ms, and frames arrive
-    // just in time -- a 200 ms period kept running dry: an xrun every
-    // ~350 ms (seen on a Pi with a JBL headset; 0 xruns with 20 ms
-    // periods). Cards that play 8 kHz natively never showed it.
+    // (any card that can't do 8 kHz itself, e.g. a 48 kHz-only USB
+    // headset or microphone) audio moves a period at a time:
+    // - playback: with only a few frames queued -- playback starts at
+    //   120 ms, and frames arrive just in time -- a 200 ms period kept
+    //   running dry: an xrun every ~350 ms (seen on a Pi with a JBL
+    //   headset; 0 xruns with 20 ms periods);
+    // - capture: reads returned 10 frames at once every 200 ms, so the
+    //   capture thread sent the ThumbDV 10 encode requests at a time --
+    //   over the pipeline's limit of 8, and through an AMBEServer (~13 ms
+    //   each) the last ones waited past the 100 ms reply timeout:
+    //   "cannot get response", "dropping transmit frames". With 20 ms
+    //   periods reads come every 20 ms.
+    // Cards that do 8 kHz natively never showed either.
     snd_pcm_hw_params_t *hw;
     snd_pcm_hw_params_alloca(&hw);
     unsigned int periodTime = 1000000 / (rate / SerialDV::MBE_AUDIO_BLOCK_SIZE);
@@ -103,8 +110,8 @@ int AlsaPcm::setPlaybackParams(unsigned int rate, unsigned int bufferTime) {
     if (err >= 0) err = snd_pcm_hw_params_set_buffer_time_near(m_handle, hw, &bufferTime, nullptr);
     if (err >= 0) err = snd_pcm_hw_params(m_handle, hw);
     if (err < 0) {
-        std::fprintf(stderr, "audio: 20 ms playback periods not available (%s), using the defaults\n",
-                     snd_strerror(err));
+        std::fprintf(stderr, "audio: 20 ms %s periods not available (%s), using the defaults\n",
+                     m_stream == SND_PCM_STREAM_PLAYBACK ? "playback" : "capture", snd_strerror(err));
     }
     return err;
 }

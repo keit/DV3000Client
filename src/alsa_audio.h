@@ -69,10 +69,10 @@ public:
 
 private:
     bool recover(int err);
-    // Playback's hardware parameters, 20 ms periods (see the .cpp); a
-    // negative ALSA error if the device can't, and open() then falls back
-    // to snd_pcm_set_params().
-    int setPlaybackParams(unsigned int rate, unsigned int bufferTime);
+    // Hardware parameters with 20 ms periods (see the .cpp); a negative
+    // ALSA error if the device can't, and open() then falls back to
+    // snd_pcm_set_params().
+    int setHwParams(unsigned int rate, unsigned int bufferTime);
 
     void notePeak(const short *pcm);
 

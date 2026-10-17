@@ -97,7 +97,7 @@ sudo apt install ./dv3kclient_*.deb</code></pre>
       <li>Pi 3B+ では ThumbDV の USB 接続がときどきストールし、AMBEServer は再起動するまで応答しなくなります。<a href="https://github.com/keit/DV3000Client/tree/master/scripts/pi-star">AMBEServer ウォッチドッグ</a>を入れておくと自動で再起動します。</li>
     </ul>
     <p><strong>この PC での設定:</strong> <strong>File › Settings › Devices</strong> を開き、<em>ThumbDV</em> を <strong>Network (AMBEServer 3000)</strong> にします。Pi のホスト名または IP アドレスとポート <code>2460</code> を入力し、<strong>Test</strong> を押してください。</p>
-    <p>20&nbsp;ms ごとの音声がそれぞれ Pi との往復通信になるため、有線ネットワークが最適です。AMBEServer に同時に接続できるクライアントは1つだけです。Wi-Fi の場合は両方の機器で省電力機能をオフにし、Ubuntu の PC ではバックグラウンドの Wi-Fi スキャンも止めてください。</p>
+    <p>20&nbsp;ms ごとの音声がそれぞれ Pi との往復通信になるため、有線ネットワークが最適です。AMBEServer に同時に接続できるクライアントは1つだけで、接続中の DV3K Client は使っていなくても1つと数えます。同じ AMBEServer を使うほかの機器では <strong>Disconnect</strong> してください。Wi-Fi の場合は両方の機器で省電力機能をオフにし、DV3K Client を動かす機器ではバックグラウンドの Wi-Fi スキャンも止めてください。</p>
 
     <details id="wifi-powersave">
       <summary>Wi-Fi の省電力機能をオフにする</summary>
@@ -114,19 +114,24 @@ sudo reboot</code></pre>
     </details>
 
     <details id="wifi-scans">
-      <summary>バックグラウンドの Wi-Fi スキャンを止める(Wi-Fi 接続の Ubuntu PC)</summary>
-      <p>Wi-Fi カードは数分おきに全チャンネルをスキャンし、その間約9秒間ネットワークから離れるため、10〜20秒ほど音声が途切れます。GNOME のデスクトップではこのスキャンを起こすものが2つあり、両方を止める必要があります:</p>
+      <summary>バックグラウンドの Wi-Fi スキャンを止める(Wi-Fi 接続で DV3K Client を使う場合)</summary>
+      <p>Wi-Fi カードは数分おきに全チャンネルをスキャンし、その間数秒ずつネットワークから離れるため、音声が途切れます。Ubuntu(GNOME)のデスクトップではこのスキャンを起こすものが2つあり、両方を止める必要があります。Raspberry Pi OS では2つ目だけが該当します。</p>
       <ol>
         <li>
-          <p><strong>位置情報サービス</strong>(設定 › プライバシーとセキュリティ)。位置情報を使う機能は使えなくなります(例: 夜間モードの自動スケジュール)。</p>
+          <p><strong>位置情報サービス</strong>(Ubuntu: 設定 › プライバシーとセキュリティ)。位置情報を使う機能は使えなくなります(例: 夜間モードの自動スケジュール)。</p>
 <pre><code>gsettings set org.gnome.system.location enabled false</code></pre>
         </li>
         <li>
-          <p><strong>NetworkManager のローミング用スキャン</strong>。接続を現在のアクセスポイントに固定すると止まります。代わりに PC が自動で別のアクセスポイントに移らなくなるため、メッシュネットワークや持ち歩くノート PC では行わないでください。<code>MyWiFi</code> は <code>nmcli connection show</code> で確認した自分の接続名に置き換えてください:</p>
-<pre><code>iw dev | grep Interface                 # 例: wlp1s0
+          <p><strong>NetworkManager のローミング用スキャン</strong>。接続を現在使っているアクセスポイントに固定すると止まります。<code>MyWiFi</code> は <code>nmcli connection show</code> で確認した自分の接続名に置き換えてください:</p>
+<pre><code># アクセスポイントのアドレス xx:xx:xx:xx:xx:xx を調べる -- Ubuntu:
+iw dev | grep Interface                  # 例: wlp1s0
 iw dev wlp1s0 link | head -1             # Connected to xx:xx:xx:xx:xx:xx
-nmcli connection modify MyWiFi 802-11-wireless.bssid xx:xx:xx:xx:xx:xx
-nmcli connection up MyWiFi</code></pre>
+# ...または Raspberry Pi OS:
+/sbin/iwconfig wlan0 | grep "Access Point"
+
+sudo nmcli connection modify MyWiFi 802-11-wireless.bssid xx:xx:xx:xx:xx:xx
+sudo nmcli connection up MyWiFi</code></pre>
+          <p>以後その機器はこのアクセスポイントにだけ接続します。置き場所が変わらない機器なら、メッシュネットワークでも問題ありません。ただし、このアクセスポイントの電波が届かない場所へ移す前には固定を解除してください(同じコマンドでアドレスを <code>""</code> にする)。解除しないと Wi-Fi に接続できなくなります。移動後に接続したアクセスポイントに固定し直してください。</p>
         </li>
       </ol>
     </details>

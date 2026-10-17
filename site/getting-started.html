@@ -124,8 +124,10 @@ sudo apt install ./dv3kclient_*.deb</code></pre>
       <em>ThumbDV</em> to <strong>Network (AMBEServer 3000)</strong>, enter the Pi's host name or
       IP address and port <code>2460</code>, and press <strong>Test</strong>.</p>
     <p>Every 20&nbsp;ms of audio is a round trip to the Pi, so a wired network is best. Only
-      one client can use an AMBEServer at a time. On Wi-Fi, turn off power saving on both
-      machines. On an Ubuntu PC, also stop background Wi-Fi scans.</p>
+      one client can use an AMBEServer at a time, and a connected DV3K Client counts even when
+      idle: press <strong>Disconnect</strong> on any other machine that uses it. On Wi-Fi, turn
+      off power saving on both machines, and stop background Wi-Fi scans on the one running
+      DV3K Client.</p>
 
     <details id="wifi-powersave">
       <summary>Turn off Wi-Fi power saving</summary>
@@ -147,26 +149,33 @@ sudo reboot</code></pre>
     </details>
 
     <details id="wifi-scans">
-      <summary>Stop background Wi-Fi scans (Ubuntu PC on Wi-Fi)</summary>
+      <summary>Stop background Wi-Fi scans (DV3K Client on Wi-Fi)</summary>
       <p>Every few minutes the Wi-Fi card scans all channels, which takes it off your
-        network for about 9 seconds and breaks up audio for 10–20 seconds. On a GNOME desktop
-        two things trigger these scans, and both need turning off:</p>
+        network for seconds at a time and breaks up the audio. On an Ubuntu (GNOME) desktop two
+        things trigger these scans, and both need turning off. On Raspberry Pi OS only the
+        second applies.</p>
       <ol>
         <li>
-          <p><strong>Location Services</strong> (Settings › Privacy &amp; Security). Features that
+          <p><strong>Location Services</strong> (Ubuntu: Settings › Privacy &amp; Security). Features that
             use your location stop working, e.g. Night Light's automatic schedule.</p>
 <pre><code>gsettings set org.gnome.system.location enabled false</code></pre>
         </li>
         <li>
           <p><strong>NetworkManager's roaming scan</strong>, which stops when the connection is
-            locked to your access point. The PC then won't switch access points by itself, so
-            skip this on a mesh network or a laptop that moves around. Replace
-            <code>MyWiFi</code> with your connection's name from
-            <code>nmcli connection show</code>:</p>
-<pre><code>iw dev | grep Interface                 # e.g. wlp1s0
+            locked to the access point it's using. Replace <code>MyWiFi</code> with your
+            connection's name from <code>nmcli connection show</code>:</p>
+<pre><code># the access point's address, xx:xx:xx:xx:xx:xx -- Ubuntu:
+iw dev | grep Interface                  # e.g. wlp1s0
 iw dev wlp1s0 link | head -1             # Connected to xx:xx:xx:xx:xx:xx
-nmcli connection modify MyWiFi 802-11-wireless.bssid xx:xx:xx:xx:xx:xx
-nmcli connection up MyWiFi</code></pre>
+# ...or Raspberry Pi OS:
+/sbin/iwconfig wlan0 | grep "Access Point"
+
+sudo nmcli connection modify MyWiFi 802-11-wireless.bssid xx:xx:xx:xx:xx:xx
+sudo nmcli connection up MyWiFi</code></pre>
+          <p>The machine then stays on that access point. That's fine for one that stays put,
+            even on a mesh network, but before moving it somewhere that access point doesn't
+            reach, clear the lock (the same command with <code>""</code> as the address) or it
+            won't connect at all. Then lock it to the access point it picks there.</p>
         </li>
       </ol>
     </details>

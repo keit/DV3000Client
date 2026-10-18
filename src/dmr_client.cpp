@@ -310,6 +310,10 @@ void DmrClient::endVoiceTx(uint32_t streamId) {
 
 void DmrClient::run() {
     auto lastPing = std::chrono::steady_clock::now();
+    // Pongs aren't logged one by one (one every 10 s buried everything
+    // else) -- only when they stop, and when they come back.
+    auto lastPong = lastPing;
+    bool pongsMissing = false;
     sendPing();
 
     while (g_running) {
@@ -318,13 +322,19 @@ void DmrClient::run() {
             sendPing();
             lastPing = now;
         }
+        if (!pongsMissing && now - lastPong > std::chrono::seconds(3 * KEEPALIVE_PERIOD_SEC)) {
+            std::fprintf(stderr, "dmr_client: no keepalive reply from the master for %d s\n", 3 * KEEPALIVE_PERIOD_SEC);
+            pongsMissing = true;
+        }
 
         uint8_t buf[128];
         ssize_t n = recvWithTimeout(buf, sizeof(buf), 200);
         if (n <= 0) continue;
 
         if (n >= 11 && std::memcmp(buf, "MSTPONG", 7) == 0) {
-            std::fprintf(stderr, "dmr_client: keepalive pong\n");
+            if (pongsMissing) std::fprintf(stderr, "dmr_client: master answering keepalives again\n");
+            pongsMissing = false;
+            lastPong = std::chrono::steady_clock::now();
         } else if (n >= 5 && std::memcmp(buf, "MSTCL", 5) == 0) {
             std::fprintf(stderr, "dmr_client: master closed the connection\n");
             g_running = 0;
@@ -336,12 +346,10 @@ void DmrClient::run() {
                 uint8_t frameType = (buf[15] & 0x30) >> 4;
                 uint8_t slotType = buf[15] & 0x0F;
                 if (frameType == 2 && slotType == 1) {
-                    std::fprintf(stderr, "dmr_client: RX header\n");
+                    uint32_t srcId = (static_cast<uint32_t>(buf[5]) << 16) | (static_cast<uint32_t>(buf[6]) << 8) | buf[7];
+                    uint32_t dstId = (static_cast<uint32_t>(buf[8]) << 16) | (static_cast<uint32_t>(buf[9]) << 8) | buf[10];
+                    std::fprintf(stderr, "dmr_client: RX header %u -> %u\n", srcId, dstId);
                     if (m_headerSink) {
-                        uint32_t srcId = (static_cast<uint32_t>(buf[5]) << 16) |
-                                          (static_cast<uint32_t>(buf[6]) << 8) | buf[7];
-                        uint32_t dstId = (static_cast<uint32_t>(buf[8]) << 16) |
-                                          (static_cast<uint32_t>(buf[9]) << 8) | buf[10];
                         m_headerSink(srcId, dstId);
                     }
                 } else if (frameType == 2 && slotType == 2) {

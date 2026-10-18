@@ -33,6 +33,7 @@ private:
     ProtocolTab *currentProtocolTab() const;
     void onThumbdvLatencyChecked(bool ok, const QString &ttyName, int latencyMs);
     void onThumbdvSlowChanged(bool slow, int roundTripMs, bool network);
+    void onVocoderSharedChanged(bool shared, bool network);
 
     GuiSettings m_settings;
 
@@ -49,4 +50,5 @@ private:
     // (ProtocolTab::checkThumbdvTiming()) -- e.g. an overloaded AMBEServer
     // host or a poor Wi-Fi link.
     QLabel *m_slowBanner;
+    QLabel *m_sharedBanner;
 };

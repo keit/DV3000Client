@@ -92,6 +92,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_dmrTab, &ProtocolTab::thumbdvLatencyChecked, this, &MainWindow::onThumbdvLatencyChecked);
     connect(m_dstarTab, &ProtocolTab::thumbdvSlowChanged, this, &MainWindow::onThumbdvSlowChanged);
     connect(m_dmrTab, &ProtocolTab::thumbdvSlowChanged, this, &MainWindow::onThumbdvSlowChanged);
+    connect(m_dstarTab, &ProtocolTab::vocoderSharedChanged, this, &MainWindow::onVocoderSharedChanged);
+    connect(m_dmrTab, &ProtocolTab::vocoderSharedChanged, this, &MainWindow::onVocoderSharedChanged);
 
     // Volume sliders live on both tabs but are one setting: moving either
     // pair updates the other tab and the saved settings (written once the
@@ -154,12 +156,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     };
     m_latencyBanner = makeBanner();
     m_slowBanner = makeBanner();
+    m_sharedBanner = makeBanner();
 
     auto *central = new QWidget;
     auto *layout = new QVBoxLayout(central);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_latencyBanner);
     layout->addWidget(m_slowBanner);
+    layout->addWidget(m_sharedBanner);
     layout->addWidget(m_tabs);
     setCentralWidget(central);
     resize(900, 480);
@@ -255,6 +259,21 @@ void MainWindow::onThumbdvSlowChanged(bool slow, int roundTripMs, bool network) 
                               .arg(fix)
                               .arg(kLatencyHelpUrl));
     m_slowBanner->show();
+}
+
+void MainWindow::onVocoderSharedChanged(bool shared, bool network) {
+    if (!shared) {
+        m_sharedBanner->hide();
+        return;
+    }
+    m_sharedBanner->setText(
+        network ? QString("<b>&#9888; Another program seems to be using this AMBEServer:</b> replies are arriving for "
+                          "requests this app didn't send, and audio will break up. An AMBEServer serves one client "
+                          "at a time, and a connected DV3K Client counts even when idle: press Disconnect on the "
+                          "other machine.")
+                : QString("<b>&#9888; Another program seems to be using the ThumbDV:</b> replies are arriving for "
+                          "requests this app didn't send, and audio will break up. Close the other program."));
+    m_sharedBanner->show();
 }
 
 void MainWindow::updateSettingsActionEnabled() {

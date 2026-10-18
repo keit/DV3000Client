@@ -13,6 +13,7 @@
 // here, from whichever threads they run on; results come back, in the
 // order submitted, on this class's own reply thread.
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -54,6 +55,11 @@ public:
     // which must follow its last voice frame.
     void drain();
 
+    // How many replies so far answered requests this pipeline never sent
+    // -- another program using the same ThumbDV or AMBEServer (see
+    // replyLoop()). Safe to read from any thread.
+    unsigned int foreignReplies() const { return m_foreignReplies.load(); }
+
 private:
     struct Job {
         bool encode;
@@ -88,6 +94,11 @@ private:
     std::chrono::steady_clock::time_point m_idleSince = std::chrono::steady_clock::now();
     bool m_stopping = false;
     std::chrono::steady_clock::time_point m_lastDropLog;
+    // Reply thread only: replies given up on since the last discard, which
+    // may still arrive late; and the log line about foreign replies.
+    size_t m_lateReplies = 0;
+    std::chrono::steady_clock::time_point m_lastForeignLog;
+    std::atomic<unsigned int> m_foreignReplies{0};
     std::thread m_thread;
 };
 

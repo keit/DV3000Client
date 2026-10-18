@@ -78,21 +78,43 @@ void VocoderPipeline::replyLoop() {
             job = m_inFlight.front();
         }
 
+        uint8_t ambe[SerialDV::MBE_FRAME_MAX_LENGTH_BYTES];
+        short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
         bool ok;
-        if (job.encode) {
-            uint8_t ambe[SerialDV::MBE_FRAME_MAX_LENGTH_BYTES];
-            ok = m_dv.receiveEncode(ambe);
-            if (ok) {
-                m_dv.noteRoundTrip(true, job.sent);
-                if (job.encodeDone) job.encodeDone(ambe);
+        for (;;) {
+            ok = job.encode ? m_dv.receiveEncode(ambe) : m_dv.receiveDecode(pcm);
+            if (ok) break;
+            auto problem = m_dv.lastReplyProblem();
+            if (problem == SerialDV::DVController::ReplyProblem::Missing) {
+                // It may still turn up, late, in a later request's place.
+                if (m_lateReplies < kMaxInFlight) m_lateReplies++;
+                break;
             }
-        } else {
-            short pcm[SerialDV::MBE_AUDIO_BLOCK_SIZE];
-            ok = m_dv.receiveDecode(pcm);
-            if (ok) {
-                m_dv.noteRoundTrip(false, job.sent);
-                if (job.decodeDone) job.decodeDone(pcm);
+            if (problem != SerialDV::DVController::ReplyProblem::WrongKind) break;
+            // A reply of the other kind (an audio reply to an encode, say).
+            // Just after one of ours went missing, it's that one, late: drop
+            // it and this request's own reply is next -- rather than taking
+            // every following reply one place out of step, a cascade of
+            // errors until the pipeline drained (seen while receiving and
+            // transmitting at once). Otherwise it answers a request we never
+            // sent: another program using the same ThumbDV or AMBEServer.
+            if (m_lateReplies > 0) {
+                m_lateReplies--;
+                continue;
             }
+            m_foreignReplies++;
+            auto now = std::chrono::steady_clock::now();
+            if (now - m_lastForeignLog > std::chrono::seconds(5)) {
+                std::fprintf(stderr, "vocoder: got a reply to a request this app didn't send -- is another program "
+                                     "using the ThumbDV (or its AMBEServer)?\n");
+                m_lastForeignLog = now;
+            }
+            break;
+        }
+        if (ok) {
+            m_dv.noteRoundTrip(job.encode, job.sent);
+            if (job.encode && job.encodeDone) job.encodeDone(ambe);
+            if (!job.encode && job.decodeDone) job.decodeDone(pcm);
         }
 
         {
@@ -104,6 +126,7 @@ void VocoderPipeline::replyLoop() {
             // arriving can only be a straggler: drop it before sending again.
             if (m_recovering && m_inFlight.empty()) {
                 m_dv.discardPendingReplies();
+                m_lateReplies = 0;
                 m_recovering = false;
             }
         }

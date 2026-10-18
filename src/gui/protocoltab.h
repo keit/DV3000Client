@@ -8,7 +8,9 @@
 // session cleanly on window close.
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <deque>
 
 #include <QDateTime>
 #include <QDir>
@@ -22,6 +24,7 @@
 #include "wav_recorder.h"
 #include "ftdi_latency.h"
 #include "settings.h"
+#include "vocoder_pipeline.h"
 
 class QPushButton;
 
@@ -198,6 +201,37 @@ protected:
     void resetThumbdvTiming() {
         m_slowPolls = m_fastPolls = 0;
         m_loggedEncodeTiming = m_loggedDecodeTiming = false;
+        m_foreignSeen = 0; // a new connection has a new pipeline, counting from 0
+        m_foreignTimes.clear();
+    }
+
+    // Called with checkThumbdvTiming(): watches for replies to requests
+    // this app never sent (VocoderPipeline::foreignReplies()) -- another
+    // program using the same ThumbDV, typically a second DV3K Client on
+    // the same AMBEServer, which serves one client and hands each the
+    // other's replies (a connected one decodes whatever it receives, even
+    // when nobody's at it). Emits vocoderSharedChanged() when 3 arrive
+    // within 10 s, and again once there have been none for 30 s.
+    void checkVocoderShared(const audio::VocoderPipeline *vocoder, bool network) {
+        if (!vocoder) return;
+        auto now = std::chrono::steady_clock::now();
+        unsigned int count = vocoder->foreignReplies();
+        for (; m_foreignSeen < count; m_foreignSeen++) m_foreignTimes.push_back(now);
+        while (!m_foreignTimes.empty() && now - m_foreignTimes.front() > std::chrono::seconds(10))
+            m_foreignTimes.pop_front();
+        if (count > 0 && !m_foreignTimes.empty()) m_lastForeign = m_foreignTimes.back();
+        if (!m_vocoderShared && m_foreignTimes.size() >= 3) {
+            m_vocoderShared = true;
+            emit vocoderSharedChanged(true, network);
+        } else if (m_vocoderShared && now - m_lastForeign > std::chrono::seconds(30)) {
+            clearVocoderShared();
+        }
+    }
+    // On disconnect: whatever was sharing it, this app no longer is.
+    void clearVocoderShared() {
+        if (!m_vocoderShared) return;
+        m_vocoderShared = false;
+        emit vocoderSharedChanged(false, false);
     }
 
     // Called from a tab's connect worker thread right after its
@@ -231,6 +265,9 @@ signals:
     // real-time audio, roundTripMs the slower direction's average reply time, and
     // network whether the ThumbDV is behind an AMBEServer.
     void thumbdvSlowChanged(bool slow, int roundTripMs, bool network);
+    // See checkVocoderShared(): shared is whether another program seems to
+    // be using the ThumbDV, network whether it's behind an AMBEServer.
+    void vocoderSharedChanged(bool shared, bool network);
 
 private:
     static constexpr unsigned int kSlowMicros = 100000;
@@ -241,4 +278,8 @@ private:
     int m_fastPolls = 0;
     bool m_loggedEncodeTiming = false;
     bool m_loggedDecodeTiming = false;
+    unsigned int m_foreignSeen = 0;
+    std::deque<std::chrono::steady_clock::time_point> m_foreignTimes; // in the last 10 s
+    std::chrono::steady_clock::time_point m_lastForeign;
+    bool m_vocoderShared = false;
 };

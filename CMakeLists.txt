@@ -182,7 +182,7 @@ add_executable(odt_test
 )
 target_link_libraries(odt_test dmr_rewind dmr_audio)
 
-find_package(Qt6 QUIET COMPONENTS Widgets Network)
+find_package(Qt6 QUIET COMPONENTS Widgets Network DBus)
 if(Qt6_FOUND)
   set(CMAKE_AUTOMOC ON)
   set(CMAKE_AUTORCC ON)
@@ -191,6 +191,7 @@ if(Qt6_FOUND)
     src/gui/audiolevelspanel.cpp
     src/gui/dmriddirectory.cpp
     src/gui/dmrtab.cpp
+    src/gui/desktop_theme.cpp
     src/gui/dstartab.cpp
     src/gui/localcache.cpp
     src/gui/masterdirectory.cpp
@@ -205,7 +206,7 @@ if(Qt6_FOUND)
     src/gui/talkgrouplistmodel.cpp
     resources/dv3kclient.qrc
   )
-  target_link_libraries(dv3kclient alsa_audio dextra_audio dplus_client dmr_audio dmr_client dmr_rewind ftdi_latency xlx_directory http_get Qt6::Widgets Qt6::Network ${ALSA_LIBRARIES})
+  target_link_libraries(dv3kclient alsa_audio dextra_audio dplus_client dmr_audio dmr_client dmr_rewind ftdi_latency xlx_directory http_get Qt6::Widgets Qt6::Network Qt6::DBus ${ALSA_LIBRARIES})
   target_include_directories(dv3kclient PRIVATE src ${ALSA_INCLUDE_DIRS})
   # Shown in Help > About and --version; bump it in project() above.
   target_compile_definitions(dv3kclient PRIVATE DV3K_VERSION="${DV3K_VERSION}")
@@ -261,6 +262,7 @@ set(CPACK_DEBIAN_PACKAGE_DEPENDS
   "libc6 (>= 2.34), libgcc-s1 (>= 3.0), libstdc++6 (>= 12), \
 libasound2t64 (>= 1.0.18) | libasound2 (>= 1.0.18), \
 libqt6core6t64 (>= 6.4.0) | libqt6core6 (>= 6.4.0), \
+libqt6dbus6t64 (>= 6.1.2) | libqt6dbus6 (>= 6.1.2), \
 libqt6gui6t64 (>= 6.1.2) | libqt6gui6 (>= 6.1.2), \
 libqt6network6t64 (>= 6.1.2) | libqt6network6 (>= 6.1.2), \
 libqt6widgets6t64 (>= 6.3.0) | libqt6widgets6 (>= 6.3.0), \

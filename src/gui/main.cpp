@@ -5,6 +5,7 @@
 #include <QIcon>
 #include <QLoggingCategory>
 
+#include "desktop_theme.h"
 #include "filelogging.h"
 #include "mainwindow.h"
 
@@ -61,6 +62,9 @@ int main(int argc, char **argv) {
     if (!logPath.isEmpty()) {
         std::fprintf(stderr, "dv3kclient: logging to %s\n", logPath.toUtf8().constData());
     }
+
+    // Before the window: its colours are picked from the palette (theme.h).
+    followDesktopColorScheme(app);
 
     MainWindow window;
     window.show();

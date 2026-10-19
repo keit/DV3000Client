@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 
+#include "theme.h"
+
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
@@ -46,16 +48,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     // rectangle is easy to miss at a glance (especially tabbing through
     // with the window not front-of-mind); a solid colored border is much
     // harder not to notice.
-    setStyleSheet(
-        "QMainWindow {"
-        "  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
-        "    stop:0 #eef0f2, stop:0.5 #cdd0d3, stop:1 #aeb2b6);"
-        "}"
-        "QPushButton:focus, QComboBox:focus, QLineEdit:focus {"
-        "  border: 3px solid #2195f3;"
-        "}");
+    setStyleSheet(theme::windowBackground() +
+                  "QPushButton:focus, QComboBox:focus, QLineEdit:focus {"
+                  "  border: 3px solid #2195f3;"
+                  "}");
 
-    menuBar()->setStyleSheet("QMenuBar { background-color: #e8e8e8; }");
+    menuBar()->setStyleSheet(theme::menuBarBackground());
     auto *fileMenu = menuBar()->addMenu("&File");
     m_settingsAction = fileMenu->addAction("&Settings...", this, &MainWindow::openSettings);
     m_settingsAction->setShortcut(QKeySequence::Preferences);

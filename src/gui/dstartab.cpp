@@ -32,6 +32,7 @@
 #include "audiolevelspanel.h"
 #include "dplus_client.h"
 #include "reflectorlistmodel.h"
+#include "theme.h"
 
 namespace {
 // Button/label colors are set explicitly (rather than left to the system
@@ -39,15 +40,9 @@ namespace {
 // reads fine on both regardless of light/dark mode.
 const char *kConnectedButtonStyle = "background-color: #4CAF50; color: white;";
 const char *kErrorButtonStyle = "background-color: #f44336; color: white;";
-const char *kErrorLabelStyle = "color: #f44336;";
-// Mid-dark amber/cyan (not the pure hues) so they stay readable on both light and dark window themes.
-const char *kStatusLabelStyle = "color: #b36b00;";
 // Distinct from the error red above -- an "on-air" orange, deliberately
 // hard to miss so a forgotten toggled-on transmit is obvious at a glance.
 const char *kSendingButtonStyle = "background-color: #ff9800; color: white;";
-// Lighter than plain white (easier on the eyes) but distinct from the
-// metallic window background so content areas still read as content.
-const char *kLightGrayBackground = "#e8e8e8";
 
 constexpr int kFavouriteNameRole = Qt::UserRole;
 constexpr int kFavouriteModuleRole = Qt::UserRole + 1;
@@ -86,8 +81,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     m_reflectorCombo->setModel(m_model);
     m_reflectorCombo->setCurrentIndex(-1);
     m_reflectorCombo->lineEdit()->setPlaceholderText("Search reflectors and gateways (e.g. 123, XLX123, XRF587, REF001, ZL2VH)...");
-    m_reflectorCombo->setStyleSheet(
-        QString("QComboBox QAbstractItemView { background-color: %1; }").arg(kLightGrayBackground));
+    m_reflectorCombo->setStyleSheet(theme::contentBackground("QComboBox QAbstractItemView"));
 
     // QComboBox resets currentIndex to row 0 on its own whenever its model
     // resets -- the setCurrentIndex(-1) above only covers the very first
@@ -126,7 +120,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     completer->setCaseSensitivity(Qt::CaseInsensitive);
     completer->setFilterMode(Qt::MatchContains); // matches anywhere in the name/country/comment, not just a prefix
     completer->setCompletionMode(QCompleter::PopupCompletion);
-    completer->popup()->setStyleSheet(QString("background-color: %1;").arg(kLightGrayBackground));
+    completer->popup()->setStyleSheet(theme::contentBackground("QAbstractItemView"));
     m_reflectorCombo->setCompleter(completer);
 
     // Re-check on every text change, not just when currentIndex() itself
@@ -177,7 +171,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     });
 
     m_statusLabel = new QLabel("Disconnected.");
-    m_statusLabel->setStyleSheet(kStatusLabelStyle);
+    m_statusLabel->setStyleSheet(theme::statusLabelStyle());
     // A QLabel's minimum width is its full text width, so a long status
     // would raise the left panel's minimum and squeeze the splitter.
     // Ignored lets it clip instead of dictating the panel's width.
@@ -215,7 +209,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
-    m_lastHeardTable->setStyleSheet(QString("QTableWidget { background-color: %1; }").arg(kLightGrayBackground));
+    m_lastHeardTable->setStyleSheet(theme::contentBackground("QTableWidget"));
 
     m_addFavouriteButton = new QPushButton("Add to favourites");
     m_addFavouriteButton->setEnabled(false);
@@ -229,7 +223,7 @@ DStarTab::DStarTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(p
     // if chosen by hand. itemClicked rather than currentItemChanged so
     // re-clicking the already-current entry still applies it.
     m_favouritesList = new QListWidget;
-    m_favouritesList->setStyleSheet(QString("QListWidget { background-color: %1; }").arg(kLightGrayBackground));
+    m_favouritesList->setStyleSheet(theme::contentBackground("QListWidget"));
     auto applyFavourite = [this](QListWidgetItem *item) {
         selectFavourite(item->data(kFavouriteNameRole).toString(),
                         static_cast<char>(item->data(kFavouriteModuleRole).toInt()));
@@ -424,7 +418,7 @@ void DStarTab::startConnect() {
     char targetModule = selectedModule();
     bool isDPlus = selectedIsDPlus();
     m_connectButton->setStyleSheet("");
-    m_statusLabel->setStyleSheet(kStatusLabelStyle);
+    m_statusLabel->setStyleSheet(theme::statusLabelStyle());
     setBusy(true, "Connecting to " + (isDPlus ? reflectorName : host) + "...");
 
     if (m_worker.joinable()) m_worker.join();
@@ -572,7 +566,7 @@ void DStarTab::onConnectFinished(bool ok, QString error, QString reflectorName, 
     if (!ok) {
         setBusy(false, "Connect failed: " + error);
         m_connectButton->setStyleSheet(kErrorButtonStyle);
-        m_statusLabel->setStyleSheet(kErrorLabelStyle);
+        m_statusLabel->setStyleSheet(theme::errorLabelStyle());
         QMessageBox::warning(this, "Connect failed", error);
         return;
     }
@@ -640,7 +634,7 @@ void DStarTab::onDisconnectFinished() {
         m_lostConnection = false;
         setConnected(false, "Connection to " + m_connectedReflectorName + " lost.");
         m_connectButton->setStyleSheet(kErrorButtonStyle);
-        m_statusLabel->setStyleSheet(kErrorLabelStyle);
+        m_statusLabel->setStyleSheet(theme::errorLabelStyle());
         return;
     }
     setConnected(false, "Disconnected.");
@@ -754,7 +748,7 @@ void DStarTab::setConnected(bool connected, const QString &status) {
     }
     m_connectButton->setText(connected ? "Disconnect" : "Connect");
     m_connectButton->setStyleSheet(connected ? kConnectedButtonStyle : "");
-    m_statusLabel->setStyleSheet(kStatusLabelStyle);
+    m_statusLabel->setStyleSheet(theme::statusLabelStyle());
     m_pttButton->setEnabled(connected && m_txAllowed);
     if (!connected) m_pttButton->setChecked(false); // in case we disconnected mid-send
     setBusy(false, status);
@@ -771,7 +765,7 @@ void DStarTab::updateVocoderStatus() {
     if (down == m_vocoderDown) return;
     m_vocoderDown = down;
     m_statusLabel->setText(down ? m_connectedStatus + " — ThumbDV not responding" : m_connectedStatus);
-    m_statusLabel->setStyleSheet(down ? kErrorLabelStyle : kStatusLabelStyle);
+    m_statusLabel->setStyleSheet(down ? theme::errorLabelStyle() : theme::statusLabelStyle());
 }
 
 void DStarTab::updateConnectButtonEnabled() {

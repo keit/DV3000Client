@@ -34,6 +34,7 @@
 #include "dmriddirectory.h"
 #include "localcache.h"
 #include "talkgrouplistmodel.h"
+#include "theme.h"
 
 namespace {
 // Same palette as DStarTab -- kept as a separate copy rather than shared
@@ -41,12 +42,7 @@ namespace {
 // only thing they'd share.
 const char *kConnectedButtonStyle = "background-color: #4CAF50; color: white;";
 const char *kErrorButtonStyle = "background-color: #f44336; color: white;";
-const char *kErrorLabelStyle = "color: #f44336;";
-// Mid-dark amber/cyan (not the pure hues) so they stay readable on both light and dark window themes.
-const char *kStatusLabelStyle = "color: #b36b00;";
-const char *kSubscriptionLabelStyle = "color: #00838f;";
 const char *kSendingButtonStyle = "background-color: #ff9800; color: white;";
-const char *kLightGrayBackground = "#e8e8e8";
 
 constexpr int kFavouriteIdRole = Qt::UserRole;
 constexpr int kFavouritePrivateRole = Qt::UserRole + 1;
@@ -97,8 +93,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     m_talkgroupCombo->setModel(m_talkgroupModel);
     m_talkgroupCombo->setCurrentIndex(-1);
     m_talkgroupCombo->lineEdit()->setPlaceholderText("Talkgroup, e.g. 91 (World-wide) or a number/name to search...");
-    m_talkgroupCombo->setStyleSheet(
-        QString("QComboBox QAbstractItemView { background-color: %1; }").arg(kLightGrayBackground));
+    m_talkgroupCombo->setStyleSheet(theme::contentBackground("QComboBox QAbstractItemView"));
 
     // See ReflectorListModel's identical connection for why: QComboBox
     // resets currentIndex to row 0 on its own whenever its model resets,
@@ -111,7 +106,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     completer->setCaseSensitivity(Qt::CaseInsensitive);
     completer->setFilterMode(Qt::MatchContains);
     completer->setCompletionMode(QCompleter::PopupCompletion);
-    completer->popup()->setStyleSheet(QString("background-color: %1;").arg(kLightGrayBackground));
+    completer->popup()->setStyleSheet(theme::contentBackground("QAbstractItemView"));
     m_talkgroupCombo->setCompleter(completer);
 
     connect(m_talkgroupCombo->lineEdit(), &QLineEdit::textChanged, this, [this] {
@@ -160,9 +155,9 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     });
 
     m_statusLabel = new QLabel("Disconnected.");
-    m_statusLabel->setStyleSheet(kStatusLabelStyle);
+    m_statusLabel->setStyleSheet(theme::statusLabelStyle());
     m_activeTalkgroupLabel = new QLabel("Current subscription: None");
-    m_activeTalkgroupLabel->setStyleSheet(kSubscriptionLabelStyle);
+    m_activeTalkgroupLabel->setStyleSheet(theme::subscriptionLabelStyle());
     // A QLabel's minimum width is its full text width, so a long status
     // ("Connected to 5051.master...") or subscription line would raise the
     // left panel's minimum and squeeze the splitter. Ignored lets these
@@ -188,7 +183,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     // call checkbox) so PTT uses it. itemClicked rather than currentItem
     // Changed so re-clicking the already-current entry still applies it.
     m_favouritesList = new QListWidget;
-    m_favouritesList->setStyleSheet(QString("QListWidget { background-color: %1; }").arg(kLightGrayBackground));
+    m_favouritesList->setStyleSheet(theme::contentBackground("QListWidget"));
     auto applyFavourite = [this](QListWidgetItem *item) {
         selectFavourite(item->data(kFavouriteIdRole).toUInt(), item->data(kFavouritePrivateRole).toBool());
     };
@@ -223,7 +218,7 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    m_lastHeardTable->setStyleSheet(QString("QTableWidget { background-color: %1; }").arg(kLightGrayBackground));
+    m_lastHeardTable->setStyleSheet(theme::contentBackground("QTableWidget"));
 
     auto *tgRow = new QHBoxLayout;
     tgRow->addWidget(new QLabel("Talkgroup:"));
@@ -556,7 +551,7 @@ void DmrTab::startConnect() {
     }
 
     m_connectButton->setStyleSheet("");
-    m_statusLabel->setStyleSheet(kStatusLabelStyle);
+    m_statusLabel->setStyleSheet(theme::statusLabelStyle());
     m_connectedNetwork = m_network;
     setBusy(true, "Connecting to " + server + "...");
 
@@ -687,7 +682,7 @@ void DmrTab::onConnectFinished(bool ok, QString error) {
     if (!ok) {
         setBusy(false, "Connect failed: " + error);
         m_connectButton->setStyleSheet(kErrorButtonStyle);
-        m_statusLabel->setStyleSheet(kErrorLabelStyle);
+        m_statusLabel->setStyleSheet(theme::errorLabelStyle());
         QMessageBox::warning(this, "Connect failed", error);
         return;
     }
@@ -805,7 +800,7 @@ void DmrTab::setConnected(bool connected, const QString &status) {
     }
     m_connectButton->setText(connected ? "Disconnect" : "Connect");
     m_connectButton->setStyleSheet(connected ? kConnectedButtonStyle : "");
-    m_statusLabel->setStyleSheet(kStatusLabelStyle);
+    m_statusLabel->setStyleSheet(theme::statusLabelStyle());
     if (!connected) m_pttButton->setChecked(false); // in case we disconnected mid-send
     updatePttButtonEnabled();
     updateUnsubscribeButtonEnabled();
@@ -823,7 +818,7 @@ void DmrTab::updateVocoderStatus() {
     if (down == m_vocoderDown) return;
     m_vocoderDown = down;
     m_statusLabel->setText(down ? m_connectedStatus + " — ThumbDV not responding" : m_connectedStatus);
-    m_statusLabel->setStyleSheet(down ? kErrorLabelStyle : kStatusLabelStyle);
+    m_statusLabel->setStyleSheet(down ? theme::errorLabelStyle() : theme::statusLabelStyle());
 }
 
 void DmrTab::updatePttButtonEnabled() { m_pttButton->setEnabled(m_connected && currentTalkgroupId() != 0); }

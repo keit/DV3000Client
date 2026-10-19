@@ -32,6 +32,7 @@
 #include <thread>
 
 #include "audio_gain.h"
+#include "theme.h"
 #include "alsa_audio.h"
 #include "dvcontroller.h"
 #include "localcache.h"
@@ -335,10 +336,8 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
     // the master-list fetch: the dialog may be closed while it waits.
     m_thumbdvTest = new QPushButton("Test");
     m_thumbdvTestResult = new QLabel;
-    // Same amber used for the D-Star/DMR tabs' status messages (their own
-    // kStatusLabelStyle) -- mid-dark so it stays readable on both light and
-    // dark window themes.
-    m_thumbdvTestResult->setStyleSheet("color: #b36b00;");
+    // Same amber as the D-Star/DMR tabs' status messages.
+    m_thumbdvTestResult->setStyleSheet(theme::statusLabelStyle());
     connect(m_thumbdvTest, &QPushButton::clicked, this, [this] {
         GuiSettings probe;
         probe.thumbdvMode = "network";

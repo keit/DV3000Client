@@ -1,11 +1,14 @@
 #include "reflectorlistmodel.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <sstream>
 #include <thread>
 
 #include <QFile>
 #include <QMetaObject>
+#include <QSet>
+#include <QStandardPaths>
 #include <QTimer>
 
 #include "localcache.h"
@@ -59,6 +62,12 @@ ReflectorListModel::ReflectorListModel(QObject *parent) : QAbstractListModel(par
     if (hosts.open(QIODevice::ReadOnly)) {
         std::istringstream in(hosts.readAll().toStdString());
         xlx::loadStaticFallback(in, m_fallback);
+    }
+    QFile local(localFilePath());
+    if (local.open(QIODevice::ReadOnly)) {
+        m_local = xlx::parseReflectorList(local.readAll().toStdString());
+        for (auto &r : m_local) r.comment += r.comment.empty() ? "(reflectors.xml)" : " (reflectors.xml)";
+        std::fprintf(stderr, "reflectors: %zu from %s\n", m_local.size(), localFilePath().toLocal8Bit().constData());
     }
     rebuildRows();
 
@@ -177,13 +186,24 @@ void ReflectorListModel::applyLive(std::vector<xlx::ReflectorInfo> live) {
     rebuildRows([&] { m_live = std::move(live); });
 }
 
+QString ReflectorListModel::localFilePath() {
+    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/reflectors.xml";
+}
+
 void ReflectorListModel::rebuildRows(const std::function<void()> &change) {
     beginResetModel();
     if (change) change();
     m_rows.clear();
-    m_rows.reserve(m_live.size() + m_fallback.size() + m_dplus.size());
-    for (const auto &r : m_live) m_rows.push_back({&r, false});
-    for (const auto &r : m_fallback) m_rows.push_back({&r, false});
+    m_rows.reserve(m_live.size() + m_fallback.size() + m_dplus.size() + m_local.size());
+    // reflectors.xml's entries replace the directory's of the same name.
+    QSet<QString> overridden;
+    for (const auto &r : m_local) overridden.insert(QString::fromStdString(r.name).toUpper());
+    auto keep = [&](const xlx::ReflectorInfo &r) { return !overridden.contains(QString::fromStdString(r.name).toUpper()); };
+    for (const auto &r : m_local) m_rows.push_back({&r, false});
+    for (const auto &r : m_live)
+        if (keep(r)) m_rows.push_back({&r, false});
+    for (const auto &r : m_fallback)
+        if (keep(r)) m_rows.push_back({&r, false});
     for (const auto &r : m_dplus) m_rows.push_back({&r, true});
     std::sort(m_rows.begin(), m_rows.end(), [](const Row &a, const Row &b) { return a.info->name < b.info->name; });
     endResetModel();

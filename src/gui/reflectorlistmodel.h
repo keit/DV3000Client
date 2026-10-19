@@ -7,6 +7,11 @@
 // merges it in -- live entries take priority over a fallback entry with
 // the same reflector number, since the live one has a real, current host.
 //
+// The user's own reflectors.xml (next to settings.json, the same
+// <reflector> blocks as the live directory) overrides both by name and can
+// add more -- e.g. a private address for one's own XLX reflector, reached
+// from inside its network. Read at startup.
+//
 // Alongside them, the DPlus side: REF reflectors and DPlus repeater
 // gateways (e.g. ZL2VH), from the list the DPlus authentication server
 // sends when a callsign logs in (dplus::authenticate) -- so it can only be
@@ -53,6 +58,7 @@ private:
     // beginResetModel(): m_rows points into those lists, and views (and
     // DStarTab's modelAboutToBeReset handler) read rows until then.
     void rebuildRows(const std::function<void()> &change = {});
+    static QString localFilePath();
 
     struct Row {
         const xlx::ReflectorInfo *info;
@@ -62,6 +68,7 @@ private:
     std::vector<xlx::ReflectorInfo> m_fallback;
     std::vector<xlx::ReflectorInfo> m_live;
     std::vector<xlx::ReflectorInfo> m_dplus;
+    std::vector<xlx::ReflectorInfo> m_local; // from reflectors.xml
     std::vector<Row> m_rows;
     bool m_refreshing = false;
     bool m_refreshingDPlus = false;

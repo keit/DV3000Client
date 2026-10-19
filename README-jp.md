@@ -347,6 +347,24 @@ REF リフレクターと DPlus レピーターゲートウェイ(レピータ�
 | `dv3000client.log`         | ログファイル(**Help > Log File Location...** からも開けます)  |
 | `cache/`                   | リフレクター・トークグループ・DMR ID ディレクトリのキャッシュ |
 
+**独自のリフレクター定義。** ディレクトリとは別のアドレスで XLX/XRF リフレクターに接続
+したい場合(自分のリフレクターに、そのネットワーク内からプライベートアドレスで接続する
+など)や、ディレクトリにないリフレクターを使う場合は、ディレクトリと同じ形式で
+`~/.config/DV3000Client/reflectors.xml` を作成します。同じ名前のエントリはディレクトリの
+リフレクターを置き換え、それ以外は追加されます。`<lastip>` にはホスト名も使えます。
+`<country>` と `<comment>` は省略できます。起動時に読み込まれ、一覧では
+「(reflectors.xml)」と表示されます。
+
+```xml
+<reflectorlist>
+  <reflector>
+    <name>XLX307</name>
+    <lastip>192.168.1.50</lastip>
+    <comment>自宅</comment>
+  </reflector>
+</reflectorlist>
+```
+
 Speaker 欄の **Record** ボタンで、受信音声を WAV ファイルとして `~/Music/DV3K Client/` に
 保存できます。ファイル名は日時と接続先です(**File > Open Recordings Folder** で開けます)。
 自分の送信音声は含まれません。

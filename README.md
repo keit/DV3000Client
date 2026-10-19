@@ -351,6 +351,25 @@ Under `~/.config/DV3000Client/`:
 | `dv3000client.log`         | Log file (also reachable via **Help > Log File Location...**)   |
 | `cache/`                   | Cached reflector, talkgroup and DMR ID directories              |
 
+**Your own reflector entries.** To reach an XLX/XRF reflector at an address
+other than the directory's -- your own reflector from inside its network, at
+its private address -- or one that isn't listed at all, create
+`~/.config/DV3000Client/reflectors.xml` with entries in the directory's own
+format. An entry replaces the directory's reflector of the same name, and
+any other is added; `<lastip>` can be a host name, `<country>` and
+`<comment>` are optional. The app reads it at startup and marks its entries
+"(reflectors.xml)" in the list.
+
+```xml
+<reflectorlist>
+  <reflector>
+    <name>XLX307</name>
+    <lastip>192.168.1.50</lastip>
+    <comment>at home</comment>
+  </reflector>
+</reflectorlist>
+```
+
 The **Record** button in the Speaker box saves what you hear as WAV files in
 `~/Music/DV3K Client/`, named by date, time and what you're connected to
 (**File > Open Recordings Folder** opens it). Your own transmissions aren't

@@ -32,6 +32,11 @@ namespace audio {
 class AlsaPcm {
 public:
     bool open(const std::string &device, snd_pcm_stream_t stream);
+    // Why the last open() failed, for the user: e.g. that a hardware device
+    // (plughw:...) is busy because another program -- typically the
+    // desktop's sound server, playing audio from a browser -- has it, and
+    // that "default" would share it instead. Empty after a successful open.
+    const std::string &openError() const { return m_openError; }
     // Discards anything still buffered -- call drain() first to play it out.
     void close();
     // Playback only: blocks until everything written has been played.
@@ -80,6 +85,7 @@ private:
     std::atomic<int> m_peak{0};
 
     snd_pcm_t *m_handle = nullptr;
+    std::string m_openError;
     snd_pcm_uframes_t m_bufferSize = 0; // in samples, from open()
     snd_pcm_stream_t m_stream = SND_PCM_STREAM_CAPTURE;
 };

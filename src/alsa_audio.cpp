@@ -19,10 +19,20 @@ constexpr unsigned int kPlaybackStartFrames = 6;
 
 bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
     m_stream = stream;
+    m_openError.clear();
     int err = snd_pcm_open(&m_handle, device.c_str(), stream, 0);
     if (err < 0) {
         std::fprintf(stderr, "audio: snd_pcm_open(%s) failed: %s\n",
                      device.c_str(), snd_strerror(err));
+        // A hardware device can be open by one program at a time; the
+        // sound server holds it while anything plays through it, and for a
+        // few seconds after.
+        if (err == -EBUSY)
+            m_openError = device + " is in use by another program, e.g. the desktop's sound server while a browser "
+                                   "or media player is playing through it. Choose \"default\" in Settings to share it.";
+        else
+            m_openError = device + ": " + snd_strerror(err);
+        m_handle = nullptr;
         return false;
     }
 
@@ -50,6 +60,7 @@ bool AlsaPcm::open(const std::string &device, snd_pcm_stream_t stream) {
     if (err < 0) {
         std::fprintf(stderr, "audio: snd_pcm_set_params(%s) failed: %s\n",
                      device.c_str(), snd_strerror(err));
+        m_openError = device + " doesn't support 8 kHz mono 16-bit audio: " + std::string(snd_strerror(err));
         snd_pcm_close(m_handle);
         m_handle = nullptr;
         return false;

@@ -580,11 +580,13 @@ void DmrTab::connectWorker(GuiSettings settings, QString network) {
 
     if (ok && !m_capture.open(settings.audioInputDevice.toStdString(), SND_PCM_STREAM_CAPTURE)) {
         error = "Failed to open audio input device " + settings.audioInputDevice;
+        if (!m_capture.openError().empty()) error += ": " + QString::fromStdString(m_capture.openError());
         ok = false;
     }
 
     if (ok && !m_playback.open(settings.audioOutputDevice.toStdString(), SND_PCM_STREAM_PLAYBACK)) {
         error = "Failed to open audio output device " + settings.audioOutputDevice;
+        if (!m_playback.openError().empty()) error += ": " + QString::fromStdString(m_playback.openError());
         ok = false;
     }
 

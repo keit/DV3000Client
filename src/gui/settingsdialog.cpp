@@ -12,6 +12,7 @@
 #include <QIntValidator>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QMetaObject>
 #include <QProgressBar>
 #include <QPushButton>
@@ -143,9 +144,10 @@ QComboBox *makeEditableCombo(const QStringList &items, const QString &current) {
 // device, same 8kHz/16-bit-mono format as everything else this app plays.
 // Blocks for the duration (AlsaPcm::write() paces itself to real time),
 // so always call this from a background thread, never the GUI thread.
-void playTestTone(const std::string &device) {
+// Returns why the device couldn't be opened, or "" once the tone has played.
+std::string playTestTone(const std::string &device) {
     audio::AlsaPcm pcm;
-    if (!pcm.open(device, SND_PCM_STREAM_PLAYBACK)) return;
+    if (!pcm.open(device, SND_PCM_STREAM_PLAYBACK)) return pcm.openError().empty() ? "can't open " + device : pcm.openError();
 
     constexpr double kFrequencyHz = 440.0;
     constexpr double kSampleRateHz = 8000.0;
@@ -171,6 +173,7 @@ void playTestTone(const std::string &device) {
     // tone is still queued here -- and close() would discard it.
     pcm.drain();
     pcm.close();
+    return {};
 }
 
 } // namespace
@@ -237,6 +240,14 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
             audio::AlsaPcm pcm;
             if (!pcm.open(device, SND_PCM_STREAM_CAPTURE)) {
                 m_audioInputTesting.store(false);
+                QString error = QString::fromStdString(pcm.openError());
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, error] {
+                        stopAudioInputTest(); // back to "Test", device list enabled
+                        if (!error.isEmpty()) QMessageBox::warning(this, "Input test", error);
+                    },
+                    Qt::QueuedConnection);
                 return;
             }
             // Same fast-read throttle as dextra::captureThread (see its
@@ -300,10 +311,11 @@ SettingsDialog::SettingsDialog(const GuiSettings &current, QWidget *parent) : QD
         m_audioOutputTest->setEnabled(false);
         std::string device = m_audioOutput->currentText().trimmed().toStdString();
         std::thread([this, device] {
-            playTestTone(device);
+            QString error = QString::fromStdString(playTestTone(device));
             QMetaObject::invokeMethod(
                 this,
-                [this] {
+                [this, error] {
+                    if (!error.isEmpty()) QMessageBox::warning(this, "Output test", error);
                     // Disabling a focused widget hands focus to the next one
                     // in tab order (here, the ThumbDV combo) and re-enabling
                     // it doesn't hand focus back on its own -- restore it

@@ -111,6 +111,17 @@ add_executable(dplus_test
 )
 target_link_libraries(dplus_test dplus_client alsa_audio vocoder_pipeline)
 
+# YSF (System Fusion) client and its listen-only test tool.
+add_library(ysf_client
+  src/ysf_client.cpp
+)
+target_link_libraries(ysf_client ysf_fec http_get)
+
+add_executable(ysf_test
+  src/ysf_test.cpp
+)
+target_link_libraries(ysf_test ysf_client alsa_audio vocoder_pipeline)
+
 add_library(sha256
   src/sha256.cpp
 )
@@ -140,6 +151,27 @@ foreach(file cutils.h cutils.cpp)
 endforeach()
 add_library(dmr_fec ${DMR_FEC_SOURCES} ${DMR_FEC_DIR}/cutils.cpp)
 target_include_directories(dmr_fec PUBLIC ${DMR_FEC_DIR})
+
+# YSF (System Fusion) frame coding, from the same vendored xlxd: the FICH
+# (convolutional + Golay), and converting a DN-mode voice channel to and
+# from the 72-bit AMBE+2 frame DMR uses -- the same vocoder rate, so the
+# ThumbDV decodes it as DMR audio. GPLv2+ (cysffich, cysfconvolution,
+# cgolay24128, ysfdefines.h) and GPLv3+ (cysfutils). xlxd's cysfpayload,
+# GPLv2-only, isn't used. cysfutils includes xlxd's main.h only for its
+# integer type names: src/ysf_fec/main.h stands in for it, copied next to
+# the sources as with cutils above.
+set(YSF_FEC_DIR ${CMAKE_BINARY_DIR}/ysf_fec)
+set(YSF_FEC_SOURCES)
+foreach(name cysfutils cysffich cysfconvolution cgolay24128)
+  configure_file(third_party/xlxd/src/${name}.h ${YSF_FEC_DIR}/${name}.h COPYONLY)
+  configure_file(third_party/xlxd/src/${name}.cpp ${YSF_FEC_DIR}/${name}.cpp COPYONLY)
+  list(APPEND YSF_FEC_SOURCES ${YSF_FEC_DIR}/${name}.cpp)
+endforeach()
+configure_file(third_party/xlxd/src/ysfdefines.h ${YSF_FEC_DIR}/ysfdefines.h COPYONLY)
+configure_file(src/ysf_fec/main.h ${YSF_FEC_DIR}/main.h COPYONLY)
+add_library(ysf_fec ${YSF_FEC_SOURCES})
+target_include_directories(ysf_fec PUBLIC ${YSF_FEC_DIR})
+target_link_libraries(ysf_fec dmr_fec) # ccrc
 
 # The DmrTransport interface and the g_running flag every backend shares
 # (dmr_transport.h/cpp) -- deliberately its own tiny library, independent

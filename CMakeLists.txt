@@ -118,6 +118,11 @@ add_library(ysf_client
 )
 target_link_libraries(ysf_client ysf_fec http_get)
 
+add_library(ysf_audio
+  src/ysf_audio.cpp
+)
+target_link_libraries(ysf_audio ysf_client alsa_audio vocoder_pipeline)
+
 add_executable(ysf_test
   src/ysf_test.cpp
 )
@@ -237,9 +242,11 @@ if(Qt6_FOUND)
     src/gui/settingsdialog.cpp
     src/gui/talkgroupdirectory.cpp
     src/gui/talkgrouplistmodel.cpp
+    src/gui/ysfreflectormodel.cpp
+    src/gui/ysftab.cpp
     resources/dv3kclient.qrc
   )
-  target_link_libraries(dv3kclient alsa_audio dextra_audio dplus_client dmr_audio dmr_client dmr_rewind ftdi_latency xlx_directory http_get Qt6::Widgets Qt6::Network Qt6::DBus ${ALSA_LIBRARIES})
+  target_link_libraries(dv3kclient alsa_audio dextra_audio dplus_client dmr_audio dmr_client dmr_rewind ysf_audio ftdi_latency xlx_directory http_get Qt6::Widgets Qt6::Network Qt6::DBus ${ALSA_LIBRARIES})
   target_include_directories(dv3kclient PRIVATE src ${ALSA_INCLUDE_DIRS})
   # Shown in Help > About and --version; bump it in project() above.
   target_compile_definitions(dv3kclient PRIVATE DV3K_VERSION="${DV3K_VERSION}")

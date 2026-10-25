@@ -20,6 +20,7 @@
 
 #include "dmrtab.h"
 #include "dstartab.h"
+#include "ysftab.h"
 #include <utility>
 
 #include "filelogging.h"
@@ -84,31 +85,33 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     m_dstarTab = new DStarTab(m_settings);
     m_dmrTab = new DmrTab(m_settings);
-    connect(m_dstarTab, &ProtocolTab::stateChanged, this, &MainWindow::updateSettingsActionEnabled);
-    connect(m_dmrTab, &ProtocolTab::stateChanged, this, &MainWindow::updateSettingsActionEnabled);
-    connect(m_dstarTab, &ProtocolTab::thumbdvLatencyChecked, this, &MainWindow::onThumbdvLatencyChecked);
-    connect(m_dmrTab, &ProtocolTab::thumbdvLatencyChecked, this, &MainWindow::onThumbdvLatencyChecked);
-    connect(m_dstarTab, &ProtocolTab::thumbdvSlowChanged, this, &MainWindow::onThumbdvSlowChanged);
-    connect(m_dmrTab, &ProtocolTab::thumbdvSlowChanged, this, &MainWindow::onThumbdvSlowChanged);
-    connect(m_dstarTab, &ProtocolTab::vocoderSharedChanged, this, &MainWindow::onVocoderSharedChanged);
-    connect(m_dmrTab, &ProtocolTab::vocoderSharedChanged, this, &MainWindow::onVocoderSharedChanged);
+    m_ysfTab = new YsfTab(m_settings);
+    m_protocolTabs = {m_dstarTab, m_dmrTab, m_ysfTab};
+    for (ProtocolTab *tab : m_protocolTabs) {
+        connect(tab, &ProtocolTab::stateChanged, this, &MainWindow::updateSettingsActionEnabled);
+        connect(tab, &ProtocolTab::thumbdvLatencyChecked, this, &MainWindow::onThumbdvLatencyChecked);
+        connect(tab, &ProtocolTab::thumbdvSlowChanged, this, &MainWindow::onThumbdvSlowChanged);
+        connect(tab, &ProtocolTab::vocoderSharedChanged, this, &MainWindow::onVocoderSharedChanged);
+    }
 
-    // Volume sliders live on both tabs but are one setting: moving either
-    // pair updates the other tab and the saved settings (written once the
+    // Volume sliders live on every tab but are one setting: moving one
+    // tab's updates the others and the saved settings (written once the
     // slider settles, not on every step). Applied to the tabs up front so
     // the saved levels are in effect from the first connect.
-    for (auto [tab, other] : {std::pair<ProtocolTab *, ProtocolTab *>{m_dstarTab, m_dmrTab}, {m_dmrTab, m_dstarTab}}) {
-        connect(tab, &ProtocolTab::volumesChanged, this, [this, other](int mic, int speaker) {
+    for (ProtocolTab *tab : m_protocolTabs) {
+        connect(tab, &ProtocolTab::volumesChanged, this, [this, tab](int mic, int speaker) {
             m_settings.micVolume = mic;
             m_settings.speakerVolume = speaker;
-            other->setVolumes(mic, speaker);
+            for (ProtocolTab *other : m_protocolTabs)
+                if (other != tab) other->setVolumes(mic, speaker);
         });
         connect(tab, &ProtocolTab::volumesCommitted, this, [this] { m_settings.save(); });
         tab->setVolumes(m_settings.micVolume, m_settings.speakerVolume);
         // The Auto level box works the same way, saved on every change.
-        connect(tab, &ProtocolTab::autoLevelChanged, this, [this, other](bool on) {
+        connect(tab, &ProtocolTab::autoLevelChanged, this, [this, tab](bool on) {
             m_settings.autoLevel = on;
-            other->setAutoLevel(on);
+            for (ProtocolTab *other : m_protocolTabs)
+                if (other != tab) other->setAutoLevel(on);
             m_settings.save();
         });
         tab->setAutoLevel(m_settings.autoLevel);
@@ -124,6 +127,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_tabs = new QTabWidget;
     m_tabs->addTab(m_dstarTab, "D-Star");
     m_tabs->addTab(m_dmrTab, "DMR");
+    m_tabs->addTab(m_ysfTab, "YSF");
 
     // Keep the left/right border in the same place on both tabs: on a
     // switch, the tab being shown takes the width the one being left had
@@ -211,10 +215,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
 void MainWindow::closeEvent(QCloseEvent *event) {
     // Wait out any in-flight connect/disconnect before touching either
     // tab's session members -- see ProtocolTab::joinWorker's comment.
-    m_dstarTab->joinWorker();
-    m_dmrTab->joinWorker();
-    m_dstarTab->stopSessionBlocking();
-    m_dmrTab->stopSessionBlocking();
+    for (ProtocolTab *tab : m_protocolTabs) tab->joinWorker();
+    for (ProtocolTab *tab : m_protocolTabs) tab->stopSessionBlocking();
     QMainWindow::closeEvent(event);
 }
 
@@ -225,6 +227,7 @@ void MainWindow::openSettings() {
         m_settings.save();
         m_dstarTab->applySettings(m_settings);
         m_dmrTab->applySettings(m_settings);
+        m_ysfTab->applySettings(m_settings);
     }
 }
 
@@ -275,5 +278,7 @@ void MainWindow::onVocoderSharedChanged(bool shared, bool network) {
 }
 
 void MainWindow::updateSettingsActionEnabled() {
-    m_settingsAction->setEnabled(!m_dstarTab->isActiveOrBusy() && !m_dmrTab->isActiveOrBusy());
+    bool busy = false;
+    for (ProtocolTab *tab : m_protocolTabs) busy = busy || tab->isActiveOrBusy();
+    m_settingsAction->setEnabled(!busy);
 }

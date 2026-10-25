@@ -15,6 +15,7 @@ class QLabel;
 class QTabWidget;
 class DStarTab;
 class DmrTab;
+class YsfTab;
 class ProtocolTab;
 
 class MainWindow : public QMainWindow {
@@ -41,6 +42,8 @@ private:
     int m_currentTabIndex = 0; // the tab being left, as of the next currentChanged
     DStarTab *m_dstarTab;
     DmrTab *m_dmrTab;
+    YsfTab *m_ysfTab;
+    QList<ProtocolTab *> m_protocolTabs; // all of the above
     QAction *m_settingsAction;
     // Shown above the tabs while the ThumbDV's FTDI latency timer is still
     // above 1 ms after the app's own attempt to lower it -- i.e. exactly

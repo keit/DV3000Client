@@ -6,6 +6,9 @@
 //   ysf_test <callsign> <reflector name, id, or host[:port]> <thumbdv|none> <playback-device|file.wav|none>
 //   e.g. ysf_test ZL2MIM US-America-Link /dev/serial/by-id/usb-...ThumbDV... plughw:2,0
 //   ysf_test --list [text]     lists reflectors (matching text)
+//   ... --tx speech.wav        transmits the file (8 kHz 16-bit mono WAV) once
+//                              linked, then keeps listening -- with a YSF
+//                              parrot, e.g. DE-Parrot, to hear it played back
 //
 // With "none" as the ThumbDV nothing is decoded or played: streams are
 // only logged. A .wav file in place of the playback device saves the
@@ -14,9 +17,13 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <fstream>
 #include <csignal>
 #include <cstdio>
+#include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -30,6 +37,24 @@ namespace {
 
 volatile std::sig_atomic_t g_running = 1;
 void onSignal(int) { g_running = 0; }
+
+// The samples of an 8 kHz 16-bit mono WAV file (its "data" chunk).
+std::vector<short> readWav(const std::string &path) {
+    std::ifstream in(path, std::ios::binary);
+    std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    for (size_t i = 12; i + 8 <= bytes.size();) {
+        uint32_t len;
+        std::memcpy(&len, &bytes[i + 4], 4);
+        if (std::memcmp(&bytes[i], "data", 4) == 0) {
+            size_t n = std::min<size_t>(len, bytes.size() - i - 8) / 2;
+            std::vector<short> s(n);
+            std::memcpy(s.data(), &bytes[i + 8], n * 2);
+            return s;
+        }
+        i += 8 + len + (len & 1);
+    }
+    return {};
+}
 
 std::string upper(std::string s) {
     for (char &c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
@@ -117,6 +142,31 @@ int main(int argc, char **argv) {
     });
     if (!client.open(host, port) || !client.link(callsign)) return 1;
     std::fprintf(stderr, "ysf_test: linked; Ctrl-C to stop\n");
+
+    if (argc > 6 && std::string(argv[5]) == "--tx" && vocoder) {
+        // Encode the whole file first, then send it at the real-time pace
+        // of a radio: one YSF frame (5 AMBE frames) every 100 ms.
+        std::vector<short> pcm = readWav(argv[6]);
+        std::vector<std::vector<uint8_t>> ambe;
+        std::mutex lock;
+        for (size_t i = 0; i + SerialDV::MBE_AUDIO_BLOCK_SIZE <= pcm.size(); i += SerialDV::MBE_AUDIO_BLOCK_SIZE)
+            vocoder->encode(&pcm[i], [&](const uint8_t *a) {
+                std::lock_guard<std::mutex> l(lock);
+                ambe.emplace_back(a, a + ysf::AMBE_FRAME_SIZE);
+            });
+        static const short silentPcm[SerialDV::MBE_AUDIO_BLOCK_SIZE] = {};
+        std::vector<uint8_t> silence(ysf::AMBE_FRAME_SIZE);
+        vocoder->encode(silentPcm, [&](const uint8_t *a) { std::memcpy(silence.data(), a, ysf::AMBE_FRAME_SIZE); });
+        vocoder->drain();
+        std::fprintf(stderr, "ysf_test: transmitting %s: %zu frames (%.1f s)\n", argv[6], ambe.size(), ambe.size() * 0.02);
+        client.beginTx();
+        auto next = std::chrono::steady_clock::now();
+        for (size_t i = 0; i < ambe.size() && g_running; i++) {
+            client.sendVoice(ambe[i].data());
+            if (i % 5 == 4) std::this_thread::sleep_until(next += std::chrono::milliseconds(100));
+        }
+        client.endTx(silence.data());
+    }
 
     std::thread playThread;
     if (toDevice) playThread = std::thread(audio::playbackThread, &playback, &queue, &g_running, nullptr, nullptr);

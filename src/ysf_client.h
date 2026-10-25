@@ -2,7 +2,7 @@
 
 // YSF (Yaesu System Fusion) network client: the UDP protocol YSF reflectors
 // (G4KLX's YSFReflector, and xlxd's YSF side) speak to hotspots and
-// YSFGateway. Receive only so far.
+// YSFGateway.
 //
 // The protocol is small: "YSFP" + callsign polls every 5 s keep a client
 // linked (the reflector answers each), "YSFU" + callsign unlinks, and
@@ -16,6 +16,12 @@
 // uses, so each is converted (xlxd's CYsfUtils) to the 72-bit frame a
 // ThumbDV decodes at DMR's rate (SerialDV::DVRate3600x2450). VW mode (full
 // rate) and V/D mode 1 aren't decoded yet; their streams are logged.
+//
+// Transmitting sends DN mode the way Fusion radios do: a header frame
+// carrying the callsigns, voice frames of 5 AMBE+2 frames each (frame
+// numbers 0-6, their data channels cycling through destination, source,
+// downlink, uplink and radio data), and a terminator. The data channels are
+// coded by ysf_dch.
 
 #include <chrono>
 #include <csignal>
@@ -69,11 +75,22 @@ public:
     // without anything from the reflector.
     void run(const volatile std::sig_atomic_t *running);
 
+    // Transmit, as the linked callsign. sendVoice() takes one 72-bit AMBE+2
+    // frame (DMR's format, as the ThumbDV encodes at DMR's rate) and sends a
+    // YSF frame for every 5; endTx() pads a partial one with silence (a
+    // frame the caller encoded from silent audio) and sends the terminator.
+    // Frames go out as they're completed: the caller paces them.
+    void beginTx();
+    void sendVoice(const uint8_t *ambe);
+    void endTx(const uint8_t *silence);
+
 private:
     ssize_t recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs);
     void sendPoll();
     void handleData(const uint8_t *buf);
     void endStream(const char *how);
+    void sendFrame(const uint8_t *frame, bool last);
+    void buildFich(uint8_t *frame, unsigned char fi, unsigned char fn);
 
     int m_fd = -1;
     std::string m_callsign = "N0CALL";
@@ -87,6 +104,13 @@ private:
     int m_voiceFrames = 0;
     int m_frames = 0;
     std::chrono::steady_clock::time_point m_streamStart, m_lastData;
+
+    // Transmit: the 5 AMBE frames of the YSF frame being filled, its frame
+    // number (0-6), and the YSFD packet counter.
+    uint8_t m_txAmbe[5][AMBE_FRAME_SIZE] = {};
+    int m_txCount = 0;
+    unsigned char m_txFn = 0;
+    unsigned char m_txCounter = 0;
 };
 
 } // namespace ysf

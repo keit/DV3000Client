@@ -15,6 +15,7 @@
 #include "main.h" // ysf_fec's stand-in for xlxd's: the uint8 cysfutils.h uses
 #include "cysfutils.h"
 #include "http_get.h"
+#include "ysf_dch.h"
 #include "ysfdefines.h"
 
 namespace ysf {
@@ -228,6 +229,102 @@ void YsfClient::handleData(const uint8_t *buf) {
         if (fich.getFI() == YSF_FI_TERMINATOR) end = true;
     }
     if (end) endStream("ended");
+}
+
+// --- transmit ----------------------------------------------------------------
+
+void YsfClient::buildFich(uint8_t *frame, unsigned char fi, unsigned char fn) {
+    // As Fusion radios send DN mode: frames numbered 0-6 (FT 6), CS 2, MR 0.
+    std::memcpy(frame, YSF_SYNC_BYTES, YSF_SYNC_LENGTH_BYTES);
+    CYSFFICH fich;
+    fich.setFI(fi);
+    fich.setCS(2);
+    fich.setFN(fn);
+    fich.setFT(6);
+    fich.setDev(false);
+    fich.setMR(0);
+    fich.setDT(YSF_DT_VD_MODE2);
+    fich.setSQL(false);
+    fich.setSQ(0);
+    fich.encode(frame + YSF_SYNC_LENGTH_BYTES);
+}
+
+void YsfClient::sendFrame(const uint8_t *frame, bool last) {
+    // gateway, source, destination; the counter (shifted left), bit 0 = end.
+    std::string pkt = "YSFD" + field(m_callsign, CALLSIGN_FIELD) + field(m_callsign, CALLSIGN_FIELD) +
+                      field("ALL", CALLSIGN_FIELD);
+    pkt += static_cast<char>(((m_txCounter & 0x7F) << 1) | (last ? 0x01 : 0x00));
+    pkt.append(reinterpret_cast<const char *>(frame), YSF_FRAME_LENGTH_BYTES);
+    ::send(m_fd, pkt.data(), pkt.size(), 0);
+    m_txCounter++;
+}
+
+namespace {
+
+// Header and terminator: CSD1 = destination + source, CSD2 = downlink +
+// uplink (left blank, as xlxd does).
+void headerFields(const std::string &callsign, uint8_t csd1[CSD_BYTES], uint8_t csd2[CSD_BYTES]) {
+    std::string c1 = "**********" + field(callsign, CALLSIGN_FIELD), c2(CSD_BYTES, ' ');
+    std::memcpy(csd1, c1.data(), CSD_BYTES);
+    std::memcpy(csd2, c2.data(), CSD_BYTES);
+}
+
+// A DN frame's data channel by frame number: 0 destination, 1 source,
+// 2 downlink, 3 uplink, 4-6 radio data. As in xlxd, frames 5 and 6 carry a
+// stand-in radio ID and GPS record, without which some radios don't show
+// the caller's callsign.
+void frameData(const std::string &callsign, unsigned char fn, uint8_t out[VD2_DATA_BYTES]) {
+    static const uint8_t gps[VD2_DATA_BYTES] = {0x52, 0x22, 0x61, 0x5F, 0x27, 0x03, 0x5E, 0x20, 0x20, 0x20};
+    std::string s;
+    switch (fn) {
+    case 0: s = "**********"; break;
+    case 1: case 2: case 3: s = field(callsign, CALLSIGN_FIELD); break;
+    case 5: s = "     G0gBJ"; break;
+    case 6: std::memcpy(out, gps, VD2_DATA_BYTES); return;
+    default: s = std::string(VD2_DATA_BYTES, ' '); break;
+    }
+    std::memcpy(out, s.data(), VD2_DATA_BYTES);
+}
+
+} // namespace
+
+void YsfClient::beginTx() {
+    m_txCount = 0;
+    m_txFn = 0;
+    m_txCounter = 0;
+    uint8_t frame[YSF_FRAME_LENGTH_BYTES] = {};
+    buildFich(frame, YSF_FI_HEADER, 0);
+    uint8_t csd1[CSD_BYTES], csd2[CSD_BYTES];
+    headerFields(m_callsign, csd1, csd2);
+    encodeHeaderData(csd1, csd2, frame);
+    sendFrame(frame, false);
+    std::fprintf(stderr, "ysf: PTT down, %s\n", m_callsign.c_str());
+}
+
+void YsfClient::sendVoice(const uint8_t *ambe) {
+    std::memcpy(m_txAmbe[m_txCount++], ambe, AMBE_FRAME_SIZE);
+    if (m_txCount < 5) return;
+    m_txCount = 0;
+    uint8_t frame[YSF_FRAME_LENGTH_BYTES] = {};
+    buildFich(frame, YSF_FI_COMMUNICATIONS, m_txFn);
+    for (int i = 0; i < 5; i++)
+        CYsfUtils::EncodeVD2Vch(m_txAmbe[i], frame + YSF_SYNC_LENGTH_BYTES + YSF_FICH_LENGTH_BYTES + 18 * i + 5);
+    uint8_t data[VD2_DATA_BYTES];
+    frameData(m_callsign, m_txFn, data);
+    encodeVD2Data(data, frame);
+    sendFrame(frame, false);
+    m_txFn = static_cast<unsigned char>((m_txFn + 1) % 7);
+}
+
+void YsfClient::endTx(const uint8_t *silence) {
+    while (m_txCount > 0) sendVoice(silence);
+    uint8_t frame[YSF_FRAME_LENGTH_BYTES] = {};
+    buildFich(frame, YSF_FI_TERMINATOR, 0);
+    uint8_t csd1[CSD_BYTES], csd2[CSD_BYTES];
+    headerFields(m_callsign, csd1, csd2);
+    encodeHeaderData(csd1, csd2, frame);
+    sendFrame(frame, true);
+    std::fprintf(stderr, "ysf: PTT up\n");
 }
 
 void YsfClient::endStream(const char *how) {

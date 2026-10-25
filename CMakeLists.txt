@@ -114,6 +114,7 @@ target_link_libraries(dplus_test dplus_client alsa_audio vocoder_pipeline)
 # YSF (System Fusion) client and its listen-only test tool.
 add_library(ysf_client
   src/ysf_client.cpp
+  src/ysf_dch.cpp
 )
 target_link_libraries(ysf_client ysf_fec http_get)
 

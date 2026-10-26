@@ -122,6 +122,14 @@ bool YsfClient::open(const std::string &host, int port) {
 void YsfClient::sendPoll() {
     std::string pkt = "YSFP" + field(m_callsign, CALLSIGN_FIELD);
     ::send(m_fd, pkt.data(), pkt.size(), 0);
+    sendOptions();
+}
+
+void YsfClient::sendOptions() {
+    if (m_options.empty()) return;
+    // "YSFO", the callsign, then the options text padded to 50 bytes in all.
+    std::string pkt = "YSFO" + field(m_callsign, CALLSIGN_FIELD) + field(m_options, 50 - 4 - CALLSIGN_FIELD);
+    ::send(m_fd, pkt.data(), pkt.size(), 0);
 }
 
 bool YsfClient::link(const std::string &callsign) {
@@ -135,6 +143,7 @@ bool YsfClient::link(const std::string &callsign) {
             if (n >= 4 && std::memcmp(buf, "YSFP", 4) == 0) {
                 std::fprintf(stderr, "ysf: linked as %s (reflector answered \"%s\")\n", callsign.c_str(),
                              trimmed(buf + 4, static_cast<size_t>(n) - 4).c_str());
+                sendOptions();
                 return true;
             }
         }
@@ -182,6 +191,9 @@ void YsfClient::run(const volatile std::sig_atomic_t *running) {
             handleData(buf);
         } else if (n >= 4 && std::memcmp(buf, "YSFP", 4) == 0) {
             // the reflector's answer to our poll
+        } else if (n >= 4 && (std::memcmp(buf, "YSFO", 4) == 0 || std::memcmp(buf, "YSFI", 4) == 0)) {
+            std::fprintf(stderr, "ysf: reflector sent %.4s: \"%s\"\n", reinterpret_cast<char *>(buf),
+                         trimmed(buf + 4, static_cast<size_t>(n) - 4).c_str());
         } else {
             std::fprintf(stderr, "ysf: unrecognised packet (%zd bytes): %.4s\n", n, reinterpret_cast<char *>(buf));
         }
@@ -212,9 +224,11 @@ void YsfClient::handleData(const uint8_t *buf) {
     if (fichOk) {
         bool firstFich = m_stream.dataType < 0;
         m_stream.dataType = fich.getDT();
+        m_stream.dgId = fich.getSQ();
         if (firstFich) {
-            std::fprintf(stderr, "ysf: RX stream %s -> %s via %s started (%s)\n", m_stream.source.c_str(),
-                         m_stream.destination.c_str(), m_stream.gateway.c_str(), dataTypeName(m_stream.dataType));
+            std::fprintf(stderr, "ysf: RX stream %s -> %s via %s started (%s, DG-ID %02d)\n", m_stream.source.c_str(),
+                         m_stream.destination.c_str(), m_stream.gateway.c_str(), dataTypeName(m_stream.dataType),
+                         m_stream.dgId);
             if (m_startSink) m_startSink(m_stream);
         }
         if (fich.getFI() == YSF_FI_COMMUNICATIONS && fich.getDT() == YSF_DT_VD_MODE2) {
@@ -245,7 +259,7 @@ void YsfClient::buildFich(uint8_t *frame, unsigned char fi, unsigned char fn) {
     fich.setMR(0);
     fich.setDT(YSF_DT_VD_MODE2);
     fich.setSQL(false);
-    fich.setSQ(0);
+    fich.setSQ(static_cast<unsigned char>(m_dgId.load()));
     fich.encode(frame + YSF_SYNC_LENGTH_BYTES);
 }
 
@@ -298,7 +312,7 @@ void YsfClient::beginTx() {
     headerFields(m_callsign, csd1, csd2);
     encodeHeaderData(csd1, csd2, frame);
     sendFrame(frame, false);
-    std::fprintf(stderr, "ysf: PTT down, %s\n", m_callsign.c_str());
+    std::fprintf(stderr, "ysf: PTT down, %s, DG-ID %02d\n", m_callsign.c_str(), m_dgId.load());
 }
 
 void YsfClient::sendVoice(const uint8_t *ambe) {

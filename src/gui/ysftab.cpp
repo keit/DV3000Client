@@ -11,6 +11,7 @@
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -38,6 +39,14 @@ namespace {
 const char *kConnectedButtonStyle = "background-color: #4CAF50; color: white;";
 const char *kErrorButtonStyle = "background-color: #f44336; color: white;";
 const char *kSendingButtonStyle = "background-color: #ff9800; color: white;";
+
+QString dgIdText(int dgId) { return QString("%1").arg(dgId, 2, 10, QChar('0')); }
+
+QString dgIdsFilePath() {
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QDir().mkpath(dir);
+    return dir + "/ysf_dgids.json";
+}
 
 QString favouritesFilePath() {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
@@ -100,6 +109,27 @@ YsfTab::YsfTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     connect(m_reflectorCombo->lineEdit(), &QLineEdit::textChanged, this, &YsfTab::updateConnectButtonEnabled);
     connect(m_reflectorCombo, &QComboBox::currentIndexChanged, this, &YsfTab::updateConnectButtonEnabled);
 
+    // The DG-ID to transmit with. On reflectors with rooms (YCS, PA7LIM's
+    // JAPANLINK) it picks the room when you key up -- including 00, which
+    // JAPANLINK takes as its welcome room; connecting doesn't change room
+    // (JAPANLINK puts you back in your last one). So it isn't stored with
+    // favourites. Changeable while connected.
+    m_dgIdBox = new QComboBox;
+    for (int i = 0; i <= 99; i++) m_dgIdBox->addItem(dgIdText(i));
+    m_dgIdBox->setToolTip("DG-ID for your transmissions (00-99). On reflectors with rooms, such as YCS servers\n"
+                          "and JAPANLINK, it picks the room: your next transmission moves you to it.");
+    {
+        QFile f(dgIdsFilePath());
+        if (f.open(QIODevice::ReadOnly)) m_dgIds = QJsonDocument::fromJson(f.readAll()).object();
+    }
+    connect(m_dgIdBox, &QComboBox::currentIndexChanged, this, [this](int dgId) {
+        if (m_client) m_client->setDgId(dgId);
+        if (m_dgIdReflector.isEmpty() || m_dgIds.value(m_dgIdReflector).toInt(-1) == dgId) return;
+        m_dgIds[m_dgIdReflector] = dgId;
+        QFile f(dgIdsFilePath());
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(QJsonDocument(m_dgIds).toJson(QJsonDocument::Indented));
+    });
+
     m_connectButton = new QPushButton("Connect");
     connect(m_connectButton, &QPushButton::clicked, this, [this] {
         if (m_busy) return;
@@ -124,15 +154,17 @@ YsfTab::YsfTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     m_destinationLabel = new QLabel("—");
     m_gatewayLabel = new QLabel("—");
     m_modeLabel = new QLabel("—");
+    m_dgIdLabel = new QLabel("—");
     auto *headerBox = new QGroupBox("Last received");
     auto *headerForm = new QFormLayout(headerBox);
     headerForm->addRow("Callsign:", m_sourceLabel);
     headerForm->addRow("To:", m_destinationLabel);
     headerForm->addRow("Via:", m_gatewayLabel);
     headerForm->addRow("Mode:", m_modeLabel);
+    headerForm->addRow("DG-ID:", m_dgIdLabel);
 
-    m_lastHeardTable = new QTableWidget(0, 4);
-    m_lastHeardTable->setHorizontalHeaderLabels({"Time", "Callsign", "Via", "Mode"});
+    m_lastHeardTable = new QTableWidget(0, 5);
+    m_lastHeardTable->setHorizontalHeaderLabels({"Time", "Callsign", "Via", "DG-ID", "Mode"});
     m_lastHeardTable->verticalHeader()->setVisible(false);
     m_lastHeardTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_lastHeardTable->setSelectionMode(QAbstractItemView::NoSelection);
@@ -141,6 +173,7 @@ YsfTab::YsfTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    m_lastHeardTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
     m_lastHeardTable->setStyleSheet(theme::contentBackground("QTableWidget"));
 
     m_addFavouriteButton = new QPushButton("Add to favourites");
@@ -177,6 +210,8 @@ YsfTab::YsfTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     });
 
     auto *favouriteRow = new QHBoxLayout;
+    favouriteRow->addWidget(new QLabel("DG-ID:"));
+    favouriteRow->addWidget(m_dgIdBox);
     favouriteRow->addStretch();
     favouriteRow->addWidget(m_addFavouriteButton);
 
@@ -256,8 +291,21 @@ int YsfTab::selectedRow() const {
     return -1;
 }
 
+void YsfTab::rememberedDgIdFor(const QString &reflector) {
+    if (!m_dgIdBox || reflector == m_dgIdReflector) return;
+    m_dgIdReflector = reflector;
+    if (!reflector.isEmpty()) m_dgIdBox->setCurrentIndex(m_dgIds.value(reflector).toInt(0));
+}
+
 void YsfTab::updateConnectButtonEnabled() {
-    m_connectButton->setEnabled(!m_busy && (m_connected || selectedRow() >= 0));
+    // The box follows the picked reflector -- not while connected, when it
+    // belongs to the connected one whatever the picker shows.
+    int row = selectedRow();
+    if (!m_connected && !m_busy)
+        rememberedDgIdFor(row >= 0 ? m_model->data(m_model->index(row, 0), YsfReflectorModel::NameRole).toString()
+                                   : QString());
+    if (!m_connectButton) return; // a signal during construction
+    m_connectButton->setEnabled(!m_busy && (m_connected || row >= 0));
     updateAddFavouriteEnabled();
 }
 
@@ -317,6 +365,7 @@ void YsfTab::connectWorker(QString name, QString host, int port, GuiSettings set
     }
     if (ok) {
         m_client = std::make_unique<ysf::YsfClient>();
+        m_client->setDgId(m_dgIdBox->currentIndex());
         // On the network thread once run() starts: decoded through the
         // vocoder; stream starts marshalled to the GUI thread.
         m_client->setVoiceSink([this](const uint8_t *ambe) {
@@ -354,7 +403,7 @@ void YsfTab::onConnectFinished(bool ok, QString error, QString name) {
         QMessageBox::warning(this, "Connect failed", error);
         return;
     }
-    for (QLabel *l : {m_sourceLabel, m_destinationLabel, m_gatewayLabel, m_modeLabel}) l->setText("—");
+    for (QLabel *l : {m_sourceLabel, m_destinationLabel, m_gatewayLabel, m_modeLabel, m_dgIdLabel}) l->setText("—");
     m_connectedName = name;
     m_pttActive.store(false);
     m_captureThread = std::thread(ysf::captureThread, m_vocoder.get(), &m_capture, m_client.get(), m_silence,
@@ -383,12 +432,14 @@ void YsfTab::onStreamStarted(ysf::StreamInfo info) {
     m_destinationLabel->setText(QString::fromStdString(info.destination));
     m_gatewayLabel->setText(QString::fromStdString(info.gateway));
     m_modeLabel->setText(modeText(info.dataType));
+    m_dgIdLabel->setText(info.dgId < 0 ? "?" : dgIdText(info.dgId));
 
     m_lastHeardTable->insertRow(0);
     m_lastHeardTable->setItem(0, 0, new QTableWidgetItem(QTime::currentTime().toString("HH:mm:ss")));
     m_lastHeardTable->setItem(0, 1, new QTableWidgetItem(source));
     m_lastHeardTable->setItem(0, 2, new QTableWidgetItem(QString::fromStdString(info.gateway)));
-    m_lastHeardTable->setItem(0, 3, new QTableWidgetItem(modeText(info.dataType)));
+    m_lastHeardTable->setItem(0, 3, new QTableWidgetItem(info.dgId < 0 ? "?" : dgIdText(info.dgId)));
+    m_lastHeardTable->setItem(0, 4, new QTableWidgetItem(modeText(info.dataType)));
     while (m_lastHeardTable->rowCount() > 100) m_lastHeardTable->removeRow(m_lastHeardTable->rowCount() - 1);
 }
 
@@ -509,7 +560,10 @@ void YsfTab::selectFavourite(const QString &name) {
 void YsfTab::loadFavourites() {
     QFile f(favouritesFilePath());
     if (!f.open(QIODevice::ReadOnly)) return;
-    for (const QJsonValue &v : QJsonDocument::fromJson(f.readAll()).array()) addFavouriteItem(v.toString());
+    for (const QJsonValue &v : QJsonDocument::fromJson(f.readAll()).array()) {
+        // Names; a test build briefly saved {reflector, dgid} objects.
+        addFavouriteItem(v.isString() ? v.toString() : v.toObject()["reflector"].toString());
+    }
 }
 
 void YsfTab::saveFavourites() const {

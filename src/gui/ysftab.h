@@ -10,6 +10,8 @@
 #include <memory>
 #include <thread>
 
+#include <QJsonObject>
+
 #include "alsa_audio.h"
 #include "dvcontroller.h"
 #include "protocoltab.h"
@@ -61,6 +63,13 @@ private:
     void setConnected(bool connected, const QString &status);
     void updateVocoderStatus();
 
+    // The DG-ID last used on each reflector (ysf_dgids.json), put back in
+    // the DG-ID box when that reflector is picked: on reflectors with rooms
+    // (JAPANLINK) connecting returns you to your last room and keying up
+    // moves you to the box's, so the box has to follow the reflector or the
+    // first over lands in the wrong room.
+    void rememberedDgIdFor(const QString &reflector);
+
     // Favourites: reflector names, in ysf_favourites.json.
     bool isFavourite(const QString &name) const;
     void addFavouriteItem(const QString &name);
@@ -74,7 +83,10 @@ private:
     QComboBox *m_reflectorCombo;
     YsfReflectorModel *m_model;
     QString m_pickBeforeReset; // kept across a list refresh, see the constructor
-    QPushButton *m_connectButton;
+    QComboBox *m_dgIdBox = nullptr;
+    QJsonObject m_dgIds;       // reflector name -> DG-ID
+    QString m_dgIdReflector;   // the reflector the box's value belongs to
+    QPushButton *m_connectButton = nullptr;
     QPushButton *m_pttButton;
     QPushButton *m_addFavouriteButton = nullptr;
     QListWidget *m_favouritesList = nullptr;
@@ -83,6 +95,7 @@ private:
     QLabel *m_destinationLabel;
     QLabel *m_gatewayLabel;
     QLabel *m_modeLabel;
+    QLabel *m_dgIdLabel;
     QTableWidget *m_lastHeardTable;
     AudioLevelsPanel *m_audioLevels;
 

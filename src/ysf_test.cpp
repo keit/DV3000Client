@@ -6,6 +6,8 @@
 //   ysf_test <callsign> <reflector name, id, or host[:port]> <thumbdv|none> <playback-device|file.wav|none>
 //   e.g. ysf_test ZL2MIM US-America-Link /dev/serial/by-id/usb-...ThumbDV... plughw:2,0
 //   ysf_test --list [text]     lists reflectors (matching text)
+//   ... --dgid N               DG-ID to transmit with (rooms on some reflectors)
+//   ... --options TEXT         sends a YSFO options packet with TEXT
 //   ... --tx speech.wav        transmits the file (8 kHz 16-bit mono WAV) once
 //                              linked, then keeps listening -- with a YSF
 //                              parrot, e.g. DE-Parrot, to hear it played back
@@ -133,6 +135,13 @@ int main(int argc, char **argv) {
     if (!logOnly) vocoder = std::make_unique<audio::VocoderPipeline>(dv, SerialDV::DVRate3600x2450);
 
     ysf::YsfClient client;
+    std::string txFile;
+    for (int i = 5; i + 1 < argc; i += 2) {
+        std::string flag = argv[i];
+        if (flag == "--tx") txFile = argv[i + 1];
+        else if (flag == "--dgid") client.setDgId(std::atoi(argv[i + 1]));
+        else if (flag == "--options") client.setOptions(argv[i + 1]);
+    }
     client.setVoiceSink([&](const uint8_t *ambe) {
         if (vocoder)
             vocoder->decode(ambe, [&](const short *pcm) {
@@ -143,10 +152,10 @@ int main(int argc, char **argv) {
     if (!client.open(host, port) || !client.link(callsign)) return 1;
     std::fprintf(stderr, "ysf_test: linked; Ctrl-C to stop\n");
 
-    if (argc > 6 && std::string(argv[5]) == "--tx" && vocoder) {
+    if (!txFile.empty() && vocoder) {
         // Encode the whole file first, then send it at the real-time pace
         // of a radio: one YSF frame (5 AMBE frames) every 100 ms.
-        std::vector<short> pcm = readWav(argv[6]);
+        std::vector<short> pcm = readWav(txFile);
         std::vector<std::vector<uint8_t>> ambe;
         std::mutex lock;
         for (size_t i = 0; i + SerialDV::MBE_AUDIO_BLOCK_SIZE <= pcm.size(); i += SerialDV::MBE_AUDIO_BLOCK_SIZE)
@@ -158,7 +167,7 @@ int main(int argc, char **argv) {
         std::vector<uint8_t> silence(ysf::AMBE_FRAME_SIZE);
         vocoder->encode(silentPcm, [&](const uint8_t *a) { std::memcpy(silence.data(), a, ysf::AMBE_FRAME_SIZE); });
         vocoder->drain();
-        std::fprintf(stderr, "ysf_test: transmitting %s: %zu frames (%.1f s)\n", argv[6], ambe.size(), ambe.size() * 0.02);
+        std::fprintf(stderr, "ysf_test: transmitting %s: %zu frames (%.1f s)\n", txFile.c_str(), ambe.size(), ambe.size() * 0.02);
         client.beginTx();
         auto next = std::chrono::steady_clock::now();
         for (size_t i = 0; i < ambe.size() && g_running; i++) {

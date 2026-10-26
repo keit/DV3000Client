@@ -23,6 +23,7 @@
 // downlink, uplink and radio data), and a terminator. The data channels are
 // coded by ysf_dch.
 
+#include <atomic>
 #include <chrono>
 #include <csignal>
 #include <cstdint>
@@ -54,6 +55,7 @@ struct StreamInfo {
     std::string destination; // usually "ALL"
     std::string gateway;     // the hotspot or repeater it came through
     int dataType = -1;       // YSF_DT_*: 2 = DN, 3 = VW, 0 = V/D mode 1, 1 = data
+    int dgId = -1;           // the frames' DG-ID (00-99), -1 until a FICH decodes
 };
 
 class YsfClient {
@@ -61,6 +63,17 @@ public:
     ~YsfClient();
 
     bool open(const std::string &host, int port = DEFAULT_PORT);
+    // DG-ID (Digital Group ID, 0-99) to transmit with -- the FICH's 7-bit
+    // field older code calls SQ. Plain YSFReflectors ignore it; reflectors
+    // with rooms (YCS, PA7LIM's) use it to pick one, e.g. JAPANLINK's main
+    // room is 09; there, transmitting with a DG-ID moves you to that room.
+    // May be changed while linked: the next transmission uses it.
+    void setDgId(int dgId) { m_dgId = dgId; }
+    // Text for a "YSFO" options packet (as YSFGateway's Options setting:
+    // up to 36 characters), sent once linked and after every poll; e.g. a
+    // static list of DG-IDs to book on a reflector that supports it.
+    // Empty (the default): not sent.
+    void setOptions(const std::string &options) { m_options = options; }
     // Polls until the reflector answers (a few seconds at most).
     bool link(const std::string &callsign);
     void disconnect();
@@ -87,6 +100,7 @@ public:
 private:
     ssize_t recvWithTimeout(uint8_t *buf, size_t len, int timeoutMs);
     void sendPoll();
+    void sendOptions();
     void handleData(const uint8_t *buf);
     void endStream(const char *how);
     void sendFrame(const uint8_t *frame, bool last);
@@ -94,6 +108,8 @@ private:
 
     int m_fd = -1;
     std::string m_callsign = "N0CALL";
+    std::atomic<int> m_dgId{0};
+    std::string m_options;
 
     std::function<void(const StreamInfo &)> m_startSink;
     std::function<void(const uint8_t *)> m_voiceSink;

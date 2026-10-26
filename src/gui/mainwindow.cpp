@@ -75,7 +75,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         QMessageBox::about(this, "About DV3K Client",
                            QString("<h3>DV3K Client</h3>"
                                    "<p>Version %1</p>"
-                                   "<p>D-Star and DMR client for the ThumbDV (AMBE-3000).</p>"
+                                   "<p>D-Star, DMR and YSF client for the ThumbDV (AMBE-3000).</p>"
                                    "<p>Copyright &copy; 2026 ZL2MIM</p>"
                                    "<p>Licensed under the GNU General Public License v3.<br>"
                                    "<a href=\"https://github.com/keit/DV3000Client\">"

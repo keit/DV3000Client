@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
     QApplication::setApplicationVersion(DV3K_VERSION);
 
     QCommandLineParser parser;
-    parser.setApplicationDescription("D-Star and DMR client for the ThumbDV (AMBE-3000)");
+    parser.setApplicationDescription("D-Star, DMR and YSF client for the ThumbDV (AMBE-3000)");
     QCommandLineOption helpOption = parser.addHelpOption();
     QCommandLineOption versionOption = parser.addVersionOption();
 

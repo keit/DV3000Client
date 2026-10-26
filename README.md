@@ -9,6 +9,7 @@ around a real **ThumbDV** (AMBE3000) USB dongle:
   and DPlus repeater gateways)
 - **DMR** on two networks: **BrandMeister** via its Open DMR Terminal
   protocol, and **TGIF** via the Homebrew/MMDVM protocol
+- **YSF** (Yaesu System Fusion) reflectors, in DN mode
 
 There is no software vocoder here. All AMBE encode/decode is done by the
 ThumbDV hardware over serial (through the vendored `serialDV` library), so
@@ -35,8 +36,12 @@ about building from source.
   picker for that network, group calls (plus private calls on BrandMeister),
   current-subscription display, a favourites list per network, Last Heard
   list with callsign and talkgroup-name lookup.
+- **YSF tab:** searchable picker of YSF reflectors (live directory; type a
+  name or a reflector's number), connect/disconnect, push-to-talk, a DG-ID
+  setting for reflectors with rooms, favourites, and a Last Heard list with
+  each station's gateway, DG-ID and mode.
 - **Volume:** microphone and speaker sliders with level meters at the bottom
-  of both tabs, adjustable mid-QSO. **Auto level** evens out how loud
+  of every tab, adjustable mid-QSO. **Auto level** evens out how loud
   different stations are, and **Record** saves what you hear (see below).
 - **Settings:** callsign/DMR identity, the server and password for each DMR
   network, audio input/output device with test buttons (tone for output,
@@ -86,9 +91,10 @@ The build produces these binaries in `build/`:
 
 | Binary               | Purpose                                                             |
 | -------------------- | ------------------------------------------------------------------- |
-| `dv3kclient`         | The Qt GUI (D-Star and DMR tabs)                                    |
+| `dv3kclient`         | The Qt GUI (D-Star, DMR and YSF tabs)                               |
 | `dextra_test`        | Command-line DExtra client, incl. live audio mode                   |
 | `dplus_test`         | Command-line DPlus client: listens and logs every stream            |
+| `ysf_test`           | Command-line YSF client: lists reflectors, listens, transmits a WAV |
 | `dmr_test`           | Command-line DMR client for Homebrew/MMDVM masters (e.g. TGIF)      |
 | `odt_test`           | Command-line BrandMeister Open DMR Terminal client, with live audio |
 | `roundtrip_test`     | PCM to AMBE to PCM round trip through the ThumbDV                   |
@@ -241,7 +247,9 @@ To start it from the desktop's application launcher instead (GNOME, KDE,
    **Connect**.
 3. **DMR tab:** choose the **Network** (while disconnected), click
    **Connect**, pick or type a talkgroup, then use **PTT to send**.
-4. **PTT to send** toggles transmit on and off (click it, or press the space
+4. **YSF tab:** pick a reflector (and, on a reflector with rooms, set the
+   DG-ID; see [YSF](#ysf)), click **Connect**.
+5. **PTT to send** toggles transmit on and off (click it, or press the space
    bar when a text field isn't focused).
 
 Settings can't be changed while a session is connected.
@@ -271,6 +279,26 @@ hotspots use for REF, which works a little differently:
 - A repeater gateway passes on CQ calls (UR `CQCQCQ`) only. A station
   routing a call somewhere (UR set to a callsign, or to `/ZL2VH C`) isn't sent
   to DPlus users, so you won't hear it.
+
+### YSF
+
+The YSF tab connects to YSF reflectors, the network Yaesu System Fusion
+hotspots and gateways use, picked from the public YSF reflector list. It
+uses your callsign from Settings; there's nothing else to set up.
+
+- **DN mode only.** Fusion radios send DN (digital narrow) by default, and
+  that's what the app plays and transmits, through the ThumbDV. A station
+  sending VW (full-rate voice) still appears in Last Heard, marked "not
+  played".
+- **DG-ID and rooms.** Plain YSF reflectors ignore the DG-ID (Digital Group
+  ID, 00-99), so leave it at 00. Reflectors with rooms (YCS servers, and
+  ones such as JAPANLINK) use it to pick the room: connecting puts you back in
+  the room you were last in, and keying up moves you to the room of the
+  DG-ID box -- on JAPANLINK, 00 is the welcome room. The app remembers the
+  DG-ID you last used on each reflector and sets the box when you pick it, so
+  your first over keeps you in the room you land in.
+- **Testing:** a YSF parrot plays back what you send. ES-PARROT-QB (type
+  `00074`) works well.
 
 ### ThumbDV on another machine (AMBEServer 3000)
 
@@ -348,6 +376,8 @@ Under `~/.config/DV3000Client/`:
 | `dmr_favourites.json`      | BrandMeister favourites list                                    |
 | `dstar_favourites.json`    | D-Star favourites (reflector + module, or all modules)          |
 | `dmr_favourites_tgif.json` | TGIF favourites list                                            |
+| `ysf_favourites.json`      | YSF favourites (reflector names)                                |
+| `ysf_dgids.json`           | The DG-ID last used on each YSF reflector                       |
 | `dv3000client.log`         | Log file (also reachable via **Help > Log File Location...**)   |
 | `cache/`                   | Cached reflector, talkgroup and DMR ID directories              |
 
@@ -386,6 +416,11 @@ Examples; run any tool with no arguments for its usage line.
 # D-Star DPlus: log in as "<callsign> P" and log every stream on REF001, all modules,
 # without decoding (no ThumbDV or audio device needed)
 ./build/dplus_test <callsign>/P REF001 none none all
+
+# YSF: list reflectors matching "parrot", then listen to one and save what's
+# heard to a WAV file; --tx sends a recording (8 kHz 16-bit mono WAV) first
+./build/ysf_test --list parrot
+./build/ysf_test <callsign> 00074 /dev/serial/by-id/<thumbdv> heard.wav --tx myvoice.wav
 
 # DMR (Homebrew, e.g. TGIF): log in and send a short test transmission to the
 # Parrot (group call to TG 9990), staying connected 20 seconds. The password
@@ -426,20 +461,20 @@ To test D-Star without touching the public network, build and run a local
 
 ```
 src/                  protocol clients, audio, DMR voice/FEC, CLI tools
-src/gui/              Qt GUI (main window, D-Star tab, DMR tab, settings)
+src/gui/              Qt GUI (main window, D-Star, DMR and YSF tabs, settings)
 data/                 static fallback reflector list
 resources/            application icons (from the 1024px original) and Qt resource file
 scripts/              local xlxd test-reflector helper, desktop launcher install
 scripts/pi-star/      AMBEServer watchdog for a Pi-Star / Raspberry Pi
 third_party/serialDV  ThumbDV/AMBE3000 serial driver (fork, submodule)
-third_party/xlxd      xlxd reference code (submodule; DMR FEC code is reused)
+third_party/xlxd      xlxd reference code (submodule; DMR and YSF FEC code is reused)
 ```
 
 ## Acknowledgements
 
 - [serialDV](https://github.com/f4exb/serialDV) by F4EXB for the ThumbDV
   serial interface (this repo uses a fork)
-- [xlxd](https://github.com/LX3JL/xlxd) by LX3JL, whose D-Star/DMR code
+- [xlxd](https://github.com/LX3JL/xlxd) by LX3JL, whose D-Star/DMR/YSF code
   informed the protocol implementations and whose FEC routines are reused
 
 ## License

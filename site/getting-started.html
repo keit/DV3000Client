@@ -232,6 +232,8 @@ sudo udevadm control --reload-rules</code></pre>
         <strong>Connect</strong>.</li>
       <li><strong>DMR:</strong> pick the network, click <strong>Connect</strong>, then choose a
         talkgroup.</li>
+      <li><strong>YSF:</strong> pick a reflector and click <strong>Connect</strong> (on a reflector
+        with rooms, set the DG-ID too, see <a href="#ysf">below</a>).</li>
       <li><strong>PTT to send</strong> (or the space bar) toggles transmit on and off.</li>
     </ul>
     <p>To hear yourself back, use the Parrot: on BrandMeister, tick <strong>Private
@@ -256,6 +258,18 @@ sudo udevadm control --reload-rules</code></pre>
         a radio's Repeater Monitor. It's listen only: pick a module to transmit.</li>
       <li>A repeater gateway passes on CQ calls only. You won't hear a station whose UR is set
         to a callsign or to a repeater (<code>/ZL2VH C</code>).</li>
+    </ul>
+
+    <h3 id="ysf">YSF reflectors</h3>
+    <ul>
+      <li>The app plays and transmits <strong>DN mode</strong>, Fusion radios' default. Stations
+        sending VW (full-rate voice) appear in Last Heard as <em>not played</em>.</li>
+      <li><strong>DG-ID:</strong> leave it at 00 on plain YSF reflectors. On reflectors with
+        rooms (YCS servers, JAPANLINK and similar) it picks the room: connecting puts you back in
+        your last room, and keying up moves you to the DG-ID box's room (on JAPANLINK, 00 is
+        the welcome room). The app remembers the DG-ID you last used on each reflector.</li>
+      <li>To hear yourself back, use a YSF parrot such as ES-PARROT-QB (type
+        <code>00074</code>).</li>
     </ul>
 
     <h2 id="help">Something not working?</h2>

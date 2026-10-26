@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=DV3K Client
-Comment=D-Star and DMR client for the ThumbDV (AMBE-3000)
+Comment=D-Star, DMR and YSF client for the ThumbDV (AMBE-3000)
 Exec=dv3kclient
 Icon=dv3kclient
 Terminal=false

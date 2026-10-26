@@ -9,6 +9,7 @@
   レピーターゲートウェイ)
 - **DMR**: 2つのネットワークに対応 — **BrandMeister**(Open DMR Terminal プロトコル
   経由)と **TGIF**(Homebrew/MMDVM プロトコル経由)
+- **YSF**(Yaesu System Fusion)リフレクター(DN モード)
 
 本クライアントにソフトウェア・ボコーダーは含まれていません。AMBEのエンコード/デコード
 はすべて ThumbDV ハードウェアがシリアル経由(同梱の `serialDV` ライブラリ経由)で行う
@@ -32,7 +33,10 @@ Debian、Ubuntu、Raspberry Pi OS では [keit APT リポジトリ](https://keit
   トークグループ検索、グループコール(BrandMeister ではプライベートコールも可)、現在
   の購読状況の表示、ネットワークごとのお気に入りリスト、コールサインとトークグループ
   名を解決した Last Heard 一覧。
-- **音量:** 両タブ下部にマイク/スピーカーのスライダーとレベルメーターがあり、交信中
+- **YSF タブ:** YSF リフレクターの検索(ディレクトリをリアルタイム取得。名前やリフレ
+  クター番号でも入力可)、接続/切断、PTT送信、ルームのあるリフレクター用の DG-ID 設定、
+  お気に入り、各局のゲートウェイ・DG-ID・モード付きの Last Heard 一覧。
+- **音量:** 各タブ下部にマイク/スピーカーのスライダーとレベルメーターがあり、交信中
   でも調整できます。**Auto level** で局ごとの音量差を自動で揃え、**Record** で受信音声を
   録音できます(下記参照)。
 - **設定:** コールサイン/DMR ID、DMR ネットワークごとのサーバーとパスワード、オー
@@ -83,9 +87,10 @@ git submodule update --init --recursive
 
 | バイナリ             | 用途                                                                         |
 | -------------------- | ---------------------------------------------------------------------------- |
-| `dv3kclient`         | Qt GUI 本体(D-Star タブ・DMR タブ)                                           |
+| `dv3kclient`         | Qt GUI 本体(D-Star・DMR・YSF タブ)                                           |
 | `dextra_test`        | コマンドライン版 DExtra クライアント(ライブ音声モード対応)                   |
 | `dplus_test`         | コマンドライン版 DPlus クライアント(受信して全ストリームをログに記録)         |
+| `ysf_test`           | コマンドライン版 YSF クライアント(リフレクター一覧、受信、WAV の送信)          |
 | `dmr_test`           | Homebrew/MMDVM マスター(TGIF など)向けコマンドライン版 DMR クライアント      |
 | `odt_test`           | コマンドライン版 BrandMeister Open DMR Terminal クライアント(ライブ音声対応) |
 | `roundtrip_test`     | ThumbDV を通した PCM→AMBE→PCM のラウンドトリップテスト                       |
@@ -236,7 +241,9 @@ iw event -t | grep scan
    リックします。
 3. **DMR タブ:** (切断中に)**Network** を選び、**Connect** をクリック、トークグ
    ループを選択または入力し、**PTT to send** を使用します。
-4. **PTT to send** は送信のON/OFFを切り替えます(クリックするか、テキスト欄にフォー
+4. **YSF タブ:** リフレクターを選び(ルームのあるリフレクターでは DG-ID も設定。
+   [YSF](#ysf) 参照)、**Connect** をクリックします。
+5. **PTT to send** は送信のON/OFFを切り替えます(クリックするか、テキスト欄にフォー
    カスがない状態でスペースキーを押します)。
 
 接続中は設定を変更できません。
@@ -266,6 +273,24 @@ REF リフレクターと DPlus レピーターゲートウェイ(レピータ�
 - レピーターゲートウェイが転送するのは CQ(UR `CQCQCQ`)だけです。UR にコールサイン
   や `/ZL2VH C` を設定して特定の宛先へ送っている局の音声は DPlus 利用者には送られない
   ため、聞こえません。
+
+### YSF
+
+YSF タブは、Yaesu System Fusion のホットスポットやゲートウェイが使うネットワークである
+YSF リフレクターに、公開リフレクター一覧から選んで接続します。コールサインは設定のもの
+を使い、ほかに設定は不要です。
+
+- **DN モードのみ:** Fusion 無線機の既定は DN(デジタルナロー)で、アプリが ThumbDV で
+  再生・送信するのもこのモードです。VW(フルレート音声)で送信している局も Last Heard
+  には表示されますが、「not played」(再生なし)と表示されます。
+- **DG-ID とルーム:** 一般の YSF リフレクターは DG-ID(Digital Group ID、00〜99)を
+  使わないので 00 のままで構いません。ルームのあるリフレクター(YCS サーバーや
+  JAPANLINK など)では DG-ID でルームを選びます。接続すると前回のルームに戻り、送信
+  (キーアップ)すると DG-ID 欄のルームに移ります。JAPANLINK では 00 はウェルカムルーム
+  です。アプリはリフレクターごとに最後に使った DG-ID を覚えていて、リフレクターを選ぶと
+  DG-ID 欄に設定するので、最初の送信で今いるルームから移動してしまうことはありません。
+- **テスト:** YSF パロットは送信した音声を返してくれます。ES-PARROT-QB(`00074` と
+  入力)が便利です。
 
 ### 別システム上の ThumbDV(AMBEServer 3000)
 
@@ -344,6 +369,8 @@ REF リフレクターと DPlus レピーターゲートウェイ(レピータ�
 | `dmr_favourites.json`      | BrandMeister のお気に入りリスト                               |
 | `dstar_favourites.json`    | D-Star のお気に入り(リフレクター + モジュールまたは全モジュール) |
 | `dmr_favourites_tgif.json` | TGIF のお気に入りリスト                                       |
+| `ysf_favourites.json`      | YSF のお気に入り(リフレクター名)                             |
+| `ysf_dgids.json`           | YSF リフレクターごとに最後に使った DG-ID                      |
 | `dv3000client.log`         | ログファイル(**Help > Log File Location...** からも開けます)  |
 | `cache/`                   | リフレクター・トークグループ・DMR ID ディレクトリのキャッシュ |
 
@@ -380,6 +407,11 @@ Speaker 欄の **Record** ボタンで、受信音声を WAV ファイルとし�
 # D-Star DPlus: "<callsign> P" としてログインし、REF001 の全モジュールのストリームを
 # デコードせずにログに記録する(ThumbDV もオーディオデバイスも不要)
 ./build/dplus_test <callsign>/P REF001 none none all
+
+# YSF: "parrot" を含むリフレクターを一覧表示し、受信した音声を WAV ファイルに保存する。
+# --tx を付けると、先に録音(8 kHz 16ビット モノラルの WAV)を送信する
+./build/ysf_test --list parrot
+./build/ysf_test <callsign> 00074 /dev/serial/by-id/<thumbdv> heard.wav --tx myvoice.wav
 
 # DMR(Homebrew、例: TGIF): ログインし Parrot(TG 9990へのグループコール)へ短い
 # テスト送信を行う。20秒間接続を維持する。パスワードに "-" を指定すると
@@ -418,20 +450,20 @@ arecord -l
 
 ```
 src/                  各プロトコルのクライアント、オーディオ、DMR音声/FEC、CLIツール
-src/gui/              Qt GUI(メインウィンドウ、D-Starタブ、DMRタブ、設定)
+src/gui/              Qt GUI(メインウィンドウ、D-Star・DMR・YSF タブ、設定)
 data/                 リフレクター一覧のフォールバック用静的データ
 resources/            アプリケーションアイコン(1024px の原画から生成)と Qt リソースファイル
 scripts/              ローカル xlxd テストリフレクター用スクリプト、ランチャー登録
 scripts/pi-star/      Pi-Star / Raspberry Pi 用の AMBEServer ウォッチドッグ
 third_party/serialDV  ThumbDV/AMBE3000用シリアルドライバー(フォーク、サブモジュール)
-third_party/xlxd      xlxd のリファレンスコード(サブモジュール。DMRのFECコードを再利用)
+third_party/xlxd      xlxd のリファレンスコード(サブモジュール。DMR・YSF のFECコードを再利用)
 ```
 
 ## 謝辞
 
 - [serialDV](https://github.com/f4exb/serialDV)(F4EXB 氏作) — ThumbDV のシリアル
   インターフェース(本リポジトリではフォーク版を使用)
-- [xlxd](https://github.com/LX3JL/xlxd)(LX3JL 氏作) — D-Star/DMR 関連コードはプロ
+- [xlxd](https://github.com/LX3JL/xlxd)(LX3JL 氏作) — D-Star/DMR/YSF 関連コードはプロ
   トコル実装の参考にし、FECルーチンは再利用しています
 
 ## ライセンス

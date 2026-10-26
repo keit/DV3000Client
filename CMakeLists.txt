@@ -75,7 +75,7 @@ target_link_libraries(dextra_client serialdv vocoder_pipeline)
 target_include_directories(dextra_client PUBLIC third_party/serialDV)
 
 # Protocol-independent ALSA audio (streams, RX queue, playback thread,
-# capture pacing) shared by the D-Star and DMR live-audio modules.
+# capture pacing) shared by the D-Star, DMR and YSF live-audio modules.
 add_library(alsa_audio
   src/alsa_audio.cpp
   src/auto_level.cpp
@@ -270,12 +270,12 @@ endif()
 set(CPACK_GENERATOR DEB)
 set(CPACK_PACKAGE_NAME dv3kclient)
 set(CPACK_PACKAGE_VERSION ${DV3K_DEB_VERSION})
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "D-Star and DMR client for the ThumbDV (AMBE-3000)")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "D-Star, DMR and YSF client for the ThumbDV (AMBE-3000)")
 set(CPACK_PACKAGE_DESCRIPTION
   "Connects a ThumbDV (or an AMBEServer) to D-Star reflectors (XLX, XRF,\n\
-REF) and DPlus repeater gateways, and to DMR networks (BrandMeister,\n\
-TGIF), from the desktop, with push-to-talk audio through the PC's\n\
-microphone and speakers.")
+REF) and DPlus repeater gateways, to DMR networks (BrandMeister, TGIF)\n\
+and to YSF (System Fusion) reflectors, from the desktop, with\n\
+push-to-talk audio through the PC's microphone and speakers.")
 set(CPACK_PACKAGE_CONTACT "Kei Takashima <takashima.kei@gmail.com>")
 set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
 set(CPACK_STRIP_FILES ON)

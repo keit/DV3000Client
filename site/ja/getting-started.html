@@ -169,6 +169,7 @@ sudo udevadm control --reload-rules</code></pre>
     <ul>
       <li><strong>D-Star:</strong> リフレクターとモジュールを選び、<strong>Connect</strong> をクリックします。</li>
       <li><strong>DMR:</strong> ネットワークを選んで <strong>Connect</strong> をクリックし、トークグループを選びます。</li>
+      <li><strong>YSF:</strong> リフレクターを選び <strong>Connect</strong> をクリックします(ルームのあるリフレクターでは DG-ID も設定。<a href="#ysf">下記</a>参照)。</li>
       <li><strong>PTT to send</strong>(またはスペースキー)で送信のオン・オフを切り替えます。</li>
     </ul>
     <p>自分の声を確認するには Parrot を使います。BrandMeister では <strong>Private call</strong> にチェックを入れて <code>9990</code> を呼び出し、TGIF では TG <code>9990</code> へグループコールします。</p>
@@ -181,6 +182,13 @@ sudo udevadm control --reload-rules</code></pre>
       <li>文字は<strong>登録済みの D-Star ターミナル</strong>のいずれかである必要があります。そうでない場合は受信のみ可能で、ステータス欄に <em>listen only</em> と表示されます。</li>
       <li><strong>All modules</strong> は無線機のレピーターモニターのように、どのモジュールでも先に始まった送信を再生します。受信専用なので、送信するにはモジュールを選んでください。</li>
       <li>レピーターゲートウェイが転送するのは CQ だけです。UR にコールサインやレピーター(<code>/ZL2VH C</code>)を設定している局の音声は聞こえません。</li>
+    </ul>
+
+    <h3 id="ysf">YSF リフレクター</h3>
+    <ul>
+      <li>アプリが再生・送信するのは Fusion 無線機の既定である <strong>DN モード</strong>です。VW(フルレート音声)で送信している局は Last Heard に <em>not played</em>(再生なし)と表示されます。</li>
+      <li><strong>DG-ID:</strong> 一般の YSF リフレクターでは 00 のままで構いません。ルームのあるリフレクター(YCS サーバーや JAPANLINK など)では DG-ID でルームを選びます。接続すると前回のルームに戻り、送信(キーアップ)すると DG-ID 欄のルームに移ります(JAPANLINK では 00 はウェルカムルーム)。アプリはリフレクターごとに最後に使った DG-ID を覚えています。</li>
+      <li>自分の声を確認するには、ES-PARROT-QB(<code>00074</code> と入力)などの YSF パロットを使います。</li>
     </ul>
 
     <h2 id="help">うまく動かないときは</h2>

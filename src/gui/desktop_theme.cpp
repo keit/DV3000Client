@@ -8,6 +8,7 @@
 #include <QDBusVariant>
 #include <QPalette>
 #include <QProxyStyle>
+#include <QStyle>
 #include <QStyleFactory>
 #include <QStyleOption>
 
@@ -61,13 +62,14 @@ QPalette darkPalette() {
     return p;
 }
 
-// Qt 6.4's Fusion outlines check boxes and radio buttons in the window
-// colour darkened by 40% -- on this palette #262626 against a #2a2a2a box,
-// next to invisible (6.5's Fusion lightens it in dark mode instead). Draw
-// those indicators as if on a light grey window, for a mid-grey outline.
+// Fusion outlines check boxes and radio buttons in a shade of the window
+// colour, which in dark mode ends up hard to see: Qt 6.4 darkens it (on
+// our palette, #262626 against a #2a2a2a box), Qt 6.5+ lightens it, but
+// its dark window is the box's own colour. Draw those indicators against
+// a window colour picked for a mid-grey outline, #8a8a8a in both cases.
 class DarkIndicatorStyle : public QProxyStyle {
 public:
-    using QProxyStyle::QProxyStyle;
+    DarkIndicatorStyle(QStyle *base, QColor window) : QProxyStyle(base), m_window(window) {}
     void drawPrimitive(PrimitiveElement element, const QStyleOption *option, QPainter *painter,
                        const QWidget *widget) const override {
         if (element == PE_IndicatorCheckBox || element == PE_IndicatorRadioButton) {
@@ -78,22 +80,30 @@ public:
                 copy = new QStyleOptionViewItem(*item);
             else
                 copy = new QStyleOption(*option);
-            copy->palette.setColor(QPalette::Window, QColor(0xb0, 0xb0, 0xb0));
+            copy->palette.setColor(QPalette::Window, m_window);
             QProxyStyle::drawPrimitive(element, copy, painter, widget);
             delete copy;
             return;
         }
         QProxyStyle::drawPrimitive(element, option, painter, widget);
     }
+
+private:
+    QColor m_window;
 };
 
 } // namespace
 
 void followDesktopColorScheme(QApplication &app) {
     bool qtDark = app.palette().color(QPalette::Window).lightness() < 128;
-    if (qtDark) return; // Qt already follows the desktop (Qt 6.5+)
+    if (qtDark) {
+        // Qt already follows the desktop (Qt 6.5+); only the outlines.
+        if (app.style()->name().compare("fusion", Qt::CaseInsensitive) == 0)
+            app.setStyle(new DarkIndicatorStyle(QStyleFactory::create("Fusion"), QColor(0x50, 0x50, 0x50)));
+        return;
+    }
     if (portalColorScheme() != 1) return;
-    app.setStyle(new DarkIndicatorStyle(QStyleFactory::create("Fusion")));
+    app.setStyle(new DarkIndicatorStyle(QStyleFactory::create("Fusion"), QColor(0xb0, 0xb0, 0xb0)));
     app.setPalette(darkPalette());
     std::fprintf(stderr, "dv3kclient: desktop prefers dark, using a dark palette\n");
 }

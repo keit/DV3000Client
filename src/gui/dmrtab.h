@@ -18,6 +18,7 @@
 #include <atomic>
 #include <memory>
 #include <thread>
+#include <vector>
 
 #include <QHash>
 
@@ -103,11 +104,24 @@ private:
     void setActiveSubscription(uint32_t id, bool privateCall);
     void updateAddFavouriteEnabled();
     bool isFavourite(uint32_t id, bool privateCall) const;
-    void addFavouriteItem(uint32_t id, bool privateCall);
+    void addFavouriteItem(uint32_t id, bool privateCall, bool monitor = false);
     void removeFavouriteItem(QListWidgetItem *item);
     void selectFavourite(uint32_t id, bool privateCall);
     void loadFavourites();
     void saveFavourites() const;
+
+    // Scan (BrandMeister only): listen to every favourite ticked "monitor"
+    // at once, with PTT disabled -- BrandMeister passes one call at a time
+    // per session across subscriptions (measured), so whichever call it
+    // picks plays. Leaving scan unsubscribes them and puts the talkgroup of
+    // the last call heard (or one double-clicked in Last Heard) in the
+    // talkgroup box, subscribed, ready to reply. Kept a separate mode rather
+    // than scanning around a QSO: while scanning, BrandMeister could pass
+    // another talkgroup's call over your QSO partner's reply.
+    std::vector<uint32_t> monitoredTalkgroups() const;
+    void startScan();
+    void stopScanOn(uint32_t talkgroup);
+    void updateScanButtonEnabled();
 
     // A network is usable once its server and password (and the shared DMR
     // ID) are filled in. The combo lists only those, so a user can run just
@@ -182,6 +196,10 @@ private:
     // Enabled only while there's actually something subscribed.
     QPushButton *m_unsubscribeButton;
     QPushButton *m_addFavouriteButton;
+    QPushButton *m_scanButton = nullptr;
+    bool m_scanning = false;
+    std::vector<uint32_t> m_scanSubscribed;  // what startScan() subscribed to
+    uint32_t m_lastHeardTalkgroup = 0;       // destination of the last call heard
     QListWidget *m_favouritesList;
     AudioLevelsPanel *m_audioLevels;
     // Fetched once in the background at construction (see

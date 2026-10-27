@@ -1,5 +1,7 @@
 #include "dmrtab.h"
 
+#include <algorithm>
+
 #include <QAbstractItemView>
 #include <QCheckBox>
 #include <QComboBox>
@@ -19,6 +21,7 @@
 #include <QMetaObject>
 #include <QPushButton>
 #include <QShortcut>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QTimer>
 #include <QStandardPaths>
@@ -164,6 +167,8 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     // clip instead of dictating the panel's width.
     m_statusLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     m_activeTalkgroupLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    // Scanning lists every talkgroup: wrap onto more lines rather than clip.
+    m_activeTalkgroupLabel->setWordWrap(true);
 
     m_unsubscribeButton = new QPushButton("Unsubscribe");
     m_unsubscribeButton->setEnabled(false);
@@ -188,6 +193,26 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
         selectFavourite(item->data(kFavouriteIdRole).toUInt(), item->data(kFavouritePrivateRole).toBool());
     };
     connect(m_favouritesList, &QListWidget::itemClicked, this, applyFavourite);
+    // A monitor tick changed: saved, and while scanning followed at once.
+    connect(m_favouritesList, &QListWidget::itemChanged, this, [this](QListWidgetItem *item) {
+        if (!(item->flags() & Qt::ItemIsUserCheckable)) return;
+        saveFavourites();
+        uint32_t id = item->data(kFavouriteIdRole).toUInt();
+        bool on = item->checkState() == Qt::Checked;
+        if (m_scanning && m_rewindClient) {
+            auto it = std::find(m_scanSubscribed.begin(), m_scanSubscribed.end(), id);
+            if (on && it == m_scanSubscribed.end()) {
+                m_rewindClient->subscribe(id, dmr::rewind::SessionType::GroupVoice);
+                m_scanSubscribed.push_back(id);
+            } else if (!on && it != m_scanSubscribed.end()) {
+                m_rewindClient->unsubscribe(id, dmr::rewind::SessionType::GroupVoice);
+                m_scanSubscribed.erase(it);
+            }
+            if (m_scanSubscribed.empty()) stopScanOn(0);
+            else startScan(); // refreshes the label
+        }
+        updateScanButtonEnabled();
+    });
     connect(m_favouritesList, &QListWidget::itemActivated, this, applyFavourite);
 
     // Remove via right-click menu or the Delete key.
@@ -219,14 +244,38 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_lastHeardTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     m_lastHeardTable->setStyleSheet(theme::contentBackground("QTableWidget"));
+    // Double-click a call to reply on its talkgroup (leaving scan if on).
+    connect(m_lastHeardTable, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
+        QTableWidgetItem *tg = m_lastHeardTable->item(row, 2);
+        if (!tg) return;
+        uint32_t id = tg->data(Qt::UserRole).toUInt();
+        if (id == 0) return;
+        if (m_scanning) {
+            stopScanOn(id);
+        } else {
+            m_privateCallCheck->setChecked(false);
+            m_talkgroupCombo->lineEdit()->setText(displayTalkgroup(id));
+        }
+    });
 
     auto *tgRow = new QHBoxLayout;
     tgRow->addWidget(new QLabel("Talkgroup:"));
     tgRow->addWidget(m_talkgroupCombo, 1);
     tgRow->addWidget(m_privateCallCheck);
 
+    m_scanButton = new QPushButton("Scan");
+    m_scanButton->setCheckable(true);
+    m_scanButton->setEnabled(false);
+    m_scanButton->setToolTip("Listen to all favourites ticked for scanning (BrandMeister). PTT is off while scanning;\n"
+                             "turning Scan off puts the talkgroup of the last call heard in the talkgroup box.");
+    connect(m_scanButton, &QPushButton::toggled, this, [this](bool on) {
+        if (on) startScan();
+        else stopScanOn(m_lastHeardTalkgroup);
+    });
+
     auto *bottomRow = new QHBoxLayout;
     bottomRow->addWidget(m_connectButton);
+    bottomRow->addWidget(m_scanButton);
     bottomRow->addWidget(m_statusLabel, 1);
 
     auto *layout = new QVBoxLayout;
@@ -242,11 +291,12 @@ DmrTab::DmrTab(const GuiSettings &settings, QWidget *parent) : ProtocolTab(paren
     layout->addLayout(networkRow);
     layout->addLayout(tgRow);
     auto *subscriptionRow = new QHBoxLayout;
-    subscriptionRow->addWidget(m_activeTalkgroupLabel, 1);
+    subscriptionRow->addStretch(1);
     subscriptionRow->addWidget(m_unsubscribeButton);
     subscriptionRow->addWidget(m_addFavouriteButton);
     layout->addLayout(subscriptionRow);
     layout->addLayout(bottomRow);
+    layout->addWidget(m_activeTalkgroupLabel);
     layout->addWidget(new QLabel("Favourites:"));
     layout->addWidget(m_favouritesList, 1);
 
@@ -381,13 +431,19 @@ bool DmrTab::isFavourite(uint32_t id, bool privateCall) const {
     return false;
 }
 
-void DmrTab::addFavouriteItem(uint32_t id, bool privateCall) {
+void DmrTab::addFavouriteItem(uint32_t id, bool privateCall, bool monitor) {
     if (id == 0 || isFavourite(id, privateCall)) return;
     QString text = displayTalkgroup(id);
     if (id == 4000 && text == "4000") text += " — Disconnect";
     auto *item = new QListWidgetItem(text + (privateCall ? " (private call)" : ""));
     item->setData(kFavouriteIdRole, id);
     item->setData(kFavouritePrivateRole, privateCall);
+    // The box ticks it for Scan: BrandMeister group talkgroups only.
+    if (m_network == "brandmeister" && !privateCall && id != 4000) {
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(monitor ? Qt::Checked : Qt::Unchecked);
+        item->setToolTip("Tick to include this talkgroup when scanning");
+    }
     m_favouritesList->addItem(item);
 }
 
@@ -407,7 +463,7 @@ void DmrTab::loadFavourites() {
     if (!f.open(QIODevice::ReadOnly)) return;
     for (const QJsonValue &v : QJsonDocument::fromJson(f.readAll()).array()) {
         QJsonObject o = v.toObject();
-        addFavouriteItem(static_cast<uint32_t>(o["id"].toDouble()), o["private"].toBool());
+        addFavouriteItem(static_cast<uint32_t>(o["id"].toDouble()), o["private"].toBool(), o["monitor"].toBool());
     }
 }
 
@@ -418,6 +474,7 @@ void DmrTab::saveFavourites() const {
         QJsonObject o;
         o["id"] = static_cast<double>(item->data(kFavouriteIdRole).toUInt());
         o["private"] = item->data(kFavouritePrivateRole).toBool();
+        if (item->flags() & Qt::ItemIsUserCheckable) o["monitor"] = item->checkState() == Qt::Checked;
         array.append(o);
     }
     QFile f(favouritesFilePath(m_network));
@@ -507,7 +564,7 @@ uint32_t DmrTab::currentTalkgroupId() const {
 }
 
 void DmrTab::resubscribeIfOpenTerminal() {
-    if (!m_rewindClient) return;
+    if (!m_rewindClient || m_scanning) return;
     uint32_t id = currentTalkgroupId();
     if (id == 0) return;
     bool privateCall = m_privateCall.load();
@@ -730,7 +787,10 @@ void DmrTab::addLastHeardEntry(uint32_t srcId, uint32_t dstId) {
     m_lastHeardTable->insertRow(0);
     m_lastHeardTable->setItem(0, 0, new QTableWidgetItem(QTime::currentTime().toString("HH:mm:ss")));
     m_lastHeardTable->setItem(0, 1, new QTableWidgetItem(displayCallsign(srcId)));
-    m_lastHeardTable->setItem(0, 2, new QTableWidgetItem(displayTalkgroup(dstId)));
+    auto *tgItem = new QTableWidgetItem(displayTalkgroup(dstId));
+    tgItem->setData(Qt::UserRole, dstId);
+    m_lastHeardTable->setItem(0, 2, tgItem);
+    m_lastHeardTalkgroup = dstId;
 
     constexpr int kMaxLastHeardRows = 100;
     while (m_lastHeardTable->rowCount() > kMaxLastHeardRows) {
@@ -753,6 +813,8 @@ void DmrTab::stopSessionBlocking() {
         m_rewindClient->unsubscribe(m_subscribedTalkgroup, m_subscribedPrivate ? dmr::rewind::SessionType::PrivateVoice
                                                                                  : dmr::rewind::SessionType::GroupVoice);
     }
+    if (m_rewindClient)
+        for (uint32_t id : m_scanSubscribed) m_rewindClient->unsubscribe(id, dmr::rewind::SessionType::GroupVoice);
     if (m_client) m_client->disconnect();
     m_capture.close();
     m_playback.close();
@@ -785,6 +847,7 @@ void DmrTab::setBusy(bool busy, const QString &status) {
     m_statusLabel->setText(status);
     m_networkCombo->setEnabled(!busy && !m_connected);
     updateConnectEnabled();
+    updateScanButtonEnabled();
     emit stateChanged();
 }
 
@@ -803,10 +866,17 @@ void DmrTab::setConnected(bool connected, const QString &status) {
     m_connectButton->setText(connected ? "Disconnect" : "Connect");
     m_connectButton->setStyleSheet(connected ? kConnectedButtonStyle : "");
     m_statusLabel->setStyleSheet(theme::statusLabelStyle());
-    if (!connected) m_pttButton->setChecked(false); // in case we disconnected mid-send
+    if (!connected) {
+        m_pttButton->setChecked(false); // in case we disconnected mid-send
+        m_scanning = false;
+        m_scanSubscribed.clear();
+        QSignalBlocker block(m_scanButton);
+        m_scanButton->setChecked(false);
+    }
     updatePttButtonEnabled();
     updateUnsubscribeButtonEnabled();
     setBusy(false, status);
+    updateScanButtonEnabled();
 }
 
 void DmrTab::updateVocoderStatus() {
@@ -823,7 +893,79 @@ void DmrTab::updateVocoderStatus() {
     m_statusLabel->setStyleSheet(down ? theme::errorLabelStyle() : theme::statusLabelStyle());
 }
 
-void DmrTab::updatePttButtonEnabled() { m_pttButton->setEnabled(m_connected && currentTalkgroupId() != 0); }
+void DmrTab::updatePttButtonEnabled() {
+    m_pttButton->setEnabled(m_connected && !m_scanning && currentTalkgroupId() != 0);
+    m_pttButton->setToolTip(m_scanning ? "Scanning: turn Scan off to talk" : QString());
+}
+
+std::vector<uint32_t> DmrTab::monitoredTalkgroups() const {
+    std::vector<uint32_t> ids;
+    for (int i = 0; i < m_favouritesList->count(); i++) {
+        const QListWidgetItem *item = m_favouritesList->item(i);
+        if ((item->flags() & Qt::ItemIsUserCheckable) && item->checkState() == Qt::Checked)
+            ids.push_back(item->data(kFavouriteIdRole).toUInt());
+    }
+    return ids;
+}
+
+void DmrTab::updateScanButtonEnabled() {
+    if (!m_scanButton) return;
+    m_scanButton->setEnabled(m_connected && !m_busy && m_rewindClient &&
+                             (m_scanning || !monitoredTalkgroups().empty()));
+    // Lit like PTT while sending: PTT is off until Scan is.
+    m_scanButton->setText(m_scanning ? "Scanning" : "Scan");
+    m_scanButton->setStyleSheet(m_scanning ? kSendingButtonStyle : "");
+}
+
+void DmrTab::startScan() {
+    if (!m_rewindClient) return;
+    if (!m_scanning) {
+        // Scanning replaces the single subscription.
+        if (m_subscribedTalkgroup != 0) {
+            m_rewindClient->unsubscribe(m_subscribedTalkgroup, m_subscribedPrivate ? dmr::rewind::SessionType::PrivateVoice
+                                                                                     : dmr::rewind::SessionType::GroupVoice);
+            m_subscribedTalkgroup = 0;
+            m_subscribedPrivate = false;
+        }
+        for (uint32_t id : monitoredTalkgroups()) {
+            m_rewindClient->subscribe(id, dmr::rewind::SessionType::GroupVoice);
+            m_scanSubscribed.push_back(id);
+        }
+        m_scanning = true;
+        m_pttButton->setChecked(false);
+        std::fprintf(stderr, "dmrtab: scanning %zu talkgroups\n", m_scanSubscribed.size());
+    }
+    QStringList names;
+    for (uint32_t id : m_scanSubscribed) names << QString::number(id);
+    m_activeTalkgroupLabel->setText("Scanning: TG " + names.join(", "));
+    updatePttButtonEnabled();
+    updateUnsubscribeButtonEnabled();
+    updateScanButtonEnabled();
+}
+
+void DmrTab::stopScanOn(uint32_t talkgroup) {
+    if (m_rewindClient)
+        for (uint32_t id : m_scanSubscribed) m_rewindClient->unsubscribe(id, dmr::rewind::SessionType::GroupVoice);
+    m_scanSubscribed.clear();
+    bool wasScanning = m_scanning;
+    m_scanning = false;
+    {
+        QSignalBlocker block(m_scanButton);
+        m_scanButton->setChecked(false);
+    }
+    if (talkgroup != 0) {
+        m_privateCallCheck->setChecked(false);
+        m_talkgroupCombo->lineEdit()->setText(displayTalkgroup(talkgroup));
+    }
+    if (wasScanning) {
+        std::fprintf(stderr, "dmrtab: scan stopped, back to TG %u\n", currentTalkgroupId());
+        // Back to the single subscription: the talkgroup box's.
+        if (m_connected) resubscribeIfOpenTerminal();
+        if (m_subscribedTalkgroup == 0) setActiveSubscription(0, false);
+    }
+    updatePttButtonEnabled();
+    updateScanButtonEnabled();
+}
 
 void DmrTab::updateUnsubscribeButtonEnabled() {
     m_unsubscribeButton->setEnabled(m_rewindClient && m_subscribedTalkgroup != 0);

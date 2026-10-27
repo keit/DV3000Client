@@ -17,6 +17,10 @@
 //   password is BrandMeister's "Hotspot Security" password from
 //   SelfCare, the same one an existing Homebrew/MMDVM connection
 //   already uses.
+//   With "none" as the thumbdv-device nothing is decoded or played: it logs
+//   the calls and, each second with voice, how many voice packets arrived
+//   -- one call is ~17/s (a 60 ms burst each), so ~33 means two calls'
+//   packets interleaved on the session (several subscriptions at once).
 //   If capture-device, tx-talkgroup and a call type are given, PTT is
 //   driven by stdin: press Enter to toggle transmit on/off. Any
 //   rx-talkgroup arguments after that are additional receive-only
@@ -37,6 +41,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <memory>
+#include <chrono>
 #include <thread>
 
 namespace {
@@ -57,7 +63,9 @@ int main(int argc, char **argv) {
     std::string thumbdvDevice = argv[4];
     std::string playbackDevice = argv[5];
 
-    bool doTx = argc >= 9;
+    // Transmit arguments only if the call type is there -- otherwise
+    // everything after the playback device is receive-only talkgroups.
+    bool doTx = argc >= 9 && (std::string(argv[8]) == "group" || std::string(argv[8]) == "private");
     std::string captureDevice = doTx ? argv[6] : "";
     uint32_t txTalkgroup = doTx ? static_cast<uint32_t>(std::strtoul(argv[7], nullptr, 10)) : 0;
     bool txPrivate = doTx && std::string(argv[8]) == "private";
@@ -70,14 +78,15 @@ int main(int argc, char **argv) {
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
 
+    bool logOnly = thumbdvDevice == "none";
     SerialDV::DVController dv;
-    if (!dv.open(thumbdvDevice)) {
+    if (!logOnly && !dv.open(thumbdvDevice)) {
         std::fprintf(stderr, "odt_test: failed to open ThumbDV device %s\n", thumbdvDevice.c_str());
         return 1;
     }
 
     audio::AlsaPcm playback;
-    if (!playback.open(playbackDevice, SND_PCM_STREAM_PLAYBACK)) {
+    if (!logOnly && !playback.open(playbackDevice, SND_PCM_STREAM_PLAYBACK)) {
         std::fprintf(stderr, "odt_test: failed to open audio output device %s\n", playbackDevice.c_str());
         return 1;
     }
@@ -107,8 +116,14 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "%s\n", len > 16 ? " ..." : "");
     });
     // After client, so it's destroyed first: its replies call into client.
-    audio::VocoderPipeline vocoder(dv, SerialDV::DVRate3600x2450);
-    client.setVoiceRxSink(dmr::makeVoiceRxHandler(&vocoder, &rxQueue));
+    std::unique_ptr<audio::VocoderPipeline> vocoderPtr;
+    if (!logOnly) vocoderPtr = std::make_unique<audio::VocoderPipeline>(dv, SerialDV::DVRate3600x2450);
+    std::atomic<int> packetsThisSecond{0};
+    if (logOnly) {
+        client.setVoiceRxSink([&](const uint8_t *, const uint8_t *, const uint8_t *) { packetsThisSecond++; });
+    } else {
+        client.setVoiceRxSink(dmr::makeVoiceRxHandler(vocoderPtr.get(), &rxQueue));
+    }
 
     if (client.link() != dmr::LinkResult::Success) {
         std::fprintf(stderr, "odt_test: handshake failed\n");
@@ -122,14 +137,24 @@ int main(int argc, char **argv) {
         if (tg > 0) client.subscribe(tg, dmr::rewind::SessionType::GroupVoice);
     }
 
-    std::thread playbackThread(audio::playbackThread, &playback, &rxQueue, &dmr::g_running, nullptr, nullptr);
+    std::thread playbackThread;
+    if (!logOnly) playbackThread = std::thread(audio::playbackThread, &playback, &rxQueue, &dmr::g_running, nullptr, nullptr);
+    std::thread rateThread;
+    if (logOnly)
+        rateThread = std::thread([&] {
+            while (dmr::g_running) {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                int n = packetsThisSecond.exchange(0);
+                if (n) std::fprintf(stderr, "odt_test: %d voice packets in the last second%s\n", n, n > 22 ? "  <-- more than one call" : "");
+            }
+        });
 
     std::atomic<bool> pttActive{false};
     std::thread captureThread;
     std::thread pttInputThread;
     if (doTx) {
         captureThread = std::thread(
-            dmr::captureThread, &vocoder, &capture, &client, [txTalkgroup] { return txTalkgroup; },
+            dmr::captureThread, vocoderPtr.get(), &capture, &client, [txTalkgroup] { return txTalkgroup; },
             [txPrivate] { return txPrivate ? dmr::CallType::Private : dmr::CallType::Group; },
             [&pttActive] { return pttActive.load(); });
         pttInputThread = std::thread([&pttActive, txTalkgroup, txPrivate] {
@@ -156,7 +181,8 @@ int main(int argc, char **argv) {
         // the user pressing Enter one more time.
         pttInputThread.detach();
     }
-    playbackThread.join();
+    if (playbackThread.joinable()) playbackThread.join();
+    if (rateThread.joinable()) rateThread.join();
 
     playback.close();
     if (doTx) capture.close();

@@ -400,6 +400,17 @@ any other is added; `<lastip>` can be a host name, `<country>` and
 </reflectorlist>
 ```
 
+YSF reflectors work the same way, in `~/.config/DV3000Client/ysf_reflectors.txt`
+with lines in the YSF list's own format (Pi-Star's `YSF_Hosts.txt`):
+number, name, description, address (or host name) and port, each followed by
+`;`. Lines starting with `#` are comments. Entries are marked
+"(ysf_reflectors.txt)" in the list.
+
+```
+# number;name;description;address;port;
+99999;MY-YSF;at home;192.168.1.60;42000;
+```
+
 The **Record** button in the Speaker box saves what you hear as WAV files in
 `~/Music/DV3K Client/`, named by date, time and what you're connected to
 (**File > Open Recordings Folder** opens it). Your own transmissions aren't

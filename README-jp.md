@@ -392,6 +392,16 @@ YSF リフレクターに、公開リフレクター一覧から選んで接続�
 </reflectorlist>
 ```
 
+YSF リフレクターも同様に、`~/.config/DV3000Client/ysf_reflectors.txt` に YSF リストと
+同じ形式(Pi-Star の `YSF_Hosts.txt`)で書きます。番号・名前・説明・アドレス(ホスト名も可)・
+ポートをそれぞれ `;` で区切ります。`#` で始まる行はコメントです。一覧では
+「(ysf_reflectors.txt)」と表示されます。
+
+```
+# 番号;名前;説明;アドレス;ポート;
+99999;MY-YSF;自宅;192.168.1.60;42000;
+```
+
 Speaker 欄の **Record** ボタンで、受信音声を WAV ファイルとして `~/Music/DV3K Client/` に
 保存できます。ファイル名は日時と接続先です(**File > Open Recordings Folder** で開けます)。
 自分の送信音声は含まれません。

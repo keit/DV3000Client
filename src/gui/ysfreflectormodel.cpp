@@ -1,9 +1,13 @@
 #include "ysfreflectormodel.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <thread>
 
+#include <QFile>
 #include <QMetaObject>
+#include <QSet>
+#include <QStandardPaths>
 #include <QTimer>
 
 #include "localcache.h"
@@ -13,6 +17,15 @@ constexpr const char *CACHE_KEY = "ysf_hosts";
 } // namespace
 
 YsfReflectorModel::YsfReflectorModel(QObject *parent) : QAbstractListModel(parent) {
+    QFile local(localFilePath());
+    if (local.open(QIODevice::ReadOnly)) {
+        m_local = ysf::parseReflectorList(local.readAll().toStdString());
+        for (auto &r : m_local)
+            r.description += r.description.empty() ? "(ysf_reflectors.txt)" : " (ysf_reflectors.txt)";
+        std::fprintf(stderr, "ysf reflectors: %zu from %s\n", m_local.size(), localFilePath().toLocal8Bit().constData());
+    }
+    // Shown even before the directory: it may never have been fetched.
+    if (!m_local.empty()) setList({});
     // Deferred a tick, like the D-Star list (see ReflectorListModel): a
     // large model before the window's first show upsets its sizing.
     QTimer::singleShot(0, this, [this] {
@@ -66,7 +79,18 @@ void YsfReflectorModel::refresh() {
     }).detach();
 }
 
+QString YsfReflectorModel::localFilePath() {
+    return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/ysf_reflectors.txt";
+}
+
 void YsfReflectorModel::setList(std::vector<ysf::ReflectorEntry> list) {
+    // ysf_reflectors.txt's entries replace the directory's of the same name.
+    QSet<QString> overridden;
+    for (const auto &r : m_local) overridden.insert(QString::fromStdString(r.name).toUpper());
+    list.erase(std::remove_if(list.begin(), list.end(),
+                              [&](const auto &r) { return overridden.contains(QString::fromStdString(r.name).toUpper()); }),
+               list.end());
+    list.insert(list.end(), m_local.begin(), m_local.end());
     std::sort(list.begin(), list.end(), [](const auto &a, const auto &b) { return a.name < b.name; });
     beginResetModel();
     m_rows = std::move(list);

@@ -7,7 +7,9 @@
 #include <QDBusMessage>
 #include <QDBusVariant>
 #include <QPalette>
+#include <QProxyStyle>
 #include <QStyleFactory>
+#include <QStyleOption>
 
 namespace {
 
@@ -59,13 +61,39 @@ QPalette darkPalette() {
     return p;
 }
 
+// Qt 6.4's Fusion outlines check boxes and radio buttons in the window
+// colour darkened by 40% -- on this palette #262626 against a #2a2a2a box,
+// next to invisible (6.5's Fusion lightens it in dark mode instead). Draw
+// those indicators as if on a light grey window, for a mid-grey outline.
+class DarkIndicatorStyle : public QProxyStyle {
+public:
+    using QProxyStyle::QProxyStyle;
+    void drawPrimitive(PrimitiveElement element, const QStyleOption *option, QPainter *painter,
+                       const QWidget *widget) const override {
+        if (element == PE_IndicatorCheckBox || element == PE_IndicatorRadioButton) {
+            QStyleOption *copy = nullptr;
+            if (auto *button = qstyleoption_cast<const QStyleOptionButton *>(option))
+                copy = new QStyleOptionButton(*button);
+            else if (auto *item = qstyleoption_cast<const QStyleOptionViewItem *>(option))
+                copy = new QStyleOptionViewItem(*item);
+            else
+                copy = new QStyleOption(*option);
+            copy->palette.setColor(QPalette::Window, QColor(0xb0, 0xb0, 0xb0));
+            QProxyStyle::drawPrimitive(element, copy, painter, widget);
+            delete copy;
+            return;
+        }
+        QProxyStyle::drawPrimitive(element, option, painter, widget);
+    }
+};
+
 } // namespace
 
 void followDesktopColorScheme(QApplication &app) {
     bool qtDark = app.palette().color(QPalette::Window).lightness() < 128;
     if (qtDark) return; // Qt already follows the desktop (Qt 6.5+)
     if (portalColorScheme() != 1) return;
-    app.setStyle(QStyleFactory::create("Fusion"));
+    app.setStyle(new DarkIndicatorStyle(QStyleFactory::create("Fusion")));
     app.setPalette(darkPalette());
     std::fprintf(stderr, "dv3kclient: desktop prefers dark, using a dark palette\n");
 }

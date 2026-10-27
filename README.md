@@ -34,8 +34,9 @@ about building from source.
   station's module and TX message.
 - **DMR tab:** a network picker (BrandMeister or TGIF), searchable talkgroup
   picker for that network, group calls (plus private calls on BrandMeister),
-  current-subscription display, a favourites list per network, Last Heard
-  list with callsign and talkgroup-name lookup.
+  current-subscription display, a favourites list per network, talkgroup
+  scanning on BrandMeister, Last Heard list with callsign and talkgroup-name
+  lookup.
 - **YSF tab:** searchable picker of YSF reflectors (live directory; type a
   name or a reflector's number), connect/disconnect, push-to-talk, a DG-ID
   setting for reflectors with rooms, favourites, and a Last Heard list with
@@ -355,6 +356,13 @@ to check that the server answers.
   subscription_) drops it, and disconnecting unsubscribes automatically. For a
   **private call** (e.g. the Parrot echo test, ID 9990), tick **Private
   call**; the talkgroup field is then a target DMR ID.
+- **Scanning** (BrandMeister): tick the favourite talkgroups to scan and press
+  **Scan** -- the button reads **Scanning** -- to listen to all of them at once.
+  BrandMeister passes one call at a time, so calls don't overlap. PTT is off
+  while scanning, so you never transmit on a talkgroup you didn't mean to. To
+  reply, press **Scanning** again: the talkgroup of the last call you heard
+  goes in the talkgroup box, ready for PTT. Double-clicking a call in Last
+  Heard does the same for that call's talkgroup.
 - **TGIF (Homebrew)** has no separate subscription step: you hear whichever
   talkgroup you last transmitted on, which is what _Current subscription_
   shows. TG 4000 is a "landing place" that passes no traffic (shown as
